@@ -14,18 +14,19 @@ dest_path = '../data/mimiciii/preprocess_data/'
 ######################################################################################
 # Split CHARTEVENTS to several dataset
 ######################################################################################
-
+print('start splitting CHARTEVENTS to 9 chunck...')
 count = 1
 for reader in tqdm(pd.read_csv(source_path + 'CHARTEVENTS.csv', chunksize = 40000000)):
     reader.to_csv(dest_path + 'CHARTEVENTS' + str(count) + '.csv', index=False)
     count += 1
+print('finish splitting')
 
 ######################################################################################
 # Load Data
 ######################################################################################
 
 paths = sorted(os.listdir(source_path))
-remove_paths = []
+remove_paths = list()
 for path in paths:
     if path[-4:] != '.csv':
         remove_paths.append(path)
@@ -40,11 +41,11 @@ paths.remove('SERVICES.csv',)
 paths.remove('TRANSFERS.csv')
 paths.remove('D_CPT.csv')
 
-datas = []
-for path in tqdm(paths):
+datas = list()
+for path in paths:
     datas.append(pd.read_csv(source_path + path))
     
-for path in tqdm(sorted(os.listdir(dest_path))):
+for path in sorted(os.listdir(dest_path)):
     datas.append(pd.read_csv(dest_path + path))
 
 paths += sorted(list(os.listdir(dest_path)))
@@ -52,6 +53,7 @@ paths += sorted(list(os.listdir(dest_path)))
 ######################################################################################
 # Clean Data to remain SEPSIS patient and sort Data
 ######################################################################################
+print('start filter patient...')
 # filter diagnoses to sepsis
 i = paths.index('D_ICD_DIAGNOSES.csv')
 D_ICD_DIAGNOSES = datas[i].copy()
@@ -124,4 +126,4 @@ i = paths.index('D_LABITEMS.csv')
 datas[i].sort_values(by=['ITEMID'], inplace=True)
 datas[i].to_csv(dest_path + paths[i], index=False)
 
-
+print('finish filter patient')

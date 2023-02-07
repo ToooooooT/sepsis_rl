@@ -8,23 +8,28 @@ import numpy as np
 from tqdm import tqdm
 from multiprocessing import Process
 
+pd.options.mode.chained_assignment = None
+
 preprocess_path = '../data/mimiciii/preprocess_data/'
 temporal_path = '../data/mimiciii/temporal_dataset/'
 
 ######################################################################################
 # Load Data
 ######################################################################################
+print('loading data...')
 
 datas = list()
 paths = sorted(os.listdir(preprocess_path))
-for path in tqdm(paths):
+for path in paths:
     datas.append(pd.read_csv(preprocess_path + path))
+
+print('finish loading data')
 
 ######################################################################################
 # Look Data characteristics
 ######################################################################################
 
-for i in tqdm(range(len(datas))):
+for i in range(len(datas)):
     for column in datas[i].columns:
         if 'TIME' in column or 'DATE' in column or 'DOB' == column or 'DOD' == column or 'DOD_HOSP' == column or 'DOD_SSN' == column:
             datas[i][column] = datas[i][column].apply(lambda x : pd.Timestamp(x))
@@ -183,7 +188,7 @@ def split_time(hour, dataset):
     split = pd.DataFrame(columns = dataset.columns)
     for i in tqdm(dataset.index):
         intime, outtime = dataset['ADMITTIME'].loc[i], dataset['DISCHTIME'].loc[i]
-        if dataset['ADMITTIME'].isnull()[i] or dataset['ADMITTIME'].isnull()[i]:
+        if dataset['ADMITTIME'].isnull()[i] or dataset['DISCHTIME'].isnull()[i]:
             continue
         while outtime - intime > pd.Timedelta(hour_period):
             #['SUBJECT_ID', 'HADM_ID', 'DOB', 'Gender', 'DEATHTIME', 'ADMITTIME', 'DISCHTIME', 're_admission', 'elixhauser', 'Age']
@@ -214,19 +219,19 @@ def split_time(hour, dataset):
             dataset['elixhauser'].loc[i],
             (intime.to_pydatetime() - dataset['DOB'].loc[i].to_pydatetime()).days / 365
         ]
+        index += 1
 
     split.drop('DOB', axis=1, inplace=True)
     split = split[['SUBJECT_ID', 'HADM_ID', 'ADMITTIME', 'DISCHTIME', 'Gender', 'Age', 'DEATHTIME', 're_admission', 'elixhauser']]
     split.columns = ['SUBJECT_ID', 'HADM_ID', 'STARTTIME', 'ENDTIME', 'Gender', 'Age', 'DEATHTIME', 're_admission', 'elixhauser']
     split.to_csv(temporal_path + f'dataset_split_{hour}_hour.csv', index=False)
 
-    
 processes = []
 for i in range(1, 11):
     processes.append(Process(target=split_time, args=(i, dataset)))
-for i in range(1, 11):
+for i in range(10):
     processes[i].start()
-for i in range(1, 11):
+for i in range(10):
     processes[i].join()
 
 
