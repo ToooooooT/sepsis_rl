@@ -15,6 +15,7 @@ temporal_path = '../data/mimiciii/temporal_dataset/'
 ######################################################################################
 # ## Load require data
 ######################################################################################
+print('Loading data...')
 
 CHARTEVENTS1 = pd.read_csv(preprocess_path + 'CHARTEVENTS1.csv')
 CHARTEVENTS2 = pd.read_csv(preprocess_path + 'CHARTEVENTS2.csv')
@@ -27,14 +28,40 @@ CHARTEVENTS8 = pd.read_csv(preprocess_path + 'CHARTEVENTS8.csv')
 CHARTEVENTS9 = pd.read_csv(preprocess_path + 'CHARTEVENTS9.csv')
 LABEVENTS = pd.read_csv(preprocess_path + 'LABEVENTS.csv')
 
+chart_lab_events = [CHARTEVENTS1, CHARTEVENTS2, CHARTEVENTS3, CHARTEVENTS4, CHARTEVENTS5, CHARTEVENTS6, CHARTEVENTS7, CHARTEVENTS8, CHARTEVENTS9, LABEVENTS]
 
-events_to_merge = [CHARTEVENTS1, CHARTEVENTS2, CHARTEVENTS3, CHARTEVENTS4, CHARTEVENTS5, CHARTEVENTS6, CHARTEVENTS7, 
-         CHARTEVENTS8, CHARTEVENTS9, LABEVENTS]
+OUTPUTEVENTS = pd.read_csv(preprocess_path + 'OUTPUTEVENTS.csv')
+INPUTEVENTS_MV = pd.read_csv(preprocess_path + 'INPUTEVENTS_MV.csv')
+INPUTEVENTS_CV = pd.read_csv(preprocess_path + 'INPUTEVENTS_CV.csv')
+DIAGNOSES_ICD = pd.read_csv(preprocess_path + 'DIAGNOSES_ICD.csv')
 
-for i in tqdm(range(len(events_to_merge))):
-    for column in events_to_merge[i].columns:
+datasets = list()
+for i in range(1, 11):
+    datasets.append(pd.read_csv(temporal_path + f'dataset_split_{i}_hour.csv'))
+
+# change time column data's type to timestamp type
+OUTPUTEVENTS['CHARTTIME'] = OUTPUTEVENTS['CHARTTIME'].apply(lambda x : pd.Timestamp(x))
+INPUTEVENTS_MV['STARTTIME'] = INPUTEVENTS_MV['STARTTIME'].apply(lambda x : pd.Timestamp(x))
+INPUTEVENTS_MV['ENDTIME'] = INPUTEVENTS_MV['ENDTIME'].apply(lambda x : pd.Timestamp(x))
+INPUTEVENTS_CV['CHARTTIME'] = INPUTEVENTS_CV['CHARTTIME'].apply(lambda x : pd.Timestamp(x))
+
+for i in range(len(chart_lab_events)):
+    for column in chart_lab_events[i].columns:
         if 'TIME' in column or 'DATE' in column:
-            events_to_merge[i][column] = events_to_merge[i][column].apply(lambda x : pd.Timestamp(x))
+            chart_lab_events[i][column] = chart_lab_events[i][column].apply(lambda x : pd.Timestamp(x))
+
+for i in range(len(datasets)):
+    datasets[i]['STARTTIME'] = datasets[i]['STARTTIME'].apply(lambda x : pd.Timestamp(x))
+    datasets[i]['ENDTIME'] = datasets[i]['ENDTIME'].apply(lambda x : pd.Timestamp(x))
+    datasets[i]['DEATHTIME'] = datasets[i]['DEATHTIME'].apply(lambda x : pd.Timestamp(x))
+
+
+var_range = pd.read_csv('../data/mimiciii/variable_range.csv')
+var_range.index = var_range.iloc[:, 0]
+var_range = var_range.iloc[:, 1:]
+var_range['GROUP_ID'] = var_range['GROUP_ID'].apply(lambda x : [int(s) for s in x.split(',')] if type(x) == type('') else x)
+
+print('Finish loading data')
 
 ######################################################################################
 # unified unit
@@ -55,56 +82,66 @@ def changeUnit(series):
     return series['VALUENUM']
     
 
-for i in tqdm(range(len(events_to_merge))):
-    events_to_merge[i]['VALUENUM'] = events_to_merge[i].apply(changeUnit, axis=1)
+print('Unified unit...')
 
-######################################################################################
-# Load variable range
-######################################################################################
+for i in range(len(chart_lab_events)):
+    chart_lab_events[i]['VALUENUM'] = chart_lab_events[i].apply(changeUnit, axis=1)
 
-var_range = pd.read_csv('../data/mimiciii/variable_range.csv')
-var_range.index = var_range.iloc[:, 0]
-var_range = var_range.iloc[:, 1:]
-var_range['GROUP_ID'] = var_range['GROUP_ID'].apply(lambda x : [int(s) for s in x.split(',')] if type(x) == type('') else x)
-var_range
+print('Finish unified unit')
 
 ######################################################################################
 # Merge features to dataset
 ######################################################################################
 
-def merge_event(dataset, feature, EVENTS, var_range):
-    # find all feature records in EVENTS
-    event = EVENTS[[id in var_range.loc[feature]['GROUP_ID'] for id in EVENTS['ITEMID']]]
+def is_time_in_state (time, start, end):
+    return time - start < pd.Timedelta('0') or time - end >= pd.Timedelta('0')
 
-    for i in range(len(event)):
-        
-        subject_id = event.iloc[i]['SUBJECT_ID']
-        hadm_id = event.iloc[i]['HADM_ID']
-        time = event.iloc[i]['CHARTTIME']
-        
-        # detect outlier value, if out of outlier range then set to missing value
-        value = event.iloc[i]['VALUENUM']
-        if var_range.loc[feature].notnull()[0]:
-            if value > var_range.loc[feature]['OUTLIER HIGH']:
-                continue
-            elif value > var_range.loc[feature]['VALID HIGH']:
-                value = var_range.loc[feature]['VALID HIGH']
-            elif value < var_range.loc[feature]['OUTLIER LOW']:
-                continue
-            elif value < var_range.loc[feature]['VALID LOW']:
-                value = var_range.loc[feature]['VALID LOW']
-        
-        index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
-        
-        low, high = 0, len(index) - 1
-        while low <= high:
-            mid = (low + high) >> 1
-            idx = index[mid]
-            if time - dataset.iloc[idx]['ENDTIME'] > pd.Timedelta('0'):
-                low = mid + 1
-            elif time - dataset.iloc[idx]['STARTTIME'] < pd.Timedelta('0'):
-                high = mid - 1
-            else:
+
+def getStartIndex (index, dataset, time):
+    low, high = 0, len(index) - 1
+    while low <= high:
+        mid = (low + high) >> 1
+        idx = index[mid]
+        if time - dataset.loc[idx, 'ENDTIME'] >= pd.Timedelta('0'):
+            low = mid + 1
+        elif time - dataset.loc[idx, 'STARTTIME'] < pd.Timedelta('0'):
+            high = mid - 1
+        else:
+            return idx
+    return index[low]
+
+
+def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OUTPUTEVENTS):
+
+    def merge_chart_lab(dataset, hour, chart_lab_events, var_range):
+
+        def merge_event(dataset, feature, EVENTS, var_range):
+            # find all feature records in EVENTS
+            event = EVENTS[[id in var_range.loc[feature]['GROUP_ID'] for id in EVENTS['ITEMID']]]
+
+            for i in range(len(event)):
+                subject_id = event.iloc[i]['SUBJECT_ID']
+                hadm_id = event.iloc[i]['HADM_ID']
+                time = event.iloc[i]['CHARTTIME']
+                value = event.iloc[i]['VALUENUM']
+                
+                # detect outlier value, if out of outlier range then set to missing value
+                if value > var_range.loc[feature, 'OUTLIER HIGH']:
+                    continue
+                elif value > var_range.loc[feature, 'VALID HIGH']:
+                    value = var_range.loc[feature, 'VALID HIGH']
+                elif value < var_range.loc[feature, 'OUTLIER LOW']:
+                    continue
+                elif value < var_range.loc[feature, 'VALID LOW']:
+                    value = var_range.loc[feature, 'VALID LOW']
+                
+                index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
+
+                # record time is not in the time when patient in the dataset
+                if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
+                    continue
+
+                idx = getStartIndex(index, dataset, time)
                 if dataset['records'][idx] == 0:
                     dataset[feature][idx] = value
                 else:
@@ -112,74 +149,28 @@ def merge_event(dataset, feature, EVENTS, var_range):
                     # use mean when multiple records in same period
                     dataset[feature][idx] = value / (record + 1) + record / (record + 1) * dataset[feature][idx]
                 dataset['records'][idx] += 1
-                break
 
-                    
-def merge(hour, events_to_merge, var_range):
-    print(f'process {hour} start running...')
-    path = temporal_path + f'dataset_split_{hour}_hour.csv'
+                
+        print(f'process {hour} start merging chartevents and labevents...')
 
-    dataset = pd.read_csv(path)
+        for feature in tqdm(var_range.index):
+            # count records in same period
+            dataset['records'] = pd.Series([0] * len(dataset), dtype = np.int64)
 
-    # change time column data's type to timestamp type
-    dataset['STARTTIME'] = dataset['STARTTIME'].apply(lambda x : pd.Timestamp(x))
-    dataset['ENDTIME'] = dataset['ENDTIME'].apply(lambda x : pd.Timestamp(x))
-    dataset['DEATHTIME'] = dataset['DEATHTIME'].apply(lambda x : pd.Timestamp(x))
-    dataset = dataset.loc[:, ['SUBJECT_ID', 'HADM_ID', 'STARTTIME', 'ENDTIME', 'Gender', 
-                              'Age', 'DEATHTIME', 're_admission']]
-                   
-    print(f'process {hour} finish loading dataset')
+            # add new feature column
+            dataset[feature] = pd.Series([np.nan] * len(dataset), dtype = np.float64)
 
-    for feature in tqdm(var_range.index):
-        # count records in same period
-        dataset['records'] = pd.Series([0] * len(dataset), dtype = np.int64)
-
-        # add new feature column
-        dataset[feature] = pd.Series([np.nan] * len(dataset), dtype = np.float64)
-
-        # add data to new feature column with corresponding subject_id, hadm_id, icustay_id and time
-        for event in events_to_merge:
-            merge_event(dataset, feature, event, var_range)
-    
-    dataset.drop(['records'], axis=1, inplace=True)
-    dataset.to_csv(temporal_path + f'dataset_split_{hour}_hour_after_merge.csv', index=False)
-    print(f'process {hour} finish')
-    
-
-# processes = list()
-# for i in range(1, 11):
-#     processes.append(Process(target=merge, args=(i, events_to_merge, var_range)))
-
-# for i in range(len(processes)):
-#     processes[i].start()
-# for i in range(len(processes)):
-#     processes[i].join()
-
-# assert(True)
-
-######################################################################################
-# Load dataset split hour after merge and require data
-######################################################################################
-
-OUTPUTEVENTS = pd.read_csv(preprocess_path + 'OUTPUTEVENTS.csv')
-INPUTEVENTS_MV = pd.read_csv(preprocess_path + 'INPUTEVENTS_MV.csv')
-INPUTEVENTS_CV = pd.read_csv(preprocess_path + 'INPUTEVENTS_CV.csv')
-DIAGNOSES_ICD = pd.read_csv(preprocess_path + 'DIAGNOSES_ICD.csv')
-datasets = list()
-for i in tqdm(range(10)):
-    datasets.append(pd.read_csv(temporal_path + f'dataset_split_{i + 1}_hour_after_merge.csv'))
-    datasets[i]['STARTTIME'] = datasets[i]['STARTTIME'].apply(lambda x : pd.Timestamp(x))
-    datasets[i]['ENDTIME'] = datasets[i]['ENDTIME'].apply(lambda x : pd.Timestamp(x))
-    datasets[i]['DEATHTIME'] = datasets[i]['DEATHTIME'].apply(lambda x : pd.Timestamp(x))
-
-# change time column data's type to timestamp type
-OUTPUTEVENTS['CHARTTIME'] = OUTPUTEVENTS['CHARTTIME'].apply(lambda x : pd.Timestamp(x))
-INPUTEVENTS_MV['STARTTIME'] = INPUTEVENTS_MV['STARTTIME'].apply(lambda x : pd.Timestamp(x))
-INPUTEVENTS_MV['ENDTIME'] = INPUTEVENTS_MV['ENDTIME'].apply(lambda x : pd.Timestamp(x))
-INPUTEVENTS_CV['CHARTTIME'] = INPUTEVENTS_CV['CHARTTIME'].apply(lambda x : pd.Timestamp(x))
+            # add data to new feature column with corresponding subject_id, hadm_id, icustay_id and time
+            for event in chart_lab_events:
+                merge_event(dataset, feature, event, var_range)
+        
+        dataset.drop(['records'], axis=1, inplace=True)
+        print(f'process {hour} finish merging chartevents and labevents')
 
 
-def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPUTEVENTS_CV, OUTPUTEVENTS):
+    merge_chart_lab(dataset, period, chart_lab_events, var_range)
+
+    dataset.to_csv(temporal_path + f'dataset_split_{period}_hour_merge_lab_chart.csv', index=False)
 
     ######################################################################################
     # Output four hourly and Output total
@@ -190,7 +181,6 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
                             226557, 226558, 226559, 226560, 226561, 226563, 226564, 226565, 226567, 226584, 227488, 227489, 227510}
         event = event[[x in outputevent_id for x in event['ITEMID']]]
         for i in tqdm(range(len(event))):
-            # add values which unit is not nan
             subject_id = event.iloc[i]['SUBJECT_ID']
             hadm_id = event.iloc[i]['HADM_ID']
             time = event.iloc[i]['CHARTTIME']
@@ -198,37 +188,34 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
             if np.isnan(value) or value <= 0:
                 continue
             index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
+
+            # record time is not in the time when patient in the dataset
+            if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
+                continue
             
-            low, high = 0, len(index) - 1
-            while low <= high:
-                mid = (low + high) >> 1
-                idx = index[mid]
-                if time - dataset.iloc[idx]['ENDTIME'] > pd.Timedelta('0'):
-                    low = mid + 1
-                elif time - dataset.iloc[idx]['STARTTIME'] < pd.Timedelta('0'):
-                    high = mid - 1
-                else:
-                    dataset[f'Output {period}hourly'][idx] += value
-                    break
-        print(f'process {period} finish adding output hourly...')
+            idx = getStartIndex(index, dataset, time)
+            dataset[f'Output {period}hourly'][idx] += value
 
-    dataset[f'Output {period}hourly'] = [0] * len(dataset)
-    # addOutputPeriod(dataset, OUTPUTEVENTS, period)
+        print(f'process {period} finish adding output hourly')
 
-    dataset['Output total'] = [0] * len(dataset)
+
+    dataset[f'Output {period}hourly'] = pd.Series([0] * len(dataset), dtype = np.float64)
+    addOutputPeriod(dataset, OUTPUTEVENTS, period)
+
 
     def addOutputTotal(dataset, period):
         print(f'process {period} adding output total...')
-        dataset['Output total'][0] = dataset[f'Output {period}hourly'][0]
-        for i in tqdm(range(1, 50)):
+        for i in tqdm(range(1, len(dataset))):
             flag = (dataset['SUBJECT_ID'][i] == dataset['SUBJECT_ID'][i - 1]) and (dataset['HADM_ID'][i] == dataset['HADM_ID'][i - 1])
             if np.isnan(dataset[f'Output {period}hourly'][i]):
                 dataset['Output total'][i] = dataset['Output total'][i - 1] * flag
             else:
                 dataset['Output total'][i] = dataset['Output total'][i - 1] * flag + dataset[f'Output {period}hourly'][i]
-        print(f'process {period} finish adding output total...')
+        print(f'process {period} finish adding output total')
 
-    # addOutputTotal(dataset, period)
+
+    dataset['Output total'] = pd.Series([0] * len(dataset), dtype = np.float64)
+    addOutputTotal(dataset, period)
 
     ######################################################################################
     # Urine (mL/day)
@@ -247,23 +234,19 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
             if np.isnan(value) or value <= 0:
                 continue
             index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
-            
-            low, high = 0, len(index) - 1
-            while low <= high:
-                mid = (low + high) >> 1
-                idx = index[mid]
-                if time - dataset.iloc[idx]['ENDTIME'] > pd.Timedelta('0'):
-                    low = mid + 1
-                elif time - dataset.iloc[idx]['STARTTIME'] < pd.Timedelta('0'):
-                    high = mid - 1
-                else:
-                    dataset['Urine'][idx] += value
-                    break
-        print(f'process {period} finish adding urine...')
+
+            # record time is not in the time when patient in the dataset
+            if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
+                continue
+
+            idx = getStartIndex(index, dataset, time)
+            dataset['Urine'][idx] += value
+
+        print(f'process {period} finish adding urine')
 
 
-    dataset['Urine'] = [0] * len(dataset)
-    # addUrine(dataset, OUTPUTEVENTS, period)
+    dataset['Urine'] = pd.Series([0] * len(dataset), dtype = np.float64)
+    addUrine(dataset, OUTPUTEVENTS, period)
 
     ######################################################################################
     # Input total and Input four hour
@@ -277,19 +260,14 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
             if np.isnan(value) or value <= 0:
                 continue
             index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
-            
-            low, high = 0, len(index) - 1
-            while low <= high:
-                mid = (low + high) >> 1
-                idx = index[mid]
-                if time - dataset.iloc[idx]['ENDTIME'] > pd.Timedelta('0'):
-                    low = mid + 1
-                elif time - dataset.iloc[idx]['STARTTIME'] < pd.Timedelta('0'):
-                    high = mid - 1
-                else:
-                    dataset[feat_name][idx] += value
-                    break
 
+            # record time is not in the time when patient in the dataset
+            if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
+                continue
+
+            idx = getStartIndex(index, dataset, time)
+            dataset[feat_name][idx] += value
+            
                     
     def addInputMVFeat (dataset, event, feat_name):
         for i in tqdm(range(len(event))):
@@ -307,21 +285,13 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
                 continue
             index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
 
-            if len(index) == 0:
-                print(f'SUBJECT_ID : {subject_id}, HADM_ID : {hadm_id}')
-            
-            low, high, idx = 0, len(index) - 1, -1
-            while low <= high:
-                mid = (low + high) >> 1
-                idx = index[mid]
-                if start - dataset.iloc[idx]['ENDTIME'] > pd.Timedelta('0'):
-                    low = mid + 1
-                elif start - dataset.iloc[idx]['STARTTIME'] < pd.Timedelta('0'):
-                    high = mid - 1
-                else:
-                    break
-                    
-            while idx < len(dataset) and end > dataset['STARTTIME'][idx]:
+            # record time is not in the time when patient in the dataset
+            if is_time_in_state(start, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
+                continue
+
+            idx = getStartIndex(index, dataset, start)
+
+            while idx <= index[-1] and end > dataset['STARTTIME'][idx]:
                 interval = min(end, dataset['ENDTIME'][idx]) - max(dataset['STARTTIME'][idx], start)
                 if amountuom == 'ml/hr' and use_value:
                     interval = interval.total_seconds() / 60 / 60
@@ -352,7 +322,7 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
                             225168, 225170, 225171, 225823, 225825, 225827, 225828, 225941, 225941, 225943, 226089, 227531, 227533, 228341}
         event = event[[x in inputevent_cv_ids for x in event['ITEMID']]]
         addInputCVFeat (dataset, event, f'Input {period}hourly')
-        print(f'process {period} finish adding input_cv hourly...')
+        print(f'process {period} finish adding input_cv hourly')
         
                     
     def addInputMVPeriod(dataset, event, period):
@@ -363,25 +333,26 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
                             225168, 225170, 225171, 225823, 225825, 225827, 225828,  225941, 225943, 226089, 227531, 227533, 228341}
         event = event[[x in inputevent_mv_ids for x in event['ITEMID']]]
         addInputMVFeat (dataset, event, f'Input {period}hourly')
-        print(f'process {period} finish adding input_mv hourly...')
+        print(f'process {period} finish adding input_mv hourly')
         
 
-    dataset[f'Input {period}hourly'] = [0] * len(dataset)
+    dataset[f'Input {period}hourly'] = pd.Series([0] * len(dataset), dtype = np.float64)
     addInputMVPeriod(dataset, INPUTEVENTS_MV, period)
     addInputCVPeriod(dataset, INPUTEVENTS_CV, period)
 
     def addInputTotal(dataset, period):
         print(f'process {period} adding input total...')
         dataset['Input total'][0] = dataset[f'Input {period}hourly'][0]
-        for i in tqdm(range(1, 50)):
+        for i in tqdm(range(1, len(dataset))):
             flag = (dataset['SUBJECT_ID'][i] == dataset['SUBJECT_ID'][i - 1]) and (dataset['HADM_ID'][i] == dataset['HADM_ID'][i - 1])
             if np.isnan(dataset[f'Input {period}hourly'][i]):
                 dataset['Input total'][i] = dataset['Input total'][i - 1] * flag
             else:
                 dataset['Input total'][i] = dataset['Input total'][i - 1] * flag + dataset[f'Input {period}hourly'][i]
-        print(f'process {period} finish adding input total...')
+        print(f'process {period} finish adding input total')
 
-    dataset['Input total'] = [0] * len(dataset)
+
+    dataset['Input total'] = pd.Series([0] * len(dataset), dtype = np.float64)
     addInputTotal(dataset, period)
 
     ######################################################################################
@@ -391,16 +362,19 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
     # norepinephrine (ITEMID: 221906)
     ######################################################################################
     def addlast_ine(dataset, event, period, event_name, feat_name, feat_ids):
+        print(f'process {period} adding {feat_name} in INPUTEVENTS_{event_name}V...')
         event = event[[x in feat_ids for x in event['ITEMID']]]
         if event_name == 'M':
             addInputMVFeat(dataset, event, feat_name)
         else:
             addInputCVFeat(dataset, event, feat_name)
+        print(f'process {period} finish adding {feat_name} in INPUTEVENTS_{event_name}V')
 
-    dataset['Dobutamine'] = [0] * len(dataset)
-    dataset['Dopamine'] = [0] * len(dataset)
-    dataset['Epinephrine'] = [0] * len(dataset)
-    dataset['Norepinephrine'] = [0] * len(dataset)
+
+    dataset['Dobutamine'] = pd.Series([0] * len(dataset), dtype = np.float64)
+    dataset['Dopamine'] = pd.Series([0] * len(dataset), dtype = np.float64)
+    dataset['Epinephrine'] = pd.Series([0] * len(dataset), dtype = np.float64)
+    dataset['Norepinephrine'] = pd.Series([0] * len(dataset), dtype = np.float64)
     addlast_ine(dataset, INPUTEVENTS_MV, 'M', 'Dobutamine', [221653])
     addlast_ine(dataset, INPUTEVENTS_CV, 'C', 'Dobutamine', [30042, 30306]) 
     addlast_ine(dataset, INPUTEVENTS_MV, 'M', 'Dopamine', [221662])
@@ -484,20 +458,14 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
                 continue
             index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
 
-            low, high = 0, len(index) - 1
-            while low <= high:
-                mid = (low + high) >> 1
-                idx = index[mid]
-                if time - dataset.iloc[idx]['ENDTIME'] > pd.Timedelta('0'):
-                    low = mid + 1
-                elif time - dataset.iloc[idx]['STARTTIME'] < pd.Timedelta('0'):
-                    high = mid - 1
-                else:
-                    if value > dataset['max_dose_vaso'][idx]:
-                        dataset['max_dose_vaso'][idx] = value
-                    break
-        
-                    
+            # record time is not in the time when patient in the dataset
+            if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
+                continue
+
+            idx = getStartIndex(index, dataset, time)
+            if value > dataset['max_dose_vaso'][idx]:
+                dataset['max_dose_vaso'][idx] = value
+
         # inputevents_mv     
         INPUTEVENTS_MV = INPUTEVENTS_MV[[x in vasoItemId for x in INPUTEVENTS_MV['ITEMID']]]
         for i in tqdm(range(len(INPUTEVENTS_MV))):
@@ -512,31 +480,27 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
             if np.isnan(rate) or rate < 0 or np.isnan(value) or value < 0:
                 continue
             index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
-            
-            low, high, idx = 0, len(index) - 1, -1
-            while low <= high:
-                mid = (low + high) >> 1
-                idx = index[mid]
-                if start - dataset.iloc[idx]['ENDTIME'] > pd.Timedelta('0'):
-                    low = mid + 1
-                elif start - dataset.iloc[idx]['STARTTIME'] < pd.Timedelta('0'):
-                    high = mid - 1
-                else:
-                    break
-                    
-            while idx < len(dataset) and end > dataset['STARTTIME'][idx]:
+
+            # record time is not in the time when patient in the dataset
+            if is_time_in_state(start, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
+                continue
+
+            idx = getStartIndex(index, dataset, start)
+            while idx <= index[-1] and end > dataset['STARTTIME'][idx]:
                 if value > dataset['max_dose_vaso'][idx]:
                     dataset['max_dose_vaso'][idx] = value
                 idx += 1
-        print(f'process {period} finish adding max dose vaso...')
 
-    dataset['max_dose_vaso'] = [0] * len(dataset)
+        print(f'process {period} finish adding max dose vaso')
+
+
+    dataset['max_dose_vaso'] = pd.Series([0] * len(dataset), dtype = np.float64)
     addMaxDoseVaso(dataset, INPUTEVENTS_MV, INPUTEVENTS_CV)
 
     ######################################################################################
     # Mechanical Ventilation
     ######################################################################################
-    def addMechVent (dataset, events_to_merge):
+    def addMechVent (dataset, chart_lab_events):
         print(f'process {period} adding MechVent...')
         MechVentItemId = [
             720, # VentTypeRecorded
@@ -555,7 +519,7 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
             224701 # PSVlevel
         ]
         
-        for event in events_to_merge:
+        for event in chart_lab_events:
             event = event[[x in MechVentItemId for x in event['ITEMD']]]
             for i in tqdm(range(len(event))):
                 subject_id = event.iloc[i]['SUBJECT_ID']
@@ -571,21 +535,18 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
                     
                 index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
 
-                low, high = 0, len(index) - 1
-                while low <= high:
-                    mid = (low + high) >> 1
-                    idx = index[mid]
-                    if time - dataset.iloc[idx]['ENDTIME'] > pd.Timedelta('0'):
-                        low = mid + 1
-                    elif time - dataset.iloc[idx]['STARTTIME'] < pd.Timedelta('0'):
-                        high = mid - 1
-                    else:
-                        dataset['MechVent'][idx] = 1
-                        break
-        print(f'process {period} finish adding MechVent...')
+                # record time is not in the time when patient in the dataset
+                if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
+                    continue
+
+                idx = getStartIndex(index, dataset, time)
+                dataset['MechVent'][idx] = 1
+
+        print(f'process {period} finish adding MechVent')
+
         
-    dataset['MechVent'] = [0] * len(dataset)
-    addMechVent(dataset, events_to_merge)
+    dataset['MechVent'] = pd.Series([np.nan] * len(dataset), dtype = np.float64)
+    addMechVent(dataset, chart_lab_events)
 
     ######################################################################################
     # Imputation
@@ -600,13 +561,15 @@ def merge_remain_feature (dataset, period, events_to_merge, INPUTEVENTS_MV, INPU
 
         print(f'process {period} finish fill forward')
 
+
     fill_forward(dataset)
 
-    dataset.to_csv(temporal_path + f'dataset_split_{period}_hour_after_merge_all.csv', index=False)
-            
+    dataset.to_csv(temporal_path + f'dataset_split_{period}_hour_after_merge.csv', index=False)
+
+
 processes = list()
 for i in range(1, 11):
-    processes.append(Process(target=merge_remain_feature, args=(datasets[i - 1], i, events_to_merge, INPUTEVENTS_MV, INPUTEVENTS_CV, OUTPUTEVENTS)))
+    processes.append(Process(target=merge, args=(datasets[i - 1], i, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OUTPUTEVENTS)))
 
 for i in range(len(processes)):
     processes[i].start()
