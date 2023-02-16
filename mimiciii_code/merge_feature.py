@@ -5,6 +5,7 @@
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
+import os
 from multiprocessing import Process
 
 pd.options.mode.chained_assignment = None
@@ -17,27 +18,26 @@ temporal_path = '../data/mimiciii/temporal_dataset/'
 ######################################################################################
 print('Loading data...')
 
-CHARTEVENTS1 = pd.read_csv(preprocess_path + 'CHARTEVENTS1.csv')
-CHARTEVENTS2 = pd.read_csv(preprocess_path + 'CHARTEVENTS2.csv')
-CHARTEVENTS3 = pd.read_csv(preprocess_path + 'CHARTEVENTS3.csv')
-CHARTEVENTS4 = pd.read_csv(preprocess_path + 'CHARTEVENTS4.csv')
-CHARTEVENTS5 = pd.read_csv(preprocess_path + 'CHARTEVENTS5.csv')
-CHARTEVENTS6 = pd.read_csv(preprocess_path + 'CHARTEVENTS6.csv')
-CHARTEVENTS7 = pd.read_csv(preprocess_path + 'CHARTEVENTS7.csv')
-CHARTEVENTS8 = pd.read_csv(preprocess_path + 'CHARTEVENTS8.csv')
-CHARTEVENTS9 = pd.read_csv(preprocess_path + 'CHARTEVENTS9.csv')
-LABEVENTS = pd.read_csv(preprocess_path + 'LABEVENTS.csv')
+CHARTEVENTS1 = pd.read_csv(os.path.join(preprocess_path, 'CHARTEVENTS1.csv'))
+CHARTEVENTS2 = pd.read_csv(os.path.join(preprocess_path, 'CHARTEVENTS2.csv'))
+CHARTEVENTS3 = pd.read_csv(os.path.join(preprocess_path, 'CHARTEVENTS3.csv'))
+CHARTEVENTS4 = pd.read_csv(os.path.join(preprocess_path, 'CHARTEVENTS4.csv'))
+CHARTEVENTS5 = pd.read_csv(os.path.join(preprocess_path, 'CHARTEVENTS5.csv'))
+CHARTEVENTS6 = pd.read_csv(os.path.join(preprocess_path, 'CHARTEVENTS6.csv'))
+CHARTEVENTS7 = pd.read_csv(os.path.join(preprocess_path, 'CHARTEVENTS7.csv'))
+CHARTEVENTS8 = pd.read_csv(os.path.join(preprocess_path, 'CHARTEVENTS8.csv'))
+CHARTEVENTS9 = pd.read_csv(os.path.join(preprocess_path, 'CHARTEVENTS9.csv'))
+LABEVENTS = pd.read_csv(os.path.join(preprocess_path, 'LABEVENTS.csv'))
 
 chart_lab_events = [CHARTEVENTS1, CHARTEVENTS2, CHARTEVENTS3, CHARTEVENTS4, CHARTEVENTS5, CHARTEVENTS6, CHARTEVENTS7, CHARTEVENTS8, CHARTEVENTS9, LABEVENTS]
 
-OUTPUTEVENTS = pd.read_csv(preprocess_path + 'OUTPUTEVENTS.csv')
-INPUTEVENTS_MV = pd.read_csv(preprocess_path + 'INPUTEVENTS_MV.csv')
-INPUTEVENTS_CV = pd.read_csv(preprocess_path + 'INPUTEVENTS_CV.csv')
-DIAGNOSES_ICD = pd.read_csv(preprocess_path + 'DIAGNOSES_ICD.csv')
+OUTPUTEVENTS = pd.read_csv(os.path.join(preprocess_path, 'OUTPUTEVENTS.csv'))
+INPUTEVENTS_MV = pd.read_csv(os.path.join(preprocess_path, 'INPUTEVENTS_MV.csv'))
+INPUTEVENTS_CV = pd.read_csv(os.path.join(preprocess_path, 'INPUTEVENTS_CV.csv'))
 
 datasets = list()
 for i in range(1, 11):
-    datasets.append(pd.read_csv(temporal_path + f'dataset_split_{i}_hour.csv'))
+    datasets.append(pd.read_csv(os.path.join(temporal_path, f'dataset_split_{i}_hour_merge_lab_chart.csv')))
 
 # change time column data's type to timestamp type
 OUTPUTEVENTS['CHARTTIME'] = OUTPUTEVENTS['CHARTTIME'].apply(lambda x : pd.Timestamp(x))
@@ -111,19 +111,30 @@ def getStartIndex (index, dataset, time):
     return index[low]
 
 
+def getPatientIndex(patient_table, subject_id, hadm_id):
+    hash_key = str(int(subject_id)) + '_' + str(int(hadm_id))
+    return patient_table[hash_key]
+
+
 def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OUTPUTEVENTS):
+
+    # hash table of patient index
+    patient_table = dict()
+    for id in dataset.apply(lambda series: str(int(series['SUBJECT_ID'])) + '_' + str(int(series['HADM_ID'])), axis=1).unique():
+        subject_id, hadm_id = id.split('_')
+        patient_table[id] = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
 
     def merge_chart_lab(dataset, hour, chart_lab_events, var_range):
 
         def merge_event(dataset, feature, EVENTS, var_range):
             # find all feature records in EVENTS
-            event = EVENTS[[id in var_range.loc[feature]['GROUP_ID'] for id in EVENTS['ITEMID']]]
+            event = EVENTS[[id in var_range.loc[feature, 'GROUP_ID'] for id in EVENTS['ITEMID']]]
 
-            for i in range(len(event)):
-                subject_id = event.iloc[i]['SUBJECT_ID']
-                hadm_id = event.iloc[i]['HADM_ID']
-                time = event.iloc[i]['CHARTTIME']
-                value = event.iloc[i]['VALUENUM']
+            for i in event.index:
+                subject_id, hadm_id, time, value =  event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'CHARTTIME', 'VALUENUM']]
+
+                if value <= 0 and feature != 'Arterial_BE':
+                    continue
                 
                 # detect outlier value, if out of outlier range then set to missing value
                 if value > var_range.loc[feature, 'OUTLIER HIGH']:
@@ -135,7 +146,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
                 elif value < var_range.loc[feature, 'VALID LOW']:
                     value = var_range.loc[feature, 'VALID LOW']
                 
-                index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
+                index = getPatientIndex(patient_table, subject_id, hadm_id)
 
                 # record time is not in the time when patient in the dataset
                 if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
@@ -180,14 +191,12 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
         outputevent_id = {40055, 40056, 40057, 40069, 40085, 40094, 40096, 40405, 40428, 40473, 40651, 40715, 43175, 
                             226557, 226558, 226559, 226560, 226561, 226563, 226564, 226565, 226567, 226584, 227488, 227489, 227510}
         event = event[[x in outputevent_id for x in event['ITEMID']]]
-        for i in tqdm(range(len(event))):
-            subject_id = event.iloc[i]['SUBJECT_ID']
-            hadm_id = event.iloc[i]['HADM_ID']
-            time = event.iloc[i]['CHARTTIME']
-            value = event.iloc[i]['VALUE']
+        for i in tqdm(event.index):
+            subject_id, hadm_id, time, value =  event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'CHARTTIME', 'VALUE']]
             if np.isnan(value) or value <= 0:
                 continue
-            index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
+
+            index = getPatientIndex(patient_table, subject_id, hadm_id)
 
             # record time is not in the time when patient in the dataset
             if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
@@ -226,14 +235,12 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
                         226557, 226558, 226559, 226560, 226561, 226563, 226564, 226565, 226567, 226584, 227488, 227489}
         event = event[[x in urine_itemid for x in event['ITEMID']]]
 
-        for i in tqdm(range(len(event))):
-            subject_id = event.iloc[i]['SUBJECT_ID']
-            hadm_id = event.iloc[i]['HADM_ID']
-            time = event.iloc[i]['CHARTTIME']
-            value = event.iloc[i]['VALUE']
+        for i in tqdm(event.index):
+            subject_id, hadm_id, time, value = event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'CHARTTIME', 'VALUE']]
             if np.isnan(value) or value <= 0:
                 continue
-            index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
+
+            index = getPatientIndex(patient_table, subject_id, hadm_id)
 
             # record time is not in the time when patient in the dataset
             if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
@@ -252,14 +259,12 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
     # Input total and Input four hour
     ######################################################################################
     def addInputCVFeat (dataset, event, feat_name):
-        for i in tqdm(range(len(event))):
-            subject_id = event.iloc[i]['SUBJECT_ID']
-            hadm_id = event.iloc[i]['HADM_ID']
-            time = event.iloc[i]['CHARTTIME']
-            value = event.iloc[i]['AMOUNT']
+        for i in tqdm(event.index):
+            subject_id, hadm_id, time, value = event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'CHARTTIME', 'AMOUNT']]
             if np.isnan(value) or value <= 0:
                 continue
-            index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
+
+            index = getPatientIndex(patient_table, subject_id, hadm_id)
 
             # record time is not in the time when patient in the dataset
             if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
@@ -270,20 +275,19 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
             
                     
     def addInputMVFeat (dataset, event, feat_name):
-        for i in tqdm(range(len(event))):
-            subject_id = event.iloc[i]['SUBJECT_ID']
-            hadm_id = event.iloc[i]['HADM_ID']
-            start = event.iloc[i]['STARTTIME']
-            end = event.iloc[i]['ENDTIME']
-            value = event.iloc[i]['AMOUNT']
-            amountuom = event.iloc[i]['AMOUNTUOM']
-            rate = event.iloc[i]['RATE']
-            rateuom = event.iloc[i]['RATEUOM']
+        for i in tqdm(event.index):
+            subject_id, hadm_id, start, end, value, amountuom, rate, rateuom =  \
+                event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'STARTTIME', 'ENDTIME', 'AMOUNT', 'AMOUNTUOM', 'RATE', 'RATEUOM']]
+
             use_value = not (np.isnan(value) or value <= 0)
             use_rate = not (np.isnan(rate) or rate <= 0)
             if not use_value and not use_rate:
                 continue
-            index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
+
+            if start - end > pd.Timedelta('0'):
+                continue
+
+            index = getPatientIndex(patient_table, subject_id, hadm_id)
 
             # record time is not in the time when patient in the dataset
             if is_time_in_state(start, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
@@ -361,7 +365,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
     # epinephrine (ITEMID: 30044, 30119, 30309, 221289)
     # norepinephrine (ITEMID: 221906)
     ######################################################################################
-    def addlast_ine(dataset, event, period, event_name, feat_name, feat_ids):
+    def addlast_ine(period, dataset, event, event_name, feat_name, feat_ids):
         print(f'process {period} adding {feat_name} in INPUTEVENTS_{event_name}V...')
         event = event[[x in feat_ids for x in event['ITEMID']]]
         if event_name == 'M':
@@ -375,18 +379,18 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
     dataset['Dopamine'] = pd.Series([0] * len(dataset), dtype = np.float64)
     dataset['Epinephrine'] = pd.Series([0] * len(dataset), dtype = np.float64)
     dataset['Norepinephrine'] = pd.Series([0] * len(dataset), dtype = np.float64)
-    addlast_ine(dataset, INPUTEVENTS_MV, 'M', 'Dobutamine', [221653])
-    addlast_ine(dataset, INPUTEVENTS_CV, 'C', 'Dobutamine', [30042, 30306]) 
-    addlast_ine(dataset, INPUTEVENTS_MV, 'M', 'Dopamine', [221662])
-    addlast_ine(dataset, INPUTEVENTS_CV, 'C', 'Dopamine', [30043, 30307]) 
-    addlast_ine(dataset, INPUTEVENTS_MV, 'M', 'Epinephrine', [221289])
-    addlast_ine(dataset, INPUTEVENTS_CV, 'C', 'Epinephrine', [30044, 30119, 30309]) 
-    addlast_ine(dataset, INPUTEVENTS_MV, 'M', 'Norepinephrine', [221906])
+    addlast_ine(period, dataset, INPUTEVENTS_MV, 'M', 'Dobutamine', [221653])
+    addlast_ine(period, dataset, INPUTEVENTS_CV, 'C', 'Dobutamine', [30042, 30306]) 
+    addlast_ine(period, dataset, INPUTEVENTS_MV, 'M', 'Dopamine', [221662])
+    addlast_ine(period, dataset, INPUTEVENTS_CV, 'C', 'Dopamine', [30043, 30307]) 
+    addlast_ine(period, dataset, INPUTEVENTS_MV, 'M', 'Epinephrine', [221289])
+    addlast_ine(period, dataset, INPUTEVENTS_CV, 'C', 'Epinephrine', [30044, 30119, 30309]) 
+    addlast_ine(period, dataset, INPUTEVENTS_MV, 'M', 'Norepinephrine', [221906])
 
     ######################################################################################
     # max_dose_vaso
     ######################################################################################
-    def addMaxDoseVaso(dataset, INPUTEVENTS_MV, INPUTEVENTS_CV):
+    def addMaxDoseVaso(period, dataset, INPUTEVENTS_MV, INPUTEVENTS_CV):
         print(f'process {period} adding max dose vaso...')
         vasoItemId = [30043, 30047, 30051, 30119, 30120, 30127, 30128, 30307, 221289, 221662, 221749, 221906, 222315]
         
@@ -446,17 +450,13 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
         
         # inputevents_cv
         INPUTEVENTS_CV = INPUTEVENTS_CV[[x in vasoItemId for x in INPUTEVENTS_CV['ITEMID']]]
-        for i in tqdm(range(len(INPUTEVENTS_CV))):
-            subject_id = INPUTEVENTS_CV.iloc[i]['SUBJECT_ID']
-            hadm_id = INPUTEVENTS_CV.iloc[i]['HADM_ID']
-            itemid = INPUTEVENTS_CV.iloc[i]['ITEMID']
-            time = INPUTEVENTS_CV.iloc[i]['CHARTTIME']
-            rate = INPUTEVENTS_CV.iloc[i]['RATE']
-            rateuom = INPUTEVENTS_CV.iloc[i]['RATEUOM']
+        for i in tqdm(INPUTEVENTS_CV.index):
+            subject_id, hadm_id, itemid, time, rate, rateuom =  INPUTEVENTS_CV.loc[i, ['SUBJECT_ID', 'HADM_ID', 'ITEMID', 'CHARTTIME', 'RATE', 'RATEUOM']]
+
             value = getRateStdCV(rate, rateuom, itemid)
             if np.isnan(rate) or rate < 0 or np.isnan(value) or value < 0:
                 continue
-            index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
+            index = getPatientIndex(patient_table, subject_id, hadm_id)
 
             # record time is not in the time when patient in the dataset
             if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
@@ -468,18 +468,18 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
 
         # inputevents_mv     
         INPUTEVENTS_MV = INPUTEVENTS_MV[[x in vasoItemId for x in INPUTEVENTS_MV['ITEMID']]]
-        for i in tqdm(range(len(INPUTEVENTS_MV))):
-            subject_id = INPUTEVENTS_MV.iloc[i]['SUBJECT_ID']
-            hadm_id = INPUTEVENTS_MV.iloc[i]['HADM_ID']
-            itemid = INPUTEVENTS_MV.iloc[i]['ITEMID']
-            start = INPUTEVENTS_MV.iloc[i]['STARTTIME']
-            end = INPUTEVENTS_MV.iloc[i]['ENDTIME']
-            rate = INPUTEVENTS_MV.iloc[i]['RATE']
-            rateuom = INPUTEVENTS_MV.iloc[i]['RATEUOM']
+        for i in tqdm(INPUTEVENTS_MV.index):
+            subject_id, hadm_id, itemid, start, end, rate, rateuom =  \
+                INPUTEVENTS_MV.loc[i, ['SUBJECT_ID', 'HADM_ID', 'ITEMID', 'STARTTIME', 'ENDTIME', 'RATE', 'RATEUOM']]
+
             value = getRateStdMV(rate, rateuom, itemid)
             if np.isnan(rate) or rate < 0 or np.isnan(value) or value < 0:
                 continue
-            index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
+
+            if start - end > pd.Timedelta('0'):
+                continue
+
+            index = getPatientIndex(patient_table, subject_id, hadm_id)
 
             # record time is not in the time when patient in the dataset
             if is_time_in_state(start, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
@@ -495,12 +495,12 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
 
 
     dataset['max_dose_vaso'] = pd.Series([0] * len(dataset), dtype = np.float64)
-    addMaxDoseVaso(dataset, INPUTEVENTS_MV, INPUTEVENTS_CV)
+    addMaxDoseVaso(period, dataset, INPUTEVENTS_MV, INPUTEVENTS_CV)
 
     ######################################################################################
     # Mechanical Ventilation
     ######################################################################################
-    def addMechVent (dataset, chart_lab_events):
+    def addMechVent (period, dataset, chart_lab_events):
         print(f'process {period} adding MechVent...')
         MechVentItemId = [
             720, # VentTypeRecorded
@@ -519,21 +519,17 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
             224701 # PSVlevel
         ]
         
-        for event in chart_lab_events:
-            event = event[[x in MechVentItemId for x in event['ITEMD']]]
-            for i in tqdm(range(len(event))):
-                subject_id = event.iloc[i]['SUBJECT_ID']
-                hadm_id = event.iloc[i]['HADM_ID']
-                time = event.iloc[i]['CHARTTIME']
-                value = event.iloc[i]['VALUE']
-                itemid = event.iloc[i]['ITEMID']
-                
+        for event in tqdm(chart_lab_events):
+            event = event[[x in MechVentItemId for x in event['ITEMID']]]
+            for i in event.index:
+                subject_id, hadm_id, itemid, time, value = event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'ITEMID', 'CHARTTIME', 'VALUE']]
+
                 if itemid == 720 and value == 'Other/Remraks':
                     continue
                 elif itemid == 467 and value != 'Ventilator':
                     continue
                     
-                index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
+                index = getPatientIndex(patient_table, subject_id, hadm_id)
 
                 # record time is not in the time when patient in the dataset
                 if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
@@ -545,26 +541,10 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
         print(f'process {period} finish adding MechVent')
 
         
-    dataset['MechVent'] = pd.Series([np.nan] * len(dataset), dtype = np.float64)
-    addMechVent(dataset, chart_lab_events)
+    dataset['MechVent'] = pd.Series([0] * len(dataset), dtype = np.int64)
+    addMechVent(period, dataset, chart_lab_events)
 
-    ######################################################################################
-    # Imputation
-    ######################################################################################
-
-    def fill_forward(dataset):
-        print(f'process {period} fill forward...')
-        for i in tqdm(range(1, len(dataset))):
-            for column in dataset.columns[8:]:
-                if np.isnan(dataset[column][i]) and dataset['SUBJECT_ID'][i] == dataset['SUBJECT_ID'][i - 1] and dataset['HADM_ID'][i] == dataset['HADM_ID'][i - 1]:
-                    dataset[column][i] = dataset[column][i - 1]
-
-        print(f'process {period} finish fill forward')
-
-
-    fill_forward(dataset)
-
-    dataset.to_csv(temporal_path + f'dataset_split_{period}_hour_after_merge.csv', index=False)
+    dataset.to_csv(os.path.join(temporal_path, f'dataset_split_{period}_hour_after_merge.csv'), index=False)
 
 
 processes = list()

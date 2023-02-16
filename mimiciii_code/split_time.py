@@ -63,9 +63,7 @@ dataset['DOB'] = np.nan
 dataset['Gender'] = np.nan
 
 for i in PATIENTS.index:
-    subject_id = PATIENTS['SUBJECT_ID'].loc[i]
-    gender = PATIENTS['GENDER'].loc[i]
-    dob = PATIENTS['DOB'].loc[i]
+    subject_id, gender, dob = PATIENTS.loc[i, ['SUBJECT_ID', 'GENDER', 'DOB']]
     index = dataset[dataset['SUBJECT_ID'] == subject_id].index
     dataset['DOB'].loc[index] = dob
     dataset['Gender'].loc[index] = gender
@@ -81,11 +79,7 @@ dataset['ADMITTIME'] = np.nan
 dataset['DISCHTIME'] = np.nan
 
 for i in ADMISSIONS.index:
-    subject_id = ADMISSIONS['SUBJECT_ID'].loc[i]
-    hadm_id = ADMISSIONS['HADM_ID'].loc[i]
-    death_time = ADMISSIONS['DEATHTIME'].loc[i]
-    admittime = ADMISSIONS['ADMITTIME'].loc[i]
-    dischtime = ADMISSIONS['DISCHTIME'].loc[i]
+    subject_id, hadm_id, death_time, admittime, dischtime = ADMISSIONS.loc[i, ['SUBJECT_ID', 'HADM_ID', 'DEATHTIME', 'ADMITTIME', 'DISCHTIME']]
     index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
     dataset['DEATHTIME'].loc[index] = death_time
     dataset['ADMITTIME'].loc[index] = admittime
@@ -96,10 +90,7 @@ for i in ADMISSIONS.index:
 ######################################################################################
 
 for i in ICUSTAYS.index:
-    subject_id = ICUSTAYS['SUBJECT_ID'].loc[i]
-    hadm_id = ICUSTAYS['HADM_ID'].loc[i]
-    intime = ICUSTAYS['INTIME'].loc[i]
-    outtime = ICUSTAYS['OUTTIME'].loc[i]
+    subject_id, hadm_id, intime, outtime = ICUSTAYS.loc[i, ['SUBJECT_ID', 'HADM_ID', 'INTIME', 'OUTTIME']]
     index = dataset.query(f'SUBJECT_ID == {subject_id} & HADM_ID == {hadm_id}').index
     if dataset['ADMITTIME'].isnull()[index[0]]:
         dataset['ADMITTIME'].loc[index[0]] = intime
@@ -187,38 +178,19 @@ def split_time(hour, dataset):
     index = 0
     split = pd.DataFrame(columns = dataset.columns)
     for i in tqdm(dataset.index):
-        intime, outtime = dataset['ADMITTIME'].loc[i], dataset['DISCHTIME'].loc[i]
+        subject_id, hadm_id, dob, gender, deathtime, intime, outtime, re_admission, elixhauser = \
+            dataset.loc[i, ['SUBJECT_ID', 'HADM_ID', 'DOB', 'Gender', 'DEATHTIME', 'ADMITTIME', 'DISCHTIME', 're_admission', 'elixhauser']]
         if dataset['ADMITTIME'].isnull()[i] or dataset['DISCHTIME'].isnull()[i]:
             continue
         while outtime - intime > pd.Timedelta(hour_period):
             #['SUBJECT_ID', 'HADM_ID', 'DOB', 'Gender', 'DEATHTIME', 'ADMITTIME', 'DISCHTIME', 're_admission', 'elixhauser', 'Age']
-            split.loc[index] = [
-                dataset['SUBJECT_ID'].loc[i],
-                dataset['HADM_ID'].loc[i],
-                dataset['DOB'].loc[i],
-                dataset['Gender'].loc[i],
-                dataset['DEATHTIME'].loc[i],
-                intime,
-                intime + pd.Timedelta(hour_period),
-                dataset['re_admission'].loc[i],
-                dataset['elixhauser'].loc[i],
-                (intime.to_pydatetime() - dataset['DOB'].loc[i].to_pydatetime()).days / 365
-            ]
+            split.loc[index] = [subject_id, hadm_id, dob, gender, deathtime, intime, 
+                intime + pd.Timedelta(hour_period), re_admission, elixhauser, (intime.to_pydatetime() - dataset['DOB'].loc[i].to_pydatetime()).days / 365]
             intime += pd.Timedelta(hour_period)
             index += 1
 
-        split.loc[index] = [
-            dataset['SUBJECT_ID'].loc[i],
-            dataset['HADM_ID'].loc[i],
-            dataset['DOB'].loc[i],
-            dataset['Gender'].loc[i],
-            dataset['DEATHTIME'].loc[i],
-            intime,
-            outtime,
-            dataset['re_admission'].loc[i],
-            dataset['elixhauser'].loc[i],
-            (intime.to_pydatetime() - dataset['DOB'].loc[i].to_pydatetime()).days / 365
-        ]
+        split.loc[index] = [subject_id, hadm_id, dob, gender, deathtime, intime, 
+            outtime, re_admission, elixhauser, (intime.to_pydatetime() - dataset['DOB'].loc[i].to_pydatetime()).days / 365]
         index += 1
 
     split.drop('DOB', axis=1, inplace=True)
@@ -226,12 +198,10 @@ def split_time(hour, dataset):
     split.columns = ['SUBJECT_ID', 'HADM_ID', 'STARTTIME', 'ENDTIME', 'Gender', 'Age', 'DEATHTIME', 're_admission', 'elixhauser']
     split.to_csv(temporal_path + f'dataset_split_{hour}_hour.csv', index=False)
 
-processes = []
+processes = list()
 for i in range(1, 11):
     processes.append(Process(target=split_time, args=(i, dataset)))
 for i in range(10):
     processes[i].start()
 for i in range(10):
     processes[i].join()
-
-
