@@ -47,14 +47,13 @@ class PrioritizedReplayMemory(object):
 
         self.beta_start = beta_start
         self.beta_frames = beta_frames
-        self.frame=1
+        self.frame = 1
 
         it_capacity = 1
         while it_capacity < size:
             it_capacity *= 2
 
         self._it_sum = SumSegmentTree(it_capacity)
-        self._it_min = MinSegmentTree(it_capacity)
         self._max_priority = 1.0
 
     def beta_by_frame(self, frame_idx):
@@ -62,6 +61,10 @@ class PrioritizedReplayMemory(object):
 
     def push(self, data):
         """See ReplayBuffer.store_effect"""
+        '''
+        TODO:
+            set self.max_size to the size of dataset and store all data in storage not to replace any data.
+        '''
         idx = self._next_idx
 
         if self._next_idx >= len(self._storage):
@@ -72,16 +75,21 @@ class PrioritizedReplayMemory(object):
 
 
         self._it_sum[idx] = self._max_priority ** self._alpha
-        self._it_min[idx] = self._max_priority ** self._alpha
 
     def _encode_sample(self, idxes):
         return [self._storage[i] for i in idxes]
 
     def _sample_proportional(self, batch_size):
-        res = []
+        '''
+        TODO:
+            ensure no repeats, split to interval which has number of batch_size and 
+            get index in each of the interval
+        '''
+        res = list()
+        s = self._it_sum.getSum()
         for _ in range(batch_size):
             # TODO(szymon): should we ensure no repeats?
-            mass = random.random() * self._it_sum.sum(0, len(self._storage) - 1)
+            mass = random.random() * s
             idx = self._it_sum.find_prefixsum_idx(mass)
             res.append(idx)
         return res
@@ -119,21 +127,28 @@ class PrioritizedReplayMemory(object):
             idexes in buffer of sampled experiences
         """
 
+        '''
+        TODO:
+            max_weight use the smallest prob in the sample batch?
+        '''
+
         idxes = self._sample_proportional(batch_size)
 
-        weights = []
+        weights = list()
 
-        #find smallest sampling prob: p_min = smallest priority^alpha / sum of priorities^alpha
+        s = self._it_sum.getSum()
+
+        # find smallest sampling prob: p_min = smallest priority^alpha / sum of priorities^alpha
         p_min = self._it_min.min() / self._it_sum.sum()
 
         beta = self.beta_by_frame(self.frame)
-        self.frame+=1
+        self.frame += 1
         
-        #max_weight given to smallest prob
+        # max_weight given to smallest prob
         max_weight = (p_min * len(self._storage)) ** (-beta)
 
         for idx in idxes:
-            p_sample = self._it_sum[idx] / self._it_sum.sum()
+            p_sample = self._it_sum[idx] / s
             weight = (p_sample * len(self._storage)) ** (-beta)
             weights.append(weight / max_weight)
         weights = torch.tensor(weights, device=device, dtype=torch.float) 
@@ -156,47 +171,7 @@ class PrioritizedReplayMemory(object):
         assert len(idxes) == len(priorities)
         for idx, priority in zip(idxes, priorities):
             assert 0 <= idx < len(self._storage)
-            self._it_sum[idx] = (priority+1e-5) ** self._alpha
-            self._it_min[idx] = (priority+1e-5) ** self._alpha
+            self._it_sum[idx] = (priority + 1e-5) ** self._alpha
+            self._it_min[idx] = (priority + 1e-5) ** self._alpha
 
             self._max_priority = max(self._max_priority, (priority+1e-5))
-
-
-'''
-class RecurrentExperienceReplayMemory:
-    def __init__(self, capacity, sequence_length=10):
-        self.capacity = capacity
-        self.memory = []
-        self.seq_length=sequence_length
-
-    def push(self, transition):
-        self.memory.append(transition)
-        if len(self.memory) > self.capacity:
-            del self.memory[0]
-
-    def sample(self, batch_size):
-        finish = random.sample(range(0, len(self.memory)), batch_size)
-        begin = [x-self.seq_length for x in finish]
-        samp = []
-        for start, end in zip(begin, finish):
-            #correct for sampling near beginning
-            final = self.memory[max(start+1,0):end+1]
-            
-            #correct for sampling across episodes
-            for i in range(len(final)-2, -1, -1):
-                if final[i][3] is None:
-                    final = final[i+1:]
-                    break
-                    
-            #pad beginning to account for corrections
-            while(len(final)<self.seq_length):
-                final = [(np.zeros_like(self.memory[0][0]), 0, 0, np.zeros_like(self.memory[0][3]))] + final
-                            
-            samp+=final
-
-        #returns flattened version
-        return samp, None, None
-
-    def __len__(self):
-        return len(self.memory)
-'''

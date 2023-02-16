@@ -1,9 +1,7 @@
-import numpy as np
 import pickle
 import os.path
 import csv
 import torch
-import torch.optim as optim
 
 
 class BaseAgent(object):
@@ -47,11 +45,11 @@ class BaseAgent(object):
 
     def save_action(self, action, tstep):
         # save the frequency of each action be selected
-        self.action_selections[int(action)] += 1.0/self.action_log_frequency
+        self.action_selections[int(action)] += (1.0 / self.action_log_frequency)
         if (tstep + 1) % self.action_log_frequency == 0:
             with open(os.path.join(self.log_dir, 'action_log.csv'), 'a') as f:
                 writer = csv.writer(f)
-                writer.writerow(list([tstep]+self.action_selections))
+                writer.writerow(list([tstep] + self.action_selections))
             self.action_selections = [0 for _ in range(len(self.action_selections))]
 
 
