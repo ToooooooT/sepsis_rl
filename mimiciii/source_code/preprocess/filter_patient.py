@@ -8,8 +8,8 @@ from collections import defaultdict
 from tqdm import tqdm
 import gc
 
-source_path = '../data/mimiciii/source_data/'
-dest_path = '../data/mimiciii/preprocess_data/'
+source_path = '../../data/source_data/'
+dest_path = '../../data/preprocess_data/'
 
 ######################################################################################
 # Split CHARTEVENTS to several dataset
@@ -88,7 +88,7 @@ for sub, hadm in patient:
 dataset = pd.DataFrame({'SUBJECT_ID' : subject_id, 'HADM_ID' : hadm_id})
 dataset.sort_values(by=['SUBJECT_ID', 'HADM_ID'], inplace=True)
 dataset.index = range(len(dataset))
-dataset.to_csv('../data/mimiciii/patient.csv', index=False)
+dataset.to_csv('../../data/patient.csv', index=False)
 
 dict1 = defaultdict(list)
 for i in range(len(dataset)):

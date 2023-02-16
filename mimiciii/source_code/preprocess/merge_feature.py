@@ -10,8 +10,8 @@ from multiprocessing import Process
 
 pd.options.mode.chained_assignment = None
 
-preprocess_path = '../data/mimiciii/preprocess_data/'
-temporal_path = '../data/mimiciii/temporal_dataset/'
+preprocess_path = '../../data/preprocess_data/'
+temporal_path = '../../data/temporal_dataset/'
 
 ######################################################################################
 # ## Load require data
@@ -56,7 +56,7 @@ for i in range(len(datasets)):
     datasets[i]['DEATHTIME'] = datasets[i]['DEATHTIME'].apply(lambda x : pd.Timestamp(x))
 
 
-var_range = pd.read_csv('../data/mimiciii/variable_range.csv')
+var_range = pd.read_csv('../../data/variable_range.csv')
 var_range.index = var_range.iloc[:, 0]
 var_range = var_range.iloc[:, 1:]
 var_range['GROUP_ID'] = var_range['GROUP_ID'].apply(lambda x : [int(s) for s in x.split(',')] if type(x) == type('') else x)
@@ -181,7 +181,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
 
     merge_chart_lab(dataset, period, chart_lab_events, var_range)
 
-    dataset.to_csv(temporal_path + f'dataset_split_{period}_hour_merge_lab_chart.csv', index=False)
+    dataset.to_csv(os.path.join(temporal_path, f'dataset_split_{period}_hour_merge_lab_chart.csv'), index=False)
 
     ######################################################################################
     # Output four hourly and Output total

@@ -10,8 +10,8 @@ from multiprocessing import Process
 
 pd.options.mode.chained_assignment = None
 
-preprocess_path = '../data/mimiciii/preprocess_data/'
-temporal_path = '../data/mimiciii/temporal_dataset/'
+preprocess_path = '../../data/preprocess_data/'
+temporal_path = '../../data/temporal_dataset/'
 
 ######################################################################################
 # Load Data
@@ -53,7 +53,7 @@ ADMISSIONS = datas[i].copy()
 # Load dataset
 ######################################################################################
 
-dataset = pd.read_csv('../data/mimiciii/patient.csv')
+dataset = pd.read_csv('../../data/patient.csv')
 
 ######################################################################################
 # Add gender and age to dataset
@@ -118,7 +118,7 @@ for i in dataset.index[1:]:
 # Add elixhauser to dataset (Use SID score)
 ######################################################################################
 
-elixhauser_ICD_CODE = pd.read_csv('../data/mimiciii/elixhauser_ICD_CODE.csv')
+elixhauser_ICD_CODE = pd.read_csv('../../data/elixhauser_ICD_CODE.csv')
 
 coef_dict = {
     'aids' : 0,

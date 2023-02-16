@@ -12,14 +12,14 @@ pd.options.mode.chained_assignment = None
 ######################################################################################
 # Load Data
 ######################################################################################
-temporal_path = '../data/mimiciii/temporal_dataset/'
+temporal_path = '../../data/temporal_dataset/'
 
 datasets = list()
 for i in range(1, 11):
     datasets.append(pd.read_csv(os.path.join(temporal_path, f'dataset_split_{i}_hour_after_merge.csv')))
 
 
-var_range = pd.read_csv('../data/mimiciii/variable_range.csv')
+var_range = pd.read_csv('../../data/variable_range.csv')
 var_range.index = var_range.iloc[:, 0]
 var_range = var_range.iloc[:, 1:]
 var_range['GROUP_ID'] = var_range['GROUP_ID'].apply(lambda x : [int(s) for s in x.split(',')] if type(x) == type('') else x)
@@ -233,7 +233,7 @@ def main_execute(period, dataset, var_range):
     normalization(period, dataset)
     dataset['death'] = dataset['death'].fillna('').apply(lambda x: 1 if len(x) > 0 else 0)
     dataset.drop(['STARTTIME', 'ENDTIME'], axis=1, inplace=True)
-    dataset.to_csv(os.path.join(temporal_path, f'dataset_final_{period}.csv'), index=False)
+    dataset.to_csv(os.path.join(temporal_path, f'dataset_{period}.csv'), index=False)
 
 
 processes = list()
