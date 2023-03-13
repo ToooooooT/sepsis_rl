@@ -1,11 +1,11 @@
 import pickle
-import os.path
+import os
 import csv
 import torch
 
 
 class BaseAgent(object):
-    def __init__(self, config, env, log_dir='/log'):
+    def __init__(self, config, env, log_dir='./log'):
         self.model = None
         self.target_model = None
         self.optimizer = None
@@ -15,7 +15,13 @@ class BaseAgent(object):
         self.rewards = [] # save the rewards
 
         self.action_log_frequency = config.ACTION_SELECTION_COUNT_FREQUENCY # the frequency to save the action selections into csv file
-        self.action_selections = [0 for _ in range(env.num_actions)] # the frequency of each action be selected
+        self.action_selections = [0 for _ in range(env['num_actions'])] # the frequency of each action be selected
+        self.action_log = 0
+
+        if os.path.exists(os.path.join(self.log_dir, 'action_log.csv')):
+            os.remove(os.path.join(self.log_dir, 'action_log.csv'))
+        if os.path.exists(os.path.join(self.log_dir, 'td.csv')):
+            os.remove(os.path.join(self.log_dir, 'td.csv'))
 
     def save(self):
         torch.save(self.model.state_dict(), './saved_agents/model.dump')
@@ -43,15 +49,17 @@ class BaseAgent(object):
     def save_reward(self, reward):
         self.rewards.append(reward)
 
-    def save_action(self, action, tstep):
+    def save_action(self, actions):
         # save the frequency of each action be selected
-        self.action_selections[int(action)] += (1.0 / self.action_log_frequency)
-        if (tstep + 1) % self.action_log_frequency == 0:
-            with open(os.path.join(self.log_dir, 'action_log.csv'), 'a') as f:
-                writer = csv.writer(f)
-                writer.writerow(list([tstep] + self.action_selections))
-            self.action_selections = [0 for _ in range(len(self.action_selections))]
+        n = actions.shape[0]
+        self.action_selections = [0 for _ in range(len(self.action_selections))]
+        for action in actions:
+            self.action_selections[int(action)] += (1.0 / n)
 
+    def save_td(self, td, tstep):
+        with open(os.path.join(self.log_dir, 'td.csv'), 'a') as f:
+            writer = csv.writer(f)
+            writer.writerow((tstep, td))
 
     '''
     def save_sigma_param_magnitudes(self, tstep):
@@ -67,8 +75,4 @@ class BaseAgent(object):
                     writer = csv.writer(f)
                     writer.writerow((tstep, sum_/count))
 
-    def save_td(self, td, tstep):
-        with open(os.path.join(self.log_dir, 'td.csv'), 'a') as f:
-            writer = csv.writer(f)
-            writer.writerow((tstep, td))
     '''

@@ -179,9 +179,9 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
         print(f'process {hour} finish merging chartevents and labevents')
 
 
-    merge_chart_lab(dataset, period, chart_lab_events, var_range)
+    # merge_chart_lab(dataset, period, chart_lab_events, var_range)
 
-    dataset.to_csv(os.path.join(temporal_path, f'dataset_split_{period}_hour_merge_lab_chart.csv'), index=False)
+    # dataset.to_csv(os.path.join(temporal_path, f'dataset_split_{period}_hour_merge_lab_chart.csv'), index=False)
 
     ######################################################################################
     # Output four hourly and Output total
@@ -191,7 +191,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
         outputevent_id = {40055, 40056, 40057, 40069, 40085, 40094, 40096, 40405, 40428, 40473, 40651, 40715, 43175, 
                             226557, 226558, 226559, 226560, 226561, 226563, 226564, 226565, 226567, 226584, 227488, 227489, 227510}
         event = event[[x in outputevent_id for x in event['ITEMID']]]
-        for i in tqdm(event.index):
+        for i in event.index:
             subject_id, hadm_id, time, value =  event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'CHARTTIME', 'VALUE']]
             if np.isnan(value) or value <= 0:
                 continue
@@ -214,7 +214,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
 
     def addOutputTotal(dataset, period):
         print(f'process {period} adding output total...')
-        for i in tqdm(range(1, len(dataset))):
+        for i in range(1, len(dataset)):
             flag = (dataset['SUBJECT_ID'][i] == dataset['SUBJECT_ID'][i - 1]) and (dataset['HADM_ID'][i] == dataset['HADM_ID'][i - 1])
             if np.isnan(dataset[f'Output {period}hourly'][i]):
                 dataset['Output total'][i] = dataset['Output total'][i - 1] * flag
@@ -235,7 +235,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
                         226557, 226558, 226559, 226560, 226561, 226563, 226564, 226565, 226567, 226584, 227488, 227489}
         event = event[[x in urine_itemid for x in event['ITEMID']]]
 
-        for i in tqdm(event.index):
+        for i in event.index:
             subject_id, hadm_id, time, value = event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'CHARTTIME', 'VALUE']]
             if np.isnan(value) or value <= 0:
                 continue
@@ -249,7 +249,21 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
             idx = getStartIndex(index, dataset, time)
             dataset['Urine'][idx] += value
 
+        # calculate urine (mL/day)
+        state_per_day = int(24 / period)
+        urine_hourly = dataset['Urine'].copy()
+        total = 0.0
+        for idx in dataset.index[1:]:
+            if list(dataset.loc[idx, ['SUBJECT_ID', 'HADM_ID']]) == list(dataset.loc[idx - 1, ['SUBJECT_ID', 'HADM_ID']]):
+                if idx - state_per_day >= 0 and list(dataset.loc[idx, ['SUBJECT_ID', 'HADM_ID']]) == list(dataset.loc[idx - state_per_day, ['SUBJECT_ID', 'HADM_ID']]):
+                    total -= urine_hourly[idx - state_per_day]
+                total += dataset['Urine'][idx]
+                dataset.loc[idx, 'Urine'] = total
+            else :
+                total = dataset['Urine'][idx]
+
         print(f'process {period} finish adding urine')
+        del urine_hourly
 
 
     dataset['Urine'] = pd.Series([0] * len(dataset), dtype = np.float64)
@@ -259,7 +273,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
     # Input total and Input four hour
     ######################################################################################
     def addInputCVFeat (dataset, event, feat_name):
-        for i in tqdm(event.index):
+        for i in event.index:
             subject_id, hadm_id, time, value = event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'CHARTTIME', 'AMOUNT']]
             if np.isnan(value) or value <= 0:
                 continue
@@ -275,7 +289,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
             
                     
     def addInputMVFeat (dataset, event, feat_name):
-        for i in tqdm(event.index):
+        for i in event.index:
             subject_id, hadm_id, start, end, value, amountuom, rate, rateuom =  \
                 event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'STARTTIME', 'ENDTIME', 'AMOUNT', 'AMOUNTUOM', 'RATE', 'RATEUOM']]
 
@@ -306,15 +320,62 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
                 elif rateuom == 'mL/min' and use_rate:
                     interval = interval.total_seconds() / 60
                     dataset[feat_name][idx] += (rate * interval)
-                elif end <= dataset.iloc[idx]['ENDTIME'] and use_value:
+                elif end <= dataset.loc[idx, 'ENDTIME'] and use_value:
                     # end and start are in same state and no rate exist
                     dataset[feat_name][idx] += value
-                elif end > dataset.iloc[idx]['ENDTIME'] and use_value:
+                elif end > dataset.loc[idx, 'ENDTIME'] and use_value:
                     # end and start are in different state and no rate exist
                     dataset[feat_name][idx] += value
                     break
                 else:
                     break
+                idx += 1
+
+
+    def addInputCVRate (dataset, event, feat_name):
+        # inputevents_cv
+        for i in event.index:
+            subject_id, hadm_id, time, rate =  INPUTEVENTS_CV.loc[i, ['SUBJECT_ID', 'HADM_ID', 'CHARTTIME', 'RATE']]
+
+            if np.isnan(rate) or rate <= 0:
+                continue
+            index = getPatientIndex(patient_table, subject_id, hadm_id)
+
+            # record time is not in the time when patient in the dataset
+            if is_time_in_state(time, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
+                continue
+            
+            max_rate_feat = {'Dobutamine', 'Dopamine', 'Epinephrine', 'Norepinephrine'}
+            idx = getStartIndex(index, dataset, time)
+            if feat_name in max_rate_feat:
+                dataset[feat_name][idx] = rate if np.isnan(dataset[feat_name][idx]) else max(rate, dataset[feat_name][idx])
+            else:
+                dataset[feat_name][idx] = rate if np.isnan(dataset[feat_name][idx]) else rate + dataset[feat_name][idx]
+
+    def addInputMVRate (dataset, event, feat_name):
+        for i in event.index:
+            subject_id, hadm_id, start, end, rate =  \
+                INPUTEVENTS_MV.loc[i, ['SUBJECT_ID', 'HADM_ID', 'STARTTIME', 'ENDTIME', 'RATE']]
+
+            if np.isnan(rate) or rate <= 0:
+                continue
+
+            if start - end > pd.Timedelta('0'):
+                continue
+
+            index = getPatientIndex(patient_table, subject_id, hadm_id)
+
+            # record time is not in the time when patient in the dataset
+            if is_time_in_state(start, dataset.loc[index[0], 'STARTTIME'], dataset.loc[index[-1], 'ENDTIME']):
+                continue
+
+            max_rate_feat = {'Dobutamine', 'Dopamine', 'Epinephrine', 'Norepinephrine'}
+            idx = getStartIndex(index, dataset, start)
+            while idx <= index[-1] and end > dataset['STARTTIME'][idx]:
+                if feat_name in max_rate_feat:
+                    dataset[feat_name][idx] = rate if np.isnan(dataset[feat_name][idx]) else max(rate, dataset[feat_name][idx])
+                else:
+                    dataset[feat_name][idx] = rate if np.isnan(dataset[feat_name][idx]) else rate + dataset[feat_name][idx]
                 idx += 1
 
         
@@ -325,7 +386,8 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
                             30186, 30190, 30210, 30211, 30296, 30315, 30321, 30352, 30353, 30381, 40850, 41491, 42244, 42698, 42742, 45399, 46087, 46493, 46516, 220862, 220864, 220970, 220995, 225158, 225159, 225161, 
                             225168, 225170, 225171, 225823, 225825, 225827, 225828, 225941, 225941, 225943, 226089, 227531, 227533, 228341}
         event = event[[x in inputevent_cv_ids for x in event['ITEMID']]]
-        addInputCVFeat (dataset, event, f'Input {period}hourly')
+        addInputCVFeat(dataset, event, f'Input {period}hourly')
+        addInputCVRate(dataset, event, f'Input {period}hourly Rate')
         print(f'process {period} finish adding input_cv hourly')
         
                     
@@ -336,18 +398,20 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
                             30186, 30190, 30210, 30211, 30296, 30315, 30321, 30352, 30353, 30381, 40850, 41491, 42244, 42698, 42742, 45399, 46087, 46493, 46516, 220862, 220864, 220970, 220995, 225158, 225159, 225161, 
                             225168, 225170, 225171, 225823, 225825, 225827, 225828,  225941, 225943, 226089, 227531, 227533, 228341}
         event = event[[x in inputevent_mv_ids for x in event['ITEMID']]]
-        addInputMVFeat (dataset, event, f'Input {period}hourly')
+        addInputMVFeat(dataset, event, f'Input {period}hourly')
+        addInputMVRate(dataset, event, f'Input {period}hourly Rate')
         print(f'process {period} finish adding input_mv hourly')
         
 
     dataset[f'Input {period}hourly'] = pd.Series([0] * len(dataset), dtype = np.float64)
+    dataset[f'Input {period}hourly Rate'] = pd.Series([0] * len(dataset), dtype = np.float64)
     addInputMVPeriod(dataset, INPUTEVENTS_MV, period)
     addInputCVPeriod(dataset, INPUTEVENTS_CV, period)
 
     def addInputTotal(dataset, period):
         print(f'process {period} adding input total...')
         dataset['Input total'][0] = dataset[f'Input {period}hourly'][0]
-        for i in tqdm(range(1, len(dataset))):
+        for i in range(1, len(dataset)):
             flag = (dataset['SUBJECT_ID'][i] == dataset['SUBJECT_ID'][i - 1]) and (dataset['HADM_ID'][i] == dataset['HADM_ID'][i - 1])
             if np.isnan(dataset[f'Input {period}hourly'][i]):
                 dataset['Input total'][i] = dataset['Input total'][i - 1] * flag
@@ -369,16 +433,16 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
         print(f'process {period} adding {feat_name} in INPUTEVENTS_{event_name}V...')
         event = event[[x in feat_ids for x in event['ITEMID']]]
         if event_name == 'M':
-            addInputMVFeat(dataset, event, feat_name)
+            addInputMVRate(dataset, event, feat_name)
         else:
-            addInputCVFeat(dataset, event, feat_name)
+            addInputCVRate(dataset, event, feat_name)
         print(f'process {period} finish adding {feat_name} in INPUTEVENTS_{event_name}V')
 
 
-    dataset['Dobutamine'] = pd.Series([0] * len(dataset), dtype = np.float64)
-    dataset['Dopamine'] = pd.Series([0] * len(dataset), dtype = np.float64)
-    dataset['Epinephrine'] = pd.Series([0] * len(dataset), dtype = np.float64)
-    dataset['Norepinephrine'] = pd.Series([0] * len(dataset), dtype = np.float64)
+    dataset['Dobutamine'] = pd.Series([np.nan] * len(dataset), dtype = np.float64)
+    dataset['Dopamine'] = pd.Series([np.nan] * len(dataset), dtype = np.float64)
+    dataset['Epinephrine'] = pd.Series([np.nan] * len(dataset), dtype = np.float64)
+    dataset['Norepinephrine'] = pd.Series([np.nan] * len(dataset), dtype = np.float64)
     addlast_ine(period, dataset, INPUTEVENTS_MV, 'M', 'Dobutamine', [221653])
     addlast_ine(period, dataset, INPUTEVENTS_CV, 'C', 'Dobutamine', [30042, 30306]) 
     addlast_ine(period, dataset, INPUTEVENTS_MV, 'M', 'Dopamine', [221662])
@@ -450,7 +514,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
         
         # inputevents_cv
         INPUTEVENTS_CV = INPUTEVENTS_CV[[x in vasoItemId for x in INPUTEVENTS_CV['ITEMID']]]
-        for i in tqdm(INPUTEVENTS_CV.index):
+        for i in INPUTEVENTS_CV.index:
             subject_id, hadm_id, itemid, time, rate, rateuom =  INPUTEVENTS_CV.loc[i, ['SUBJECT_ID', 'HADM_ID', 'ITEMID', 'CHARTTIME', 'RATE', 'RATEUOM']]
 
             value = getRateStdCV(rate, rateuom, itemid)
@@ -468,7 +532,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
 
         # inputevents_mv     
         INPUTEVENTS_MV = INPUTEVENTS_MV[[x in vasoItemId for x in INPUTEVENTS_MV['ITEMID']]]
-        for i in tqdm(INPUTEVENTS_MV.index):
+        for i in INPUTEVENTS_MV.index:
             subject_id, hadm_id, itemid, start, end, rate, rateuom =  \
                 INPUTEVENTS_MV.loc[i, ['SUBJECT_ID', 'HADM_ID', 'ITEMID', 'STARTTIME', 'ENDTIME', 'RATE', 'RATEUOM']]
 
@@ -519,7 +583,7 @@ def merge (dataset, period, chart_lab_events, INPUTEVENTS_MV, INPUTEVENTS_CV, OU
             224701 # PSVlevel
         ]
         
-        for event in tqdm(chart_lab_events):
+        for event in chart_lab_events:
             event = event[[x in MechVentItemId for x in event['ITEMID']]]
             for i in event.index:
                 subject_id, hadm_id, itemid, time, value = event.loc[i, ['SUBJECT_ID', 'HADM_ID', 'ITEMID', 'CHARTTIME', 'VALUE']]

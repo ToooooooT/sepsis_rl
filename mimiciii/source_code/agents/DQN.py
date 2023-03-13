@@ -1,16 +1,18 @@
 import numpy as np
 
 import torch
-import torch.nn as nn
 import torch.optim as optim
 
 from agents.BaseAgent import BaseAgent
 from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 
 class Model(BaseAgent):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='/log'):
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log'):
         super(Model, self).__init__(config=config, env=env, log_dir=log_dir)
         self.device = config.device
+
+        # step
+        self.nsteps = 1
 
         # algorithm control
         self.priority_replay = config.USE_PRIORITY_REPLAY
@@ -28,9 +30,8 @@ class Model(BaseAgent):
         self.priority_beta_frames = config.PRIORITY_BETA_FRAMES
 
         # environment
-        self.num_feats = env.num_feats
-        self.num_actions = env.num_actions
-        self.env = env
+        self.num_feats = env['num_feats']
+        self.num_actions = env['num_actions']
 
         # loss
         self.reg_lambda = 5
@@ -40,13 +41,15 @@ class Model(BaseAgent):
 
         self.declare_memory()
 
+        # network
         self.static_policy = static_policy
 
-
-    def declare_networks(self, model, target_model, static_policy):
-        self.model = model
-        self.target_model = target_model
+        self.declare_networks()
+        self.target_model.load_state_dict(self.model.state_dict())
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+
+        # update target network parameter
+        self.tau = 0.001
 
         if static_policy:
             self.model.eval()
@@ -54,6 +57,12 @@ class Model(BaseAgent):
         else:
             self.model.train()
             self.target_model.train()
+
+
+    def declare_networks(self):
+        # overload function
+        self.model = None
+        self.target_model = None
 
     def move_model_to_device(self):
         # move to correct device
@@ -72,13 +81,17 @@ class Model(BaseAgent):
         
         batch_state, batch_action, batch_reward, batch_next_state = zip(*transitions)
 
+        batch_state = np.array(batch_state)
+        batch_action = np.array(batch_action)
+        batch_reward = np.array(batch_reward)
+
         batch_state = torch.tensor(batch_state, device=self.device, dtype=torch.float).view(-1, self.num_feats)
-        batch_action = torch.tensor(batch_action, device=self.device, dtype=torch.int32).squeeze().view(-1, 1) # view = reshape in numpy
+        batch_action = torch.tensor(batch_action, device=self.device, dtype=torch.int64).squeeze().view(-1, 1) # view = reshape in numpy
         batch_reward = torch.tensor(batch_reward, device=self.device, dtype=torch.float).squeeze().view(-1, 1) # squeeze : delete all dimension with value = 1
         
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch_next_state)), device=self.device, dtype=torch.uint8)
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch_next_state)), device=self.device, dtype=torch.bool)
         try: # sometimes all next states are false
-            non_final_next_states = torch.tensor([s for s in batch_next_state if s is not None], device=self.device, dtype=torch.float).view(-1, self.num_feats)
+            non_final_next_states = torch.tensor(np.array([s for s in batch_next_state if s is not None]), device=self.device, dtype=torch.float).view(-1, self.num_feats)
             empty_next_state_values = False
         except:
             non_final_next_states = None
@@ -100,27 +113,36 @@ class Model(BaseAgent):
         # estimate
         # gather : take element of batch_action as a index of each batch_state to get the q_estimate values 
         # gather(dim, index)
-        current_q_values = self.model(batch_state).gather(1, batch_action) 
+        q_values = self.model(batch_state)
+        # for i in range(q_values.shape[0]):
+        #     self.save_action(q_values[i].argmax())
+        current_q_values = q_values.gather(1, batch_action) 
         
-        # target
+        # compute target value
         with torch.no_grad():
             # unnecessary to compute gradient and do back propogation
             max_next_q_values = torch.zeros(self.batch_size, device=self.device, dtype=torch.float).unsqueeze(dim=1)
             if not empty_next_state_values:
                 max_next_action = self.get_max_next_state_action(non_final_next_states)
                 max_next_q_values[non_final_mask] = self.target_model(non_final_next_states).gather(1, max_next_action)
+
+            # empirical hack to make the Q values never exceed the threshold - helps learning
+            max_next_q_values[max_next_q_values > self.reward_threshold] = self.reward_threshold
+            max_next_q_values[max_next_q_values < -self.reward_threshold] = -self.reward_threshold
+
             expected_q_values = batch_reward + ((self.gamma ** self.nsteps) * max_next_q_values)
 
         td_error = (expected_q_values - current_q_values).pow(2)
         if self.priority_replay:
-            self.memory.update_priorities(indices, td_error.detach().squeeze().abs().cpu().numpy().tolist()) # ?
-            loss = (td_error * weights).mean() + self.reg_lambda * min(current_q_values.abs().max() - self.reward_threshold, 0)
+            self.memory.update_priorities(indices, (td_error / 10).detach().squeeze().abs().cpu().numpy().tolist()) # ?
+            loss = 0.5 * (td_error * weights).mean() + self.reg_lambda * max(current_q_values.abs().max() - self.reward_threshold, 0)
+            # loss = 0.5 * (td_error * weights).mean()
         else:
-            loss = td_error.mean() + self.reg_lambda * min(current_q_values.abs().max() - self.reward_threshold, 0)
-
+            loss = 0.5 * td_error.mean() + self.reg_lambda * max(current_q_values.abs().max() - self.reward_threshold, 0)
+            # loss = 0.5 * td_error.mean()
         return loss
 
-    def update(self):
+    def update(self, frame):
         if self.static_policy:
             return None
 
@@ -131,15 +153,14 @@ class Model(BaseAgent):
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
-        '''
         for param in self.model.parameters():
             # why clamp_ ?
             param.grad.data.clamp_(-1, 1) # clamp_ : let gradient be in interval (-1, 1)
-        '''
         self.optimizer.step()
 
         self.update_target_model()
         # self.save_td(loss.item(), frame)
+        return loss.item()
         # self.save_sigma_param_magnitudes(frame)
 
     def get_action(self, s, eps=0):
@@ -152,9 +173,8 @@ class Model(BaseAgent):
                 return np.random.randint(0, self.num_actions)
 
     def update_target_model(self):
-        self.update_count = (self.update_count + 1) % self.target_net_update_freq
-        if self.update_count == 0:
-            self.target_model.load_state_dict(self.model.state_dict())
+        for target_param, param in zip(self.target_model.parameters(), self.model.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
     def get_max_next_state_action(self, next_states):
         return self.model(next_states).max(dim=1)[1].view(-1, 1)

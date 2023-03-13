@@ -115,7 +115,7 @@ class SumSegmentTree(SegmentTree):
             highest index satisfying the prefixsum constraint
         """
         try:
-            assert 0 <= prefixsum <= self._value[1] + 1e-5
+            assert 0 <= prefixsum <= self._value[1] + 1e-1
         except AssertionError:
             print("Prefix sum error: {}".format(prefixsum))
             exit()

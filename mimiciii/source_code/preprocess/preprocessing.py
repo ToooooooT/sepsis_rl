@@ -148,7 +148,7 @@ def main_execute(period, dataset, var_range):
 
         # Mean arterial pressure OR administration of vasoactive agents required
         # get Dopamine and epinephrine
-        if series['Dopamine'] > 15 or series['Epinephrine'] > 0.1 or series['Norepinephrine']:
+        if series['Dopamine'] > 15 or series['Epinephrine'] > 0.1 or series['Norepinephrine'] > 0.1:
             score += 4
         elif series['Dopamine'] > 5 or series['Epinephrine'] <= 0.1 or series['Norepinephrine'] <= 0.1:
             score += 3
@@ -193,7 +193,7 @@ def main_execute(period, dataset, var_range):
        'Platelets_count', 'SGOT', 'Total_bili', 'WBC_count',
        'Chloride', 'DiaBP', 'SysBP', 'MeanBP', 'PaCO2', 'PaO2', 'FiO2', 'RR',
        'Temp_C', 'Weight_kg', 'HR', 'SpO2',
-       f'output_{period}hourly', 'output_total', 'Urine', f'input_{period}hourly',
+       f'output_{period}hourly', 'output_total', 'Urine', f'input_{period}hourly', f'input_{period}hourly_rate',
        'input_total', 'Dobutamine', 'Dopamine', 'Epinephrine',
        'Norepinephrine', 'max_dose_vaso', 'mechvent', 'shock_index', 'SIRS', 'PaO2_FiO2_ratio', 'cumulative_balance']
 

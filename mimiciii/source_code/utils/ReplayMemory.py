@@ -2,7 +2,7 @@ import random
 import torch
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-from utils.data_structures import SegmentTree, MinSegmentTree, SumSegmentTree
+from utils.data_structures import SegmentTree, SumSegmentTree
 
 
 class ExperienceReplayMemory:
@@ -23,7 +23,7 @@ class ExperienceReplayMemory:
 
 
 class PrioritizedReplayMemory(object):
-    def __init__(self, size, alpha=0.6, beta_start=0.4, beta_frames=100000):
+    def __init__(self, size, alpha=0.6, beta_start=0.4, beta_frames=20000):
         """Create Prioritized Replay buffer.
         Parameters
         ----------
@@ -40,7 +40,7 @@ class PrioritizedReplayMemory(object):
         super(PrioritizedReplayMemory, self).__init__()
         self._storage = []
         self._maxsize = size
-        self._next_idx = 0
+        self._idx = 0
 
         assert alpha >= 0
         self._alpha = alpha
@@ -54,42 +54,30 @@ class PrioritizedReplayMemory(object):
             it_capacity *= 2
 
         self._it_sum = SumSegmentTree(it_capacity)
-        self._max_priority = 1.0
+        self._max_priority = 100.0
 
     def beta_by_frame(self, frame_idx):
         return min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)
 
     def push(self, data):
         """See ReplayBuffer.store_effect"""
-        '''
-        TODO:
-            set self.max_size to the size of dataset and store all data in storage not to replace any data.
-        '''
-        idx = self._next_idx
+        self._it_sum[self._idx] = self._max_priority ** self._alpha
+        self._storage.append(data)
+        self._idx += 1
 
-        if self._next_idx >= len(self._storage):
-            self._storage.append(data)
-        else:
-            self._storage[self._next_idx] = data
-        self._next_idx = (self._next_idx + 1) % self._maxsize
-
-
-        self._it_sum[idx] = self._max_priority ** self._alpha
 
     def _encode_sample(self, idxes):
         return [self._storage[i] for i in idxes]
 
     def _sample_proportional(self, batch_size):
         '''
-        TODO:
-            ensure no repeats, split to interval which has number of batch_size and 
-            get index in each of the interval
+            split to interval which has number of batch_size and get index in each of the interval,
+            may have repeat sample
         '''
         res = list()
         s = self._it_sum.getSum()
-        for _ in range(batch_size):
-            # TODO(szymon): should we ensure no repeats?
-            mass = random.random() * s
+        for i in range(batch_size):
+            mass = random.uniform(i / batch_size, (i + 1) / batch_size) * s
             idx = self._it_sum.find_prefixsum_idx(mass)
             res.append(idx)
         return res
@@ -127,30 +115,23 @@ class PrioritizedReplayMemory(object):
             idexes in buffer of sampled experiences
         """
 
-        '''
-        TODO:
-            max_weight use the smallest prob in the sample batch?
-        '''
-
         idxes = self._sample_proportional(batch_size)
 
         weights = list()
 
         s = self._it_sum.getSum()
 
-        # find smallest sampling prob: p_min = smallest priority^alpha / sum of priorities^alpha
-        p_min = self._it_min.min() / self._it_sum.sum()
-
         beta = self.beta_by_frame(self.frame)
         self.frame += 1
         
-        # max_weight given to smallest prob
-        max_weight = (p_min * len(self._storage)) ** (-beta)
-
         for idx in idxes:
             p_sample = self._it_sum[idx] / s
             weight = (p_sample * len(self._storage)) ** (-beta)
-            weights.append(weight / max_weight)
+            weights.append(weight)
+
+        # max_weight use the smallest prob in the sample batch?
+        max_weights = max(weights)
+        weights = [weight / max_weights for weight in weights]
         weights = torch.tensor(weights, device=device, dtype=torch.float) 
         encoded_sample = self._encode_sample(idxes)
         return encoded_sample, idxes, weights
@@ -171,7 +152,5 @@ class PrioritizedReplayMemory(object):
         assert len(idxes) == len(priorities)
         for idx, priority in zip(idxes, priorities):
             assert 0 <= idx < len(self._storage)
-            self._it_sum[idx] = (priority + 1e-5) ** self._alpha
-            self._it_min[idx] = (priority + 1e-5) ** self._alpha
-
-            self._max_priority = max(self._max_priority, (priority+1e-5))
+            # assert (priority + 1e-8) < self._max_priority
+            self._it_sum[idx] = (priority + 1e-3) ** self._alpha

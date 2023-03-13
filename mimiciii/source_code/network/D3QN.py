@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class DuelingDQN(nn.Module):
+class D3QN(nn.Module):
     def __init__(self, input_size, num_actions):
         self.hidden1_size = 128
         self.hidden2_size = 128
@@ -18,15 +18,15 @@ class DuelingDQN(nn.Module):
             nn.BatchNorm1d(self.hidden2_size),
             nn.LeakyReLU()
         )
-        self.adv = nn.Linear(self.hidden2_size / 2, self.num_actions)
-        self.val = nn.Linear(self.hidden2_size / 2, 1)
+        self.adv = nn.Linear(self.hidden2_size // 2, self.num_actions)
+        self.val = nn.Linear(self.hidden2_size // 2, 1)
     
 
-    def foward(self, x):
+    def forward(self, x):
         y = self.l1(x)
         y = self.l2(y)
         # advantage and value streams
-        streamA, streamV = torch.split(y, self.hidden2_size / 2)
+        streamA, streamV = torch.split(y, self.hidden2_size // 2, dim=1)
         adv = self.adv(streamA)
         val = self.val(streamV)
         return val + adv - adv.mean()
