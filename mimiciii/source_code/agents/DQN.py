@@ -6,6 +6,8 @@ import torch.optim as optim
 from agents.BaseAgent import BaseAgent
 from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 
+import os
+
 class Model(BaseAgent):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./log'):
         super(Model, self).__init__(config=config, env=env, log_dir=log_dir)
@@ -13,6 +15,8 @@ class Model(BaseAgent):
 
         # step
         self.nsteps = 1
+
+        self.episode = config.EPISODE
 
         # algorithm control
         self.priority_replay = config.USE_PRIORITY_REPLAY
@@ -34,7 +38,7 @@ class Model(BaseAgent):
         self.num_actions = env['num_actions']
 
         # loss
-        self.reg_lambda = 5
+        self.reg_lambda = config.REG_LAMBDA
         self.reward_threshold = 20
 
         self.update_count = 0
@@ -63,6 +67,13 @@ class Model(BaseAgent):
         # overload function
         self.model = None
         self.target_model = None
+
+    def save(self):
+        path = os.path.join('./saved_agents', f'batch_size-{self.batch_size} episode-{self.episode} use_pri-{self.priority_replay} lr-{self.lr} reg_lambda-{self.reg_lambda}')
+        if not os.path.exists(path):
+            os.mkdir(path)
+        torch.save(self.model.state_dict(), os.path.join(path, 'model.dump'))
+        torch.save(self.optimizer.state_dict(), os.path.join(path, 'optim.dump'))
 
     def move_model_to_device(self):
         # move to correct device
@@ -127,8 +138,9 @@ class Model(BaseAgent):
                 max_next_q_values[non_final_mask] = self.target_model(non_final_next_states).gather(1, max_next_action)
 
             # empirical hack to make the Q values never exceed the threshold - helps learning
-            max_next_q_values[max_next_q_values > self.reward_threshold] = self.reward_threshold
-            max_next_q_values[max_next_q_values < -self.reward_threshold] = -self.reward_threshold
+            if self.reg_lambda > 0:
+                max_next_q_values[max_next_q_values > self.reward_threshold] = self.reward_threshold
+                max_next_q_values[max_next_q_values < -self.reward_threshold] = -self.reward_threshold
 
             expected_q_values = batch_reward + ((self.gamma ** self.nsteps) * max_next_q_values)
 

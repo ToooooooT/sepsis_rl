@@ -26,3 +26,5 @@ class Config(object):
 
         # data logging parameters
         self.ACTION_SELECTION_COUNT_FREQUENCY = 1000
+
+        self.REG_LAMBDA = 5

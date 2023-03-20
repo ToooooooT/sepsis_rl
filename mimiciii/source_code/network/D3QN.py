@@ -20,6 +20,8 @@ class D3QN(nn.Module):
         )
         self.adv = nn.Linear(self.hidden2_size // 2, self.num_actions)
         self.val = nn.Linear(self.hidden2_size // 2, 1)
+        # self.adv = torch.empty([25, 64]).normal_(mean=0, std=1)
+        # self.val = torch.empty([1, 64]).normal_(mean=0, std=1)
     
 
     def forward(self, x):
@@ -29,4 +31,6 @@ class D3QN(nn.Module):
         streamA, streamV = torch.split(y, self.hidden2_size // 2, dim=1)
         adv = self.adv(streamA)
         val = self.val(streamV)
+        # adv = self.adv @ streamA
+        # val = self.val @ streamV
         return val + adv - adv.mean()

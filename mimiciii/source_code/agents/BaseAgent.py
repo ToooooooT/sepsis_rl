@@ -13,6 +13,7 @@ class BaseAgent(object):
         self.log_dir = log_dir # log directory
 
         self.rewards = [] # save the rewards
+        self.tds = [] # save the rewards
 
         self.action_log_frequency = config.ACTION_SELECTION_COUNT_FREQUENCY # the frequency to save the action selections into csv file
         self.action_selections = [0 for _ in range(env['num_actions'])] # the frequency of each action be selected
@@ -56,10 +57,8 @@ class BaseAgent(object):
         for action in actions:
             self.action_selections[int(action)] += (1.0 / n)
 
-    def save_td(self, td, tstep):
-        with open(os.path.join(self.log_dir, 'td.csv'), 'a') as f:
-            writer = csv.writer(f)
-            writer.writerow((tstep, td))
+    def save_td(self, td):
+        self.tds.append(td)
 
     '''
     def save_sigma_param_magnitudes(self, tstep):

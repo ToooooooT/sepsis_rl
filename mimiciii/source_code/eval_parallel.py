@@ -8,6 +8,7 @@ import os
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 from collections import defaultdict
+from multiprocessing import Process
 
 from agents.DQN import Model as DQN_Agent
 from utils.hyperparameters import Config
@@ -138,6 +139,31 @@ def WIS_estimator(actions, test_data, id_index_map):
     return policy_val, expert_val
 
 
+def test_parallel(config, env, lr, test_data, test, id_index_map):
+    config.LR = lr / 10000
+
+    path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    model = Model(static_policy=True, env=env, config=config, log_dir=path)
+
+    model.load()
+
+    ######################################################################################
+    # Testing
+    ######################################################################################
+    actions = testing(test, model)
+
+    policy_val, expert_val = WIS_estimator(actions, test_data, id_index_map)
+    plot_action_dist(model, actions, test_data_unnorm)
+    with open(os.path.join(path, 'evaluation.txt'), 'w') as f:
+        f.write(f'policy WIS estimator: {policy_val:.5f}\n')
+        f.write(f'expert: {expert_val:.5f}')
+    print(f'policy WIS estimator: {policy_val:.5f}')
+    print(f'expert: {expert_val:.5f}')
+
+
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument("--hour", type=int, help="hours of one state", dest="hour", default=4)
@@ -175,28 +201,19 @@ if __name__ == '__main__':
     config.USE_PRIORITY_REPLAY = use_pri
     config.EPISODE = episode
     config.REG_LAMBDA = reg_lambda
-    config.LR = lr / 10000
+    # config.LR = lr
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
-    if not os.path.exists(path):
-        os.mkdir(path)
-
-    model = Model(static_policy=True, env=env, config=config, log_dir=path)
-
-    model.load()
-
     ######################################################################################
-    # Testing
+    # Parallel test
     ######################################################################################
     test, id_index_map = get_test_dataset(test_data)
-    actions = testing(test, model)
 
-    policy_val, expert_val = WIS_estimator(actions, test_data, id_index_map)
-    plot_action_dist(model, actions, test_data_unnorm)
-    with open(os.path.join(path, 'evaluation.txt'), 'w') as f:
-        f.write(f'policy WIS estimator: {policy_val:.5f}\n')
-        f.write(f'expert: {expert_val:.5f}')
-    print(f'policy WIS estimator: {policy_val:.5f}')
-    print(f'expert: {expert_val:.5f}')
+    processes = list()
+    for lr in range(1, 11):
+        processes.append(Process(target=test_parallel, args=(config, env, lr, test_data, test, id_index_map)))
+    for i in range(len(processes)):
+        processes[i].start()
+    for i in range(len(processes)):
+        processes[i].join()

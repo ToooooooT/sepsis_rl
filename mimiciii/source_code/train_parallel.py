@@ -6,10 +6,10 @@ import pandas as pd
 import torch
 import os
 from argparse import ArgumentParser
-import csv
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from collections import defaultdict
+from multiprocessing import Process
 
 from agents.DQN import Model as DQN_Agent
 from utils.hyperparameters import Config
@@ -171,6 +171,8 @@ def WIS_estimator(actions, expert_data, id_index_map):
 # Plot
 ######################################################################################
 def plot_training_loss(model):
+    x, y = list(), list()
+
     fig, ax = plt.subplots()
 
     ax.plot(model.tds)
@@ -224,20 +226,36 @@ def plot_estimate_value(model, expert_val, policy_val):
     plt.savefig(os.path.join(model.log_dir, 'valid estimate value.png'))
 
 
+def train_parallel(config, env, lr, train_dataset, valid_dataset, valid, id_index_map):
+    config.LR = lr / 10000
+
+    path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    model = Model(static_policy=False, env=env, config=config, log_dir=path)
+
+    ######################################################################################
+    # Training
+    ######################################################################################
+    add_dataset_to_replay(train_dataset, model)
+    training(model, valid, config, valid_dataset, id_index_map)
+
+
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument("--hour", type=int, help="hours of one state", dest="hour", default=4)
     parser.add_argument("--batch_size", type=int, help="batch_size", dest="batch_size", default=32)
     parser.add_argument("--episode", type=int, help="episode", dest="episode", default=70000)
     parser.add_argument("--use_pri", type=int, help="use priority replay", dest="use_pri", default=1)
-    parser.add_argument("--lr", type=int, help="learning rate", dest="lr", default=1)
+    # parser.add_argument("--lr", type=int, help="learning rate", dest="lr", default=0.0001)
     parser.add_argument("--reg_lambda", type=float, help="regularization term coeficient", dest="reg_lambda", default=5)
     args = parser.parse_args()
     hour = args.hour
     batch_size = args.batch_size
     episode = args.episode
     use_pri = args.use_pri
-    lr = args.lr
+    # lr = args.lr
     reg_lambda = args.reg_lambda
 
     ######################################################################################
@@ -265,7 +283,7 @@ if __name__ == '__main__':
 
     # misc agent variables
     config.GAMMA = 0.99
-    config.LR = lr / 10000
+    # config.LR = lr / 10000
 
     config.REG_LAMBDA = reg_lambda
 
@@ -287,15 +305,15 @@ if __name__ == '__main__':
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
-    if not os.path.exists(path):
-        os.mkdir(path)
-
-    model = Model(static_policy=False, env=env, config=config, log_dir=path)
-
     ######################################################################################
-    # Training
+    # Parallel training
     ######################################################################################
-    add_dataset_to_replay(train_dataset, model)
     valid, id_index_map = get_valid_dataset(valid_dataset)
-    training(model, valid, config, valid_dataset, id_index_map)
+
+    processes = list()
+    for lr in range(1, 11):
+        processes.append(Process(target=train_parallel, args=(config, env, lr, train_dataset, valid_dataset, valid, id_index_map)))
+    for i in range(len(processes)):
+        processes[i].start()
+    for i in range(len(processes)):
+        processes[i].join()

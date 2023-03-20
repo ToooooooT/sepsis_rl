@@ -247,55 +247,58 @@ if __name__ == '__main__':
     train_dataset = pd.read_csv(os.path.join(dataset_path, f'train_{hour}.csv'))
     valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{hour}.csv'))
 
-    ######################################################################################
-    # Hyperparameters
-    ######################################################################################
-    config = Config()
+    for lr in range(1, 10, 2):
+        for batch_size in [32, 64, 128, 256]:
+            for reg_lambda in range(6):
+                ######################################################################################
+                # Hyperparameters
+                ######################################################################################
+                config = Config()
 
-    config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # training loop times
-    config.EPISODE = episode
+                # training loop times
+                config.EPISODE = episode
 
-    # algorithm control
-    config.USE_PRIORITY_REPLAY = use_pri
-            
-    # Multi-step returns
-    config.N_STEPS = 1
+                # algorithm control
+                config.USE_PRIORITY_REPLAY = use_pri
+                        
+                # Multi-step returns
+                config.N_STEPS = 1
 
-    # misc agent variables
-    config.GAMMA = 0.99
-    config.LR = lr / 10000
+                # misc agent variables
+                config.GAMMA = 0.99
+                config.LR = lr / 10000
 
-    config.REG_LAMBDA = reg_lambda
+                config.REG_LAMBDA = reg_lambda
 
-    # memory
-    exp_replay_size = 1
-    while exp_replay_size < train_dataset.shape[0]:
-        exp_replay_size <<= 1
+                # memory
+                exp_replay_size = 1
+                while exp_replay_size < train_dataset.shape[0]:
+                    exp_replay_size <<= 1
 
-    config.EXP_REPLAY_SIZE = exp_replay_size
-    config.BATCH_SIZE = batch_size
-    config.PRIORITY_ALPHA = 0.6
-    config.PRIORITY_BETA_START = 0.9
-    config.PRIORITY_BETA_FRAMES = 30000
+                config.EXP_REPLAY_SIZE = exp_replay_size
+                config.BATCH_SIZE = batch_size
+                config.PRIORITY_ALPHA = 0.6
+                config.PRIORITY_BETA_START = 0.9
+                config.PRIORITY_BETA_FRAMES = 30000
 
-    # data logging parameters
-    config.ACTION_SELECTION_COUNT_FREQUENCY = 10000
+                # data logging parameters
+                config.ACTION_SELECTION_COUNT_FREQUENCY = 10000
 
-    clip_reward = True
+                clip_reward = True
 
-    env = {'num_feats': 49, 'num_actions': 25}
+                env = {'num_feats': 49, 'num_actions': 25}
 
-    path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
-    if not os.path.exists(path):
-        os.mkdir(path)
+                path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
+                if not os.path.exists(path):
+                    os.mkdir(path)
 
-    model = Model(static_policy=False, env=env, config=config, log_dir=path)
+                model = Model(static_policy=False, env=env, config=config, log_dir=path)
 
-    ######################################################################################
-    # Training
-    ######################################################################################
-    add_dataset_to_replay(train_dataset, model)
-    valid, id_index_map = get_valid_dataset(valid_dataset)
-    training(model, valid, config, valid_dataset, id_index_map)
+                ######################################################################################
+                # Training
+                ######################################################################################
+                add_dataset_to_replay(train_dataset, model)
+                valid, id_index_map = get_valid_dataset(valid_dataset)
+                training(model, valid, config, valid_dataset, id_index_map)
