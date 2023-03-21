@@ -132,7 +132,7 @@ def normalization(period, dataset):
                         'paCO2', 'paO2', 'FiO2_1', 'RR', 'Temp_C', 'Weight_kg', 'HR', 'Shock_Index', 
                         'SIRS', 'PaO2_FiO2', 'cumulated_balance']
     log_norm_features = ['SGPT', 'BUN', 'INR', 'Creatinine', 'SGOT', 'Total_bili', 'SpO2', 'input_total',
-                        f'input_{period}hourly', 'output_total', f'output_{period}hourly']
+                        f'input_{period}hourly', 'output_total', f'output_{period}hourly', 'bloc']
 
     dataset[binary_features] = dataset[binary_features] - 0.5
         

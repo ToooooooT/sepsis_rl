@@ -19,7 +19,7 @@ pd.options.mode.chained_assignment = None
 # Agent
 ######################################################################################
 class Model(DQN_Agent):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='saved_agents'):
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents'):
         super().__init__(static_policy, env, config, log_dir, agent_dir)
 
     def declare_networks(self):
@@ -144,9 +144,8 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size", type=int, help="batch_size", dest="batch_size", default=32)
     parser.add_argument("--episode", type=int, help="episode", dest="episode", default=70000)
     parser.add_argument("--use_pri", type=int, help="use priority replay", dest="use_pri", default=1)
-    parser.add_argument("--lr", type=float, help="learning rate", dest="lr", default=1)
+    parser.add_argument("--lr", type=float, help="learning rate", dest="lr", default=0.0001)
     parser.add_argument("--reg_lambda", type=float, help="regularization term coeficient", dest="reg_lambda", default=5)
-    parser.add_argument("--dataset", type=str, help="dataset", dest="dataset_name", default='test')
     args = parser.parse_args()
     hour = args.hour
     batch_size = args.batch_size
@@ -154,55 +153,59 @@ if __name__ == '__main__':
     use_pri = args.use_pri
     lr = args.lr
     reg_lambda = args.reg_lambda
-    dataset_name = args.dataset_name
 
     ######################################################################################
     # Load Dataset
     ######################################################################################
     dataset_path = "../data/final_dataset/"
 
-    test_data = pd.read_csv(os.path.join(dataset_path, f'{dataset_name}_{hour}.csv'))
+    test_data = pd.read_csv(os.path.join(dataset_path, f'test_{hour}.csv'))
     test_data_unnorm = pd.read_csv(os.path.join(dataset_path, f'dataset_{hour}.csv'))
     icustayids = test_data['icustayid'].unique()
     test_data_unnorm = test_data_unnorm[[icustayid in icustayids for icustayid in test_data_unnorm['icustayid']]]
     test_data_unnorm.index = range(test_data.shape[0])
 
-    ######################################################################################
-    # Parameters
-    ######################################################################################
-    config = Config()
+    episode = 150000
+    for lr in range(1, 10, 2):
+        for batch_size in [32, 64, 128, 256]:
+            for reg_lambda in range(6):
+                ######################################################################################
+                # Parameters
+                ######################################################################################
+                config = Config()
 
-    config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config.BATCH_SIZE = batch_size
-    config.USE_PRIORITY_REPLAY = use_pri
-    config.EPISODE = episode
-    config.REG_LAMBDA = reg_lambda
-    config.LR = lr / 10000
+                config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                config.BATCH_SIZE = batch_size
+                config.USE_PRIORITY_REPLAY = use_pri
+                config.EPISODE = episode
+                config.REG_LAMBDA = reg_lambda
+                config.LR = lr / 10000
 
-    env = {'num_feats': 49, 'num_actions': 25}
+                env = {'num_feats': 49, 'num_actions': 25}
 
-    log_path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
-    if not os.path.exists(log_path):
-        os.mkdir(log_path)
+                log_path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
+                if not os.path.exists(log_path):
+                    os.mkdir(log_path)
 
-    agent_path = os.path.join('./saved_agents', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
-    if not os.path.exists(agent_path):
-        os.mkdir(agent_path)
+                agent_path = os.path.join('./saved_agents', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
+                if not os.path.exists(agent_path):
+                    os.mkdir(agent_path)
 
-    model = Model(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
+                model = Model(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
 
-    model.load()
+                model.load()
 
-    ######################################################################################
-    # Testing
-    ######################################################################################
-    test, id_index_map = get_test_dataset(test_data)
-    actions = testing(test, model)
+                print(f"----------  batch_size: {batch_size}, episode: {episode}, use_priority: {True}, reg_lambda: {reg_lambda}, learning rate: {lr / 10000} ----------")
+                ######################################################################################
+                # Testing
+                ######################################################################################
+                test, id_index_map = get_test_dataset(test_data)
+                actions = testing(test, model)
 
-    policy_val, expert_val = WIS_estimator(actions, test_data, id_index_map)
-    plot_action_dist(model, actions, test_data_unnorm)
-    with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
-        f.write(f'policy WIS estimator: {policy_val:.5f}\n')
-        f.write(f'expert: {expert_val:.5f}')
-    print(f'policy WIS estimator: {policy_val:.5f}')
-    print(f'expert: {expert_val:.5f}')
+                policy_val, expert_val = WIS_estimator(actions, test_data, id_index_map)
+                plot_action_dist(model, actions, test_data_unnorm)
+                with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
+                    f.write(f'policy WIS estimator: {policy_val:.5f}\n')
+                    f.write(f'expert: {expert_val:.5f}')
+                print(f'policy WIS estimator: {policy_val:.5f}')
+                print(f'expert: {expert_val:.5f}')

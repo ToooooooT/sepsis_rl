@@ -31,6 +31,6 @@ class D3QN(nn.Module):
         streamA, streamV = torch.split(y, self.hidden2_size // 2, dim=1)
         adv = self.adv(streamA)
         val = self.val(streamV)
-        # adv = self.adv @ streamA
-        # val = self.val @ streamV
+        # adv = streamA @ self.adv.T
+        # val = streamV @ self.val.T
         return val + adv - adv.mean()

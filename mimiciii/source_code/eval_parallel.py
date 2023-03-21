@@ -20,8 +20,8 @@ pd.options.mode.chained_assignment = None
 # Agent
 ######################################################################################
 class Model(DQN_Agent):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log'):
-        super().__init__(static_policy, env, config, log_dir)
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents'):
+        super().__init__(static_policy, env, config, log_dir, agent_dir)
 
     def declare_networks(self):
         self.model = D3QN(self.num_feats, self.num_actions)
@@ -142,11 +142,17 @@ def WIS_estimator(actions, test_data, id_index_map):
 def test_parallel(config, env, lr, test_data, test, id_index_map):
     config.LR = lr / 10000
 
-    path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
-    if not os.path.exists(path):
-        os.mkdir(path)
+    log_path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} \
+                    use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
+    if not os.path.exists(log_path):
+        os.mkdir(log_path)
 
-    model = Model(static_policy=True, env=env, config=config, log_dir=path)
+    agent_path = os.path.join('./saved_agents', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} \
+                    use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
+    if not os.path.exists(agent_path):
+        os.mkdir(agent_path)
+
+    model = Model(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
 
     model.load()
 
@@ -157,7 +163,7 @@ def test_parallel(config, env, lr, test_data, test, id_index_map):
 
     policy_val, expert_val = WIS_estimator(actions, test_data, id_index_map)
     plot_action_dist(model, actions, test_data_unnorm)
-    with open(os.path.join(path, 'evaluation.txt'), 'w') as f:
+    with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
         f.write(f'policy WIS estimator: {policy_val:.5f}\n')
         f.write(f'expert: {expert_val:.5f}')
     print(f'policy WIS estimator: {policy_val:.5f}')

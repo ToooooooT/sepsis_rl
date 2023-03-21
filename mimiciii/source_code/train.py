@@ -21,8 +21,8 @@ pd.options.mode.chained_assignment = None
 # Agent
 ######################################################################################
 class Model(DQN_Agent):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log'):
-        super().__init__(static_policy, env, config, log_dir)
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents'):
+        super().__init__(static_policy, env, config, log_dir, agent_dir)
 
     def declare_networks(self):
         self.model = D3QN(self.num_feats, self.num_actions)
@@ -203,9 +203,12 @@ def animation_action_distribution(model, hists):
     def update(i):
         ax.clear()
         ax.hist(range(25), weights=hists[i], bins=25)
+        ax.set_xlabel('action index')
+        ax.set_ylabel('freq')
+        ax.set_xticks(range(0, 25))
         ax.set_title(f'action distribution {i}')
 
-    ani = FuncAnimation(fig, update, frames=len(hists), interval=500)
+    ani = FuncAnimation(fig, update, frames=len(hists), interval=200)
     ani.save(os.path.join(model.log_dir, 'D3QN valid action distribution.gif'), writer='imagemagick')
 
 
@@ -287,11 +290,15 @@ if __name__ == '__main__':
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
-    if not os.path.exists(path):
-        os.mkdir(path)
+    log_path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
+    if not os.path.exists(log_path):
+        os.mkdir(log_path)
 
-    model = Model(static_policy=False, env=env, config=config, log_dir=path)
+    agent_path = os.path.join('./saved_agents', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
+    if not os.path.exists(agent_path):
+        os.mkdir(agent_path)
+
+    model = Model(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
 
     ######################################################################################
     # Training

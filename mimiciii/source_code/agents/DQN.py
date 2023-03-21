@@ -6,11 +6,9 @@ import torch.optim as optim
 from agents.BaseAgent import BaseAgent
 from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 
-import os
-
 class Model(BaseAgent):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log'):
-        super(Model, self).__init__(config=config, env=env, log_dir=log_dir)
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents'):
+        super(Model, self).__init__(config=config, env=env, log_dir=log_dir, agent_dir=agent_dir)
         self.device = config.device
 
         # step
@@ -68,12 +66,6 @@ class Model(BaseAgent):
         self.model = None
         self.target_model = None
 
-    def save(self):
-        path = os.path.join('./saved_agents', f'batch_size-{self.batch_size} episode-{self.episode} use_pri-{self.priority_replay} lr-{self.lr} reg_lambda-{self.reg_lambda}')
-        if not os.path.exists(path):
-            os.mkdir(path)
-        torch.save(self.model.state_dict(), os.path.join(path, 'model.dump'))
-        torch.save(self.optimizer.state_dict(), os.path.join(path, 'optim.dump'))
 
     def move_model_to_device(self):
         # move to correct device

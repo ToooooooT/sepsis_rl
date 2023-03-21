@@ -5,12 +5,13 @@ import torch
 
 
 class BaseAgent(object):
-    def __init__(self, config, env, log_dir='./log'):
+    def __init__(self, config, env, log_dir='./log', agent_dir='./saved_agents'):
         self.model = None
         self.target_model = None
         self.optimizer = None
 
         self.log_dir = log_dir # log directory
+        self.agent_dir = agent_dir # saved agents directory
 
         self.rewards = [] # save the rewards
         self.tds = [] # save the rewards
@@ -25,27 +26,35 @@ class BaseAgent(object):
             os.remove(os.path.join(self.log_dir, 'td.csv'))
 
     def save(self):
-        torch.save(self.model.state_dict(), './saved_agents/model.dump')
-        torch.save(self.optimizer.state_dict(), './saved_agents/optim.dump')
+        if not os.path.exists(self.agent_dir):
+            os.mkdir(self.agent_dir)
+        torch.save(self.model.state_dict(), os.path.join(self.agent_dir, 'model.dump'))
+        torch.save(self.optimizer.state_dict(), os.path.join(self.agent_dir, 'optim.dump'))
     
     def load(self):
-        fname_model = "./saved_agents/model.dump"
-        fname_optim = "./saved_agents/optim.dump"
+        fname_model = os.path.join(self.agent_dir, "model.dump")
+        fname_optim = os.path.join(self.agent_dir, "optim.dump")
 
         if os.path.isfile(fname_model):
             self.model.load_state_dict(torch.load(fname_model))
             self.target_model.load_state_dict(self.model.state_dict())
+        else:
+            assert False
 
         if os.path.isfile(fname_optim):
             self.optimizer.load_state_dict(torch.load(fname_optim))
+        else:
+            assert False
 
     def save_replay(self):
-        pickle.dump(self.memory, open('./saved_agents/exp_replay_agent.dump', 'wb'))
+        pickle.dump(self.memory, open(os.path.join(self.agent_dir, 'exp_replay_agent.dump'), 'wb'))
 
     def load_replay(self):
-        fname = './saved_agents/exp_replay_agent.dump'
+        fname = os.path.join(self.agent_dir, 'exp_replay_agent.dump')
         if os.path.isfile(fname):
             self.memory = pickle.load(open(fname, 'rb'))
+        else:
+            assert False
 
     def save_reward(self, reward):
         self.rewards.append(reward)
