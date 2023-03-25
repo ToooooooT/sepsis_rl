@@ -188,7 +188,7 @@ def plot_training_loss(model):
 def plot_action_distribution(model):
     fig, ax = plt.subplots()
 
-    ax.hist(range(25), weights=model.action_selections, bins=25)
+    ax.hist(range(25), weights=model.action_selections, bins=np.arange(26)-0.5)
 
     ax.set_xlabel('action index')
     ax.set_ylabel('freq')
@@ -204,7 +204,7 @@ def animation_action_distribution(model, hists):
 
     def update(i):
         ax.clear()
-        ax.hist(range(25), weights=hists[i], bins=25)
+        ax.hist(range(25), weights=hists[i], bins=np.arange(26)-0.5)
         ax.set_xlabel('action index')
         ax.set_ylabel('freq')
         ax.set_xticks(range(0, 25))

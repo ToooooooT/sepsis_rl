@@ -4,6 +4,7 @@
 import numpy as np
 import pandas as pd
 import torch
+import torch.optim.lr_scheduler as Scheduler
 import os
 from argparse import ArgumentParser
 import csv
@@ -111,8 +112,13 @@ def training(model, valid, config, valid_dataset, id_index_map):
     expert_val = list()
     policy_val = list()
     hists = list() # save model actions of validation in every episode 
+
+    # learning rate scheduler
+    scheduler = Scheduler.StepLR(model.optimizer, step_size=10000, gamma=0.9)
+
     for i in range(1, config.EPISODE + 1):
         loss += model.update(i)
+        scheduler.step()
 
         if i % 1000 == 0:
             print(f'Saving model (epoch = {i}, average loss = {loss / 1000:.4f})')
@@ -187,7 +193,7 @@ def plot_training_loss(model):
 def plot_action_distribution(model):
     fig, ax = plt.subplots()
 
-    ax.hist(range(25), weights=model.action_selections, bins=25)
+    ax.hist(range(25), weights=model.action_selections, bins=np.arange(26)-0.5)
 
     ax.set_xlabel('action index')
     ax.set_ylabel('freq')
@@ -204,7 +210,7 @@ def animation_action_distribution(model, hists):
 
     def update(i):
         ax.clear()
-        ax.hist(range(25), weights=hists[i], bins=25)
+        ax.hist(range(25), weights=hists[i], bins=np.arange(26)-0.5)
         ax.set_xlabel('action index')
         ax.set_ylabel('freq')
         ax.set_xticks(range(0, 25))
@@ -255,9 +261,9 @@ if __name__ == '__main__':
     valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{hour}.csv'))
 
     episode = 150000
-    for lr in range(1, 10, 2):
+    for lr in [1, 3, 5, 7, 9, 10, 12, 15]:
         for batch_size in [32, 64, 128, 256]:
-            for reg_lambda in range(6):
+            for reg_lambda in range(2, 7):
                 ######################################################################################
                 # Hyperparameters
                 ######################################################################################
@@ -298,11 +304,11 @@ if __name__ == '__main__':
 
                 env = {'num_feats': 49, 'num_actions': 25}
 
-                log_path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
+                log_path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
                 if not os.path.exists(log_path):
                     os.mkdir(log_path)
 
-                agent_path = os.path.join('./saved_agents', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
+                agent_path = os.path.join('./saved_agents', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
                 if not os.path.exists(agent_path):
                     os.mkdir(agent_path)
 

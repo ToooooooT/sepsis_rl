@@ -81,22 +81,22 @@ def plot_action_dist(model, actions, test_data_unnorm):
         actions_all[int(actions[index]) - 1] += 1
 
     f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(16,4))
-    ax1.hist(range(25), weights=actions_low, bins=25)
+    ax1.hist(range(25), weights=actions_low, bins=np.arange(26)-0.5)
     ax1.set_xticks(range(0, 25))
     ax1.tick_params(axis='x', labelsize=6)
     ax1.set_title('low SOFA')
 
-    ax2.hist(range(25), weights=actions_mid, bins=25)
+    ax2.hist(range(25), weights=actions_mid, bins=np.arange(26)-0.5)
     ax2.set_xticks(range(0, 25))
     ax2.tick_params(axis='x', labelsize=6)
     ax2.set_title('mid SOFA')
 
-    ax3.hist(range(25), weights=actions_high, bins=25)
+    ax3.hist(range(25), weights=actions_high, bins=np.arange(26)-0.5)
     ax3.set_xticks(range(0, 25))
     ax3.tick_params(axis='x', labelsize=6)
     ax3.set_title('high SOFA')
 
-    ax4.hist(range(25), weights=actions_all, bins=25)
+    ax4.hist(range(25), weights=actions_all, bins=np.arange(26)-0.5)
     ax4.set_xticks(range(0, 25))
     ax4.tick_params(axis='x', labelsize=6)
     ax4.set_title('all')

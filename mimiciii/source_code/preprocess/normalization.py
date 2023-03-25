@@ -84,7 +84,7 @@ def plot_reward_action(dataset, name):
     fig, ax = plt.subplots()
 
     # plot data reward distribution
-    ax.hist(data['r'], bins=40)
+    ax.hist(data['r'], bins=np.arange(41)-0.5)
     ax.set_xticks(range(-15, 16, 2))
     plt.savefig(f'../log/{name} reward distribution.png')
 
@@ -95,22 +95,22 @@ def plot_reward_action(dataset, name):
     actions = data['a']
 
     f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(16,4))
-    ax1.hist(actions_low, bins=25)
+    ax1.hist(actions_low, bins=np.arange(26)-0.5)
     ax1.set_xticks(range(0, 25))
     ax1.tick_params(axis='x', labelsize=6)
     ax1.set_title('low SOFA')
 
-    ax2.hist(actions_mid, bins=25)
+    ax2.hist(actions_mid, bins=np.arange(26)-0.5)
     ax2.set_xticks(range(0, 25))
     ax2.tick_params(axis='x', labelsize=6)
     ax2.set_title('mid SOFA')
 
-    ax3.hist(actions_high, bins=25)
+    ax3.hist(actions_high, bins=np.arange(26)-0.5)
     ax3.set_xticks(range(0, 25))
     ax3.tick_params(axis='x', labelsize=6)
     ax3.set_title('high SOFA')
 
-    ax4.hist(actions, bins=25)
+    ax4.hist(actions, bins=np.arange(26)-0.5)
     ax4.set_xticks(range(0, 25))
     ax4.tick_params(axis='x', labelsize=6)
     ax4.set_title('all')
