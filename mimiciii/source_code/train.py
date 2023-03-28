@@ -233,8 +233,8 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size", type=int, help="batch_size", dest="batch_size", default=32)
     parser.add_argument("--episode", type=int, help="episode", dest="episode", default=70000)
     parser.add_argument("--use_pri", type=int, help="use priority replay", dest="use_pri", default=1)
-    parser.add_argument("--lr", type=int, help="learning rate", dest="lr", default=1)
-    parser.add_argument("--reg_lambda", type=float, help="regularization term coeficient", dest="reg_lambda", default=5)
+    parser.add_argument("--lr", type=float, help="learning rate", dest="lr", default=1)
+    parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", dest="reg_lambda", default=5)
     args = parser.parse_args()
     hour = args.hour
     batch_size = args.batch_size
@@ -268,7 +268,7 @@ if __name__ == '__main__':
 
     # misc agent variables
     config.GAMMA = 0.99
-    config.LR = lr / 10000
+    config.LR = lr
 
     config.REG_LAMBDA = reg_lambda
 
@@ -290,11 +290,11 @@ if __name__ == '__main__':
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    log_path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
+    log_path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
     if not os.path.exists(log_path):
         os.mkdir(log_path)
 
-    agent_path = os.path.join('./saved_agents', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA} no Normal')
+    agent_path = os.path.join('./saved_agents', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
     if not os.path.exists(agent_path):
         os.mkdir(agent_path)
 
