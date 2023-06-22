@@ -9,12 +9,9 @@ from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 class Model(BaseAgent):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents'):
         super(Model, self).__init__(config=config, env=env, log_dir=log_dir, agent_dir=agent_dir)
-        self.device = config.device
 
         # step
         self.nsteps = 1
-
-        self.episode = config.EPISODE
 
         # algorithm control
         self.priority_replay = config.USE_PRIORITY_REPLAY
@@ -114,11 +111,7 @@ class Model(BaseAgent):
         batch_state, batch_action, batch_reward, non_final_next_states, non_final_mask, empty_next_state_values, indices, weights = batch_vars
 
         # estimate
-        # gather : take element of batch_action as a index of each batch_state to get the q_estimate values 
-        # gather(dim, index)
         q_values = self.model(batch_state)
-        # for i in range(q_values.shape[0]):
-        #     self.save_action(q_values[i].argmax())
         current_q_values = q_values.gather(1, batch_action) 
         
         # compute target value
@@ -158,14 +151,11 @@ class Model(BaseAgent):
         self.optimizer.zero_grad()
         loss.backward()
         for param in self.model.parameters():
-            # why clamp_ ?
             param.grad.data.clamp_(-1, 1) # clamp_ : let gradient be in interval (-1, 1)
         self.optimizer.step()
 
         self.update_target_model()
-        # self.save_td(loss.item(), frame)
         return loss.item()
-        # self.save_sigma_param_magnitudes(frame)
 
     def get_action(self, s, eps=0):
         with torch.no_grad():
