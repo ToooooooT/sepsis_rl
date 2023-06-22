@@ -21,8 +21,8 @@ class Config(object):
         self.EXP_REPLAY_SIZE = 100000
         self.BATCH_SIZE = 32
         self.PRIORITY_ALPHA = 0.6
-        self.PRIORITY_BETA_START = 0.4
-        self.PRIORITY_BETA_FRAMES = 100000
+        self.PRIORITY_BETA_START = 0.9
+        self.PRIORITY_BETA_FRAMES = 30000
 
         # data logging parameters
         self.ACTION_SELECTION_COUNT_FREQUENCY = 1000
