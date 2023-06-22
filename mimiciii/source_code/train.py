@@ -7,10 +7,11 @@ import torch
 import os
 from argparse import ArgumentParser
 from collections import defaultdict
+from tqdm import tqdm
 
-from agents.DQN import Model as DQN_Agent
+from agents import Model as DQN_Agent
 from utils.hyperparameters import Config
-from network.duelling import DuellingMLP
+from network import DuellingMLP
 from utils.plot import *
 
 pd.options.mode.chained_assignment = None
@@ -24,6 +25,8 @@ def parse_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=1)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
+    parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=10)
     args = parser.parse_args()
     return args
 
@@ -35,18 +38,16 @@ class Model(DQN_Agent):
         super().__init__(static_policy, env, config, log_dir, agent_dir)
 
     def declare_networks(self):
-        self.model = DuellingMLP(self.num_feats, self.num_actions)
-        self.target_model = DuellingMLP(self.num_feats, self.num_actions)
+        self.model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.target_model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
 
-######################################################################################
-# Training Loop
-######################################################################################
+
 def add_dataset_to_replay(train, model, clip_reward):
     # put all transitions in replay buffer
     drop_column = ['charttime', 'median_dose_vaso', 'input_total', 'icustayid', 'died_in_hosp', 'mortality_90d',
                 'died_within_48h_of_out_time', 'delay_end_of_record_and_discharge_or_death',
                 'input_4hourly', 'max_dose_vaso', 'reward', 'action']
-    for i, index in enumerate(train.index[:-1]):
+    for i, index in tqdm(enumerate(train.index[:-1])):
         s = train.loc[index, :]
         s_ = train.loc[train.index[i + 1], :]
         a = s['action']
@@ -73,46 +74,47 @@ def add_dataset_to_replay(train, model, clip_reward):
     model.append_to_replay(s, a, r, s_)
 
 
-def get_valid_dataset(valid_dataset):
+def process_dataset(dataset):
     drop_column = ['charttime', 'median_dose_vaso', 'input_total', 'icustayid', 'died_in_hosp', 'mortality_90d',
                 'died_within_48h_of_out_time', 'delay_end_of_record_and_discharge_or_death',
                 'input_4hourly', 'max_dose_vaso', 'reward', 'action']
-    validation = {'s': [], 'a': []}
+    data = {'s': [], 'a': []}
     id_index_map = defaultdict(list)
-    for index in valid_dataset.index:
-        s = valid_dataset.iloc[index, :]
+    for index in tqdm(dataset.index):
+        s = dataset.iloc[index, :]
         a = s['action']
         id_index_map[s['icustayid']].append(index)
         s.drop(drop_column, inplace=True)
-        validation['s'].append(s)
-        validation['a'].append(a)
+        data['s'].append(s)
+        data['a'].append(a)
 
-    validation['s'] = np.array(validation['s'])
-    validation['a'] = np.array(validation['a'])
+    data['s'] = np.array(data['s'])
+    data['a'] = np.array(data['a'])
 
-    return validation, id_index_map
+    return data, id_index_map
 
 
-def validation(valid_dataset, model):
-    batch_state, batch_action = valid_dataset['s'], valid_dataset['a']
+def testing(test, model: Model):
+    batch_state, batch_action = test['s'], test['a']
 
     batch_state = torch.tensor(batch_state, device=model.device, dtype=torch.float).view(-1, model.num_feats)
     batch_action = torch.tensor(batch_action, device=model.device, dtype=torch.int64).view(-1, 1)
 
     with torch.no_grad():
-        actions = model.model(batch_state).max(dim=1)[1].view(-1, 1)
+        actions = model.model(batch_state).max(dim=1)[1].view(-1, 1).cpu().numpy()
         
     model.save_action(actions)
 
     return actions
 
 
-def training(model: Model, valid, config, valid_dataset, id_index_map):
+def training(model: Model, valid, config, valid_dataset, id_index_map, args):
     '''
-    valid           : batch_state and action (dict)
-    valid_dataset   : original valid dataset (DataFrame)
-    id_index_map    : indexes of each icustayid (dict)
-    return ->
+    Args:
+        valid           : batch_state and action (dict)
+        valid_dataset   : original valid dataset (DataFrame)
+        id_index_map    : indexes of each icustayid (dict)
+    Returns:
         policy_val  : list of policy estimate value
         expert_val  : list of expert value
     '''
@@ -121,20 +123,28 @@ def training(model: Model, valid, config, valid_dataset, id_index_map):
     expert_val = list()
     policy_val = list()
     hists = list() # save model actions of validation in every episode 
-    for i in range(1, config.EPISODE + 1):
-        loss += model.update(i)
+    valid_freq = args.valid_freq
+    train_recored_path = os.path.join(model.log_dir, 'train_record.txt')
+    if os.path.exists(train_recored_path):
+        os.remove(train_recored_path)
 
-        if i % 1000 == 0:
-            print(f'Saving model (epoch = {i}, average loss = {loss / 1000:.4f})')
+    for i in tqdm(range(1, config.EPISODE + 1)):
+        loss += model.update()
+
+        if i % valid_freq == 0:
             model.save()
-            model.save_td(loss / 1000)
-            actions = validation(valid, model)
+            model.save_td(loss / valid_freq)
+            actions = testing(valid, model)
             hists.append(model.action_selections)
             p_val, e_val = WIS_estimator(actions, valid_dataset, id_index_map)
             policy_val.append(p_val)
             expert_val.append(e_val)
-            print(f'policy WIS estimator: {p_val:.5f}')
-            print(f'expert: {e_val:.5f}')
+
+            with open(train_recored_path, 'a') as train_record:
+                train_record.write(f'[epoch: {i:06d}], average loss = {loss / valid_freq:.4f})\n')
+                train_record.write(f'policy WIS estimator: {p_val:.5f}\n')
+                train_record.write(f'expert: {e_val:.5f}\n')
+
             loss = 0
     
     plot_training_loss(model.tds, model.log_dir)
@@ -188,6 +198,12 @@ if __name__ == '__main__':
     train_dataset = pd.read_csv(os.path.join(dataset_path, f'train_{args.hour}.csv'))
     valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{args.hour}.csv'))
 
+    test_data = pd.read_csv(os.path.join(dataset_path, f'{args.test_dataset}_{args.hour}.csv'))
+    test_data_unnorm = pd.read_csv(os.path.join(dataset_path, f'dataset_{args.hour}.csv'))
+    icustayids = test_data['icustayid'].unique()
+    test_data_unnorm = test_data_unnorm[[icustayid in icustayids for icustayid in test_data_unnorm['icustayid']]]
+    test_data_unnorm.index = range(test_data.shape[0])
+
     ######################################################################################
     # Hyperparameters
     ######################################################################################
@@ -227,8 +243,35 @@ if __name__ == '__main__':
     model = Model(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
 
     ######################################################################################
-    # training loop
+    # Training
     ######################################################################################
+    print('Adding dataset to replay buffer...')
     add_dataset_to_replay(train_dataset, model, clip_reward)
-    valid, id_index_map = get_valid_dataset(valid_dataset)
-    training(model, valid, config, valid_dataset, id_index_map)
+
+    print('Processing validation dataset...')
+    valid, id_index_map = process_dataset(valid_dataset)
+
+    print('Start training...')
+    training(model, valid, config, valid_dataset, id_index_map, args)
+
+    ######################################################################################
+    # Testing
+    ######################################################################################
+    model.load()
+
+    print('Processing test dataset...')
+    test, id_index_map = process_dataset(test_data)
+
+    print('Start testing')
+    actions = testing(test, model)
+
+    test_data_unnorm['action'] = test_data['action']
+    test_data_unnorm['policy action'] = actions
+    test_data_unnorm.to_csv(os.path.join(model.log_dir, 'test_data_predict.csv'), index=False)
+    policy_val, expert_val = WIS_estimator(actions, test_data, id_index_map)
+    plot_action_dist(actions, test_data_unnorm, model.log_dir)
+    with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
+        f.write(f'policy WIS estimator: {policy_val:.5f}\n')
+        f.write(f'expert: {expert_val:.5f}')
+    print(f'policy WIS estimator: {policy_val:.5f}')
+    print(f'expert: {expert_val:.5f}')
