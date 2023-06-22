@@ -6,16 +6,26 @@ import pandas as pd
 import torch
 import os
 from argparse import ArgumentParser
-import csv
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 from collections import defaultdict
 
 from agents.DQN import Model as DQN_Agent
 from utils.hyperparameters import Config
-from network.D3QN import D3QN
+from network.duelling import DuellingMLP
+from utils.plot import *
 
 pd.options.mode.chained_assignment = None
+
+def parse_args():
+    parser = ArgumentParser()
+    parser.add_argument("--hour", type=int, help="hours of one state", default=4)
+    parser.add_argument("--batch_size", type=int, help="batch_size", default=32)
+    parser.add_argument("--episode", type=int, help="episode", default=70000)
+    parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
+    parser.add_argument("--lr", type=float, help="learning rate", default=1)
+    parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
+    parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
+    args = parser.parse_args()
+    return args
 
 ######################################################################################
 # Agent
@@ -25,13 +35,13 @@ class Model(DQN_Agent):
         super().__init__(static_policy, env, config, log_dir, agent_dir)
 
     def declare_networks(self):
-        self.model = D3QN(self.num_feats, self.num_actions)
-        self.target_model = D3QN(self.num_feats, self.num_actions)
+        self.model = DuellingMLP(self.num_feats, self.num_actions)
+        self.target_model = DuellingMLP(self.num_feats, self.num_actions)
 
 ######################################################################################
 # Training Loop
 ######################################################################################
-def add_dataset_to_replay(train, model):
+def add_dataset_to_replay(train, model, clip_reward):
     # put all transitions in replay buffer
     drop_column = ['charttime', 'median_dose_vaso', 'input_total', 'icustayid', 'died_in_hosp', 'mortality_90d',
                 'died_within_48h_of_out_time', 'delay_end_of_record_and_discharge_or_death',
@@ -97,7 +107,7 @@ def validation(valid_dataset, model):
     return actions
 
 
-def training(model, valid, config, valid_dataset, id_index_map):
+def training(model: Model, valid, config, valid_dataset, id_index_map):
     '''
     valid           : batch_state and action (dict)
     valid_dataset   : original valid dataset (DataFrame)
@@ -127,18 +137,19 @@ def training(model, valid, config, valid_dataset, id_index_map):
             print(f'expert: {e_val:.5f}')
             loss = 0
     
-    animation_action_distribution(model, hists)
-    plot_training_loss(model)
-    plot_action_distribution(model)
-    plot_estimate_value(model, expert_val, policy_val)
+    plot_training_loss(model.tds, model.log_dir)
+    plot_action_distribution(model.action_selections, model.log_dir)
+    animation_action_distribution(hists, model.log_dir)
+    plot_estimate_value(expert_val, policy_val, model.log_dir)
 
 
 def WIS_estimator(actions, expert_data, id_index_map):
     '''
+    Args:
     actions         : policy action (tensor)
-    expert_data       : original expert dataset (DataFrame)
+    expert_data     : original expert dataset (DataFrame)
     id_index_map    : indexes of each icustayid (dict)
-    return ->
+    Returns:
         policy_val  : policy estimation value
         expert_val  : expert value
     '''
@@ -167,88 +178,15 @@ def WIS_estimator(actions, expert_data, id_index_map):
     return policy_val, expert_val
 
 
-######################################################################################
-# Plot
-######################################################################################
-def plot_training_loss(model):
-    fig, ax = plt.subplots()
-
-    ax.plot(model.tds)
-
-    ax.set_xlabel('epoch * 1000')
-    ax.set_ylabel('loss')
-
-    ax.set_title('training loss')
-
-    plt.savefig(os.path.join(model.log_dir, 'training loss.png'))
-
-
-def plot_action_distribution(model):
-    fig, ax = plt.subplots()
-
-    ax.hist(range(25), weights=model.action_selections, bins=np.arange(26)-0.5)
-
-    ax.set_xlabel('action index')
-    ax.set_ylabel('freq')
-    ax.set_xticks(range(0, 25))
-
-    ax.set_title('D3QN action distribution')
-
-    plt.savefig(os.path.join(model.log_dir, 'D3QN valid action distribution.png'))
-
-
-def animation_action_distribution(model, hists):
-    fig, ax = plt.subplots()
-
-    def update(i):
-        ax.clear()
-        ax.hist(range(25), weights=hists[i], bins=np.arange(26)-0.5)
-        ax.set_xlabel('action index')
-        ax.set_ylabel('freq')
-        ax.set_xticks(range(0, 25))
-        ax.set_title(f'action distribution {i}')
-
-    ani = FuncAnimation(fig, update, frames=len(hists), interval=200)
-    ani.save(os.path.join(model.log_dir, 'D3QN valid action distribution.gif'), writer='imagemagick')
-
-
-def plot_estimate_value(model, expert_val, policy_val):
-    fig, ax = plt.subplots()
-
-    ax.plot(list(range(len(policy_val))), policy_val)
-    ax.plot(list(range(len(expert_val))), expert_val)
-    ax.legend(['policy', 'expert'],loc='best')
-
-    ax.set_xlabel('epoch * 1000')
-    ax.set_ylabel('estimate value')
-
-    ax.set_title('policy vs expert value')
-
-    plt.savefig(os.path.join(model.log_dir, 'valid estimate value.png'))
-
-
 if __name__ == '__main__':
-    parser = ArgumentParser()
-    parser.add_argument("--hour", type=int, help="hours of one state", dest="hour", default=4)
-    parser.add_argument("--batch_size", type=int, help="batch_size", dest="batch_size", default=32)
-    parser.add_argument("--episode", type=int, help="episode", dest="episode", default=70000)
-    parser.add_argument("--use_pri", type=int, help="use priority replay", dest="use_pri", default=1)
-    parser.add_argument("--lr", type=float, help="learning rate", dest="lr", default=1)
-    parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", dest="reg_lambda", default=5)
-    args = parser.parse_args()
-    hour = args.hour
-    batch_size = args.batch_size
-    episode = args.episode
-    use_pri = args.use_pri
-    lr = args.lr
-    reg_lambda = args.reg_lambda
+    args = parse_args()
 
     ######################################################################################
     # Load Dataset
     ######################################################################################
     dataset_path = "../data/final_dataset/"
-    train_dataset = pd.read_csv(os.path.join(dataset_path, f'train_{hour}.csv'))
-    valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{hour}.csv'))
+    train_dataset = pd.read_csv(os.path.join(dataset_path, f'train_{args.hour}.csv'))
+    valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{args.hour}.csv'))
 
     ######################################################################################
     # Hyperparameters
@@ -258,19 +196,15 @@ if __name__ == '__main__':
     config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # training loop times
-    config.EPISODE = episode
+    config.EPISODE = args.episode
 
     # algorithm control
-    config.USE_PRIORITY_REPLAY = use_pri
+    config.USE_PRIORITY_REPLAY = args.use_pri
             
-    # Multi-step returns
-    config.N_STEPS = 1
-
     # misc agent variables
-    config.GAMMA = 0.99
-    config.LR = lr
+    config.LR = args.lr
 
-    config.REG_LAMBDA = reg_lambda
+    config.REG_LAMBDA = args.reg_lambda
 
     # memory
     exp_replay_size = 1
@@ -278,31 +212,23 @@ if __name__ == '__main__':
         exp_replay_size <<= 1
 
     config.EXP_REPLAY_SIZE = exp_replay_size
-    config.BATCH_SIZE = batch_size
-    config.PRIORITY_ALPHA = 0.6
-    config.PRIORITY_BETA_START = 0.9
-    config.PRIORITY_BETA_FRAMES = 30000
-
-    # data logging parameters
-    config.ACTION_SELECTION_COUNT_FREQUENCY = 10000
+    config.BATCH_SIZE = args.batch_size
 
     clip_reward = True
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    log_path = os.path.join('./log', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
-    if not os.path.exists(log_path):
-        os.mkdir(log_path)
+    log_path = os.path.join('./log', f'agent={args.agent}-batch_size={config.BATCH_SIZE}-episode={config.EPISODE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}')
+    os.makedirs(log_path, exist_ok=True)
 
-    agent_path = os.path.join('./saved_agents', f'batch_size-{config.BATCH_SIZE} episode-{config.EPISODE} use_pri-{config.USE_PRIORITY_REPLAY} lr-{config.LR} reg_lambda-{config.REG_LAMBDA}')
-    if not os.path.exists(agent_path):
-        os.mkdir(agent_path)
+    agent_path = os.path.join('./saved_agents', f'agent={args.agent}-batch_size={config.BATCH_SIZE}-episode={config.EPISODE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}')
+    os.makedirs(agent_path, exist_ok=True)
 
     model = Model(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
 
     ######################################################################################
-    # Training
+    # training loop
     ######################################################################################
-    add_dataset_to_replay(train_dataset, model)
+    add_dataset_to_replay(train_dataset, model, clip_reward)
     valid, id_index_map = get_valid_dataset(valid_dataset)
     training(model, valid, config, valid_dataset, id_index_map)
