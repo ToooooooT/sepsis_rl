@@ -57,17 +57,16 @@ class Model(BaseAgent):
             self.model.train()
             self.target_model.train()
 
+        self.model = self.model.to(self.device)
+        self.target_model.to(self.device)
+
 
     def declare_networks(self):
         # overload function
         self.model = None
         self.target_model = None
+        raise NotImplementedError
 
-
-    def move_model_to_device(self):
-        # move to correct device
-        self.model = self.model.to(self.device)
-        self.target_model.to(self.device)
 
     def declare_memory(self):
         self.memory = ExperienceReplayMemory(self.experience_replay_size) if not self.priority_replay else PrioritizedReplayMemory(self.experience_replay_size, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames)
@@ -76,6 +75,17 @@ class Model(BaseAgent):
         self.memory.push((s, a, r, s_))
 
     def prep_minibatch(self):
+        '''
+        Returns:
+            batch_state: expected shape (B, S)
+            batch_action: expected shape (B, D)
+            batch_reward: expected shape (B, 1)
+            non_final_next_state: expected shape (., D)
+            non_final_mask: true if it is not final state; expected shape (B)
+            empty_next_state_values: expected shape
+            indices: a list of index
+            weights: expected shape (B,)
+        '''
         # random transition batch is taken from replay memory
         transitions, indices, weights = self.memory.sample(self.batch_size)
         
@@ -139,7 +149,7 @@ class Model(BaseAgent):
             # loss = 0.5 * td_error.mean()
         return loss
 
-    def update(self, frame):
+    def update(self):
         if self.static_policy:
             return None
 
