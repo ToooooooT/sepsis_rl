@@ -10,9 +10,8 @@ from collections import defaultdict
 from tqdm import tqdm
 
 from agents import Model as DQN_Agent
-from utils.hyperparameters import Config
+from utils import Config, plot_action_dist, plot_action_distribution, plot_estimate_value, plot_training_loss, animation_action_distribution
 from network import DuellingMLP
-from utils.plot import *
 
 pd.options.mode.chained_assignment = None
 
