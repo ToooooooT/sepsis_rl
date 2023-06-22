@@ -16,14 +16,10 @@ class BaseAgent(object):
         self.rewards = [] # save the rewards
         self.tds = [] # save the rewards
 
-        self.action_log_frequency = config.ACTION_SELECTION_COUNT_FREQUENCY # the frequency to save the action selections into csv file
         self.action_selections = [0 for _ in range(env['num_actions'])] # the frequency of each action be selected
-        self.action_log = 0
 
-        if os.path.exists(os.path.join(self.log_dir, 'action_log.csv')):
-            os.remove(os.path.join(self.log_dir, 'action_log.csv'))
-        if os.path.exists(os.path.join(self.log_dir, 'td.csv')):
-            os.remove(os.path.join(self.log_dir, 'td.csv'))
+        self.device = config.device
+
 
     def save(self):
         if not os.path.exists(self.agent_dir):
@@ -31,6 +27,7 @@ class BaseAgent(object):
         torch.save(self.model.state_dict(), os.path.join(self.agent_dir, 'model.dump'))
         torch.save(self.optimizer.state_dict(), os.path.join(self.agent_dir, 'optim.dump'))
     
+
     def load(self):
         fname_model = os.path.join(self.agent_dir, "model.dump")
         fname_optim = os.path.join(self.agent_dir, "optim.dump")
@@ -46,18 +43,6 @@ class BaseAgent(object):
         else:
             assert False
 
-    def save_replay(self):
-        pickle.dump(self.memory, open(os.path.join(self.agent_dir, 'exp_replay_agent.dump'), 'wb'))
-
-    def load_replay(self):
-        fname = os.path.join(self.agent_dir, 'exp_replay_agent.dump')
-        if os.path.isfile(fname):
-            self.memory = pickle.load(open(fname, 'rb'))
-        else:
-            assert False
-
-    def save_reward(self, reward):
-        self.rewards.append(reward)
 
     def save_action(self, actions):
         # save the frequency of each action be selected
@@ -66,21 +51,6 @@ class BaseAgent(object):
         for action in actions:
             self.action_selections[int(action)] += (1.0 / n)
 
+
     def save_td(self, td):
         self.tds.append(td)
-
-    '''
-    def save_sigma_param_magnitudes(self, tstep):
-        with torch.no_grad():
-            sum_, count = 0.0, 0.0
-            for name, param in self.model.named_parameters():
-                if param.requires_grad and 'sigma' in name:
-                    sum_+= torch.sum(param.abs()).item()
-                    count += np.prod(param.shape)
-            
-            if count > 0:
-                with open(os.path.join(self.log_dir, 'sig_param_mag.csv'), 'a') as f:
-                    writer = csv.writer(f)
-                    writer.writerow((tstep, sum_/count))
-
-    '''
