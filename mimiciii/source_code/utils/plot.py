@@ -77,3 +77,46 @@ def plot_estimate_value(expert_val, policy_val, log_dir):
     ax.set_title('policy vs expert value')
 
     plt.savefig(os.path.join(log_dir, 'valid estimate value.png'))
+
+
+def plot_action_dist(actions, test_data_unnorm, log_dir):
+    '''
+    actions                 : policy action (tensor)
+    test_data_unnorm        : original expert dataset unnormalize (DataFrame)
+    '''
+    actions_low = [0] * 25
+    actions_mid = [0] * 25
+    actions_high = [0] * 25
+    actions_all = [0] * 25
+    for index in test_data_unnorm.index:
+        # action distribtuion
+        if test_data_unnorm.loc[index, 'SOFA'] <= 5:
+            actions_low[int(actions[index])] += 1
+        elif test_data_unnorm.loc[index, 'SOFA'] < 15:
+            actions_mid[int(actions[index])] += 1
+        else:
+            actions_high[int(actions[index])] += 1
+        actions_all[int(actions[index])] += 1
+
+    f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(16,4))
+    ax1.hist(range(25), weights=actions_low, bins=np.arange(26)-0.5)
+    ax1.set_xticks(range(0, 25))
+    ax1.tick_params(axis='x', labelsize=6)
+    ax1.set_title('low SOFA')
+
+    ax2.hist(range(25), weights=actions_mid, bins=np.arange(26)-0.5)
+    ax2.set_xticks(range(0, 25))
+    ax2.tick_params(axis='x', labelsize=6)
+    ax2.set_title('mid SOFA')
+
+    ax3.hist(range(25), weights=actions_high, bins=np.arange(26)-0.5)
+    ax3.set_xticks(range(0, 25))
+    ax3.tick_params(axis='x', labelsize=6)
+    ax3.set_title('high SOFA')
+
+    ax4.hist(range(25), weights=actions_all, bins=np.arange(26)-0.5)
+    ax4.set_xticks(range(0, 25))
+    ax4.tick_params(axis='x', labelsize=6)
+    ax4.set_title('all')
+
+    plt.savefig(os.path.join(log_dir, 'test_action_distribution.png'))
