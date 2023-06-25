@@ -27,4 +27,12 @@ class Config(object):
         # data logging parameters
         self.ACTION_SELECTION_COUNT_FREQUENCY = 1000
 
+        # Entropy regularization coefficient
+        self.ALPHA = 0.2
+        # Behavior cloning use in SAC
+        self.BEHAVIOR_CLONING = True
+        # Automatic entropy tuning
+        self.AUTOTUNE = True
+        self.TARGET_ENTROPY_SCALE = 0.89
+
         self.REG_LAMBDA = 5
