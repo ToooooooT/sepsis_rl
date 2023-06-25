@@ -24,7 +24,7 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, help="batch_size", default=32)
     parser.add_argument("--episode", type=int, help="episode", default=70000)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
-    parser.add_argument("--lr", type=float, help="learning rate", default=1)
+    parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
@@ -228,10 +228,10 @@ if __name__ == '__main__':
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    log_path = os.path.join('./log', f'agent={args.agent}-batch_size={config.BATCH_SIZE}-episode={config.EPISODE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}')
+    path = f'agent={args.agent}-batch_size={config.BATCH_SIZE}-episode={config.EPISODE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq{config.TARGET_NET_UPDATE_FREQ}'
+    log_path = os.path.join('./log', path)
     os.makedirs(log_path, exist_ok=True)
-
-    agent_path = os.path.join('./saved_agents', f'agent={args.agent}-batch_size={config.BATCH_SIZE}-episode={config.EPISODE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}')
+    agent_path = os.path.join('./saved_agents', path)
     os.makedirs(agent_path, exist_ok=True)
 
     model = Model(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
