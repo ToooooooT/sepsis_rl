@@ -11,8 +11,10 @@ from collections import defaultdict
 from tqdm import tqdm
 
 from agents import Model as DQN_Agent
-from utils import Config, plot_action_dist, plot_action_distribution, plot_estimate_value, plot_training_loss, animation_action_distribution
+from utils import Config, plot_action_dist, plot_action_distribution, plot_estimate_value, animation_action_distribution
 from network import DuellingMLP
+
+from torch.utils.tensorboard import SummaryWriter
 
 pd.options.mode.chained_assignment = None
 
@@ -119,36 +121,28 @@ def training(model: Model, valid, config, valid_dataset, id_index_map, args):
         policy_val  : list of policy estimate value
         expert_val  : list of expert value
     '''
-
+    writer = SummaryWriter(model.log_dir)
     loss = 0
     expert_val = list()
     policy_val = list()
     hists = list() # save model actions of validation in every episode 
     valid_freq = args.valid_freq
-    train_recored_path = os.path.join(model.log_dir, 'train_record.txt')
-    if os.path.exists(train_recored_path):
-        os.remove(train_recored_path)
 
     for i in tqdm(range(1, config.EPISODE + 1)):
-        loss += model.update(i)
+        loss = model.update(i)
+        writer.add_scalars('loss', loss, i)
 
         if i % valid_freq == 0:
             model.save()
-            model.save_td(loss / valid_freq)
             actions = testing(valid, model)
-            hists.append(model.action_selections)
+            if i % 1000 == 0:
+                hists.append(model.action_selections)
             p_val, e_val = WIS_estimator(actions, valid_dataset, id_index_map)
             policy_val.append(p_val)
             expert_val.append(e_val)
 
-            with open(train_recored_path, 'a') as train_record:
-                train_record.write(f'[epoch: {i:06d}], average loss = {loss / valid_freq:.4f})\n')
-                train_record.write(f'policy WIS estimator: {p_val:.5f}\n')
-                train_record.write(f'expert: {e_val:.5f}\n')
+            writer.add_scalars('WIS_estimator', dict(zip(['learned', 'expert'], [p_val, e_val])), i)
 
-            loss = 0
-    
-    plot_training_loss(model.tds, model.log_dir)
     plot_action_distribution(model.action_selections, model.log_dir)
     animation_action_distribution(hists, model.log_dir)
     plot_estimate_value(expert_val, policy_val, model.log_dir)
