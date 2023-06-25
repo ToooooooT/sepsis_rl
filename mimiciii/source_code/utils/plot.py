@@ -2,25 +2,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
 import os
-
 import numpy as np
-
-def plot_training_loss(tds, log_dir):
-    '''
-    Args:
-        tds: list of loss
-    '''
-    fig, ax = plt.subplots()
-
-    ax.plot(tds)
-
-    ax.set_xlabel('epoch * 1000')
-    ax.set_ylabel('loss')
-
-    ax.set_title('training loss')
-
-    plt.savefig(os.path.join(log_dir, 'training_loss.png'))
-
 
 def plot_action_distribution(action_selections, log_dir):
     '''
