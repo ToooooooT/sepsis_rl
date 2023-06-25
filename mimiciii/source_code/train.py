@@ -130,7 +130,7 @@ def training(model: Model, valid, config, valid_dataset, id_index_map, args):
         os.remove(train_recored_path)
 
     for i in tqdm(range(1, config.EPISODE + 1)):
-        loss += model.update()
+        loss += model.update(i)
 
         if i % valid_freq == 0:
             model.save()
