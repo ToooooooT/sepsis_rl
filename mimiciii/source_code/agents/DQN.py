@@ -149,7 +149,7 @@ class Model(BaseAgent):
             # loss = 0.5 * td_error.mean()
         return loss
 
-    def update(self):
+    def update(self, t):
         if self.static_policy:
             return None
 
@@ -164,7 +164,9 @@ class Model(BaseAgent):
             param.grad.data.clamp_(-1, 1) # clamp_ : let gradient be in interval (-1, 1)
         self.optimizer.step()
 
-        self.update_target_model()
+        # update the target network
+        if t % self.target_net_update_freq == 0:
+            self.update_target_model()
         return loss.item()
 
     def get_action(self, s, eps=0):
