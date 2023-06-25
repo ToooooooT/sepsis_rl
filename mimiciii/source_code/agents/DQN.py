@@ -167,7 +167,7 @@ class Model(BaseAgent):
         # update the target network
         if t % self.target_net_update_freq == 0:
             self.update_target_model()
-        return loss.item()
+        return {'td_error': loss.item()}
 
     def get_action(self, s, eps=0):
         with torch.no_grad():
