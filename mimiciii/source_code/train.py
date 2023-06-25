@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
     parser.add_argument("--valid_freq", type=int, help="validation frequency", default=10)
+    parser.add_argument("--target_net_freq", type=int, help="the frequency of updates for the target networks", default=1)
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
     return args
@@ -209,17 +210,12 @@ if __name__ == '__main__':
     config = Config()
 
     config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # training loop times
     config.EPISODE = args.episode
-
-    # algorithm control
     config.USE_PRIORITY_REPLAY = args.use_pri
-            
-    # misc agent variables
     config.LR = args.lr
-
     config.REG_LAMBDA = args.reg_lambda
+    config.TARGET_NET_UPDATE_FREQ = args.target_net_freq
+    config.BATCH_SIZE = args.batch_size
 
     # memory
     exp_replay_size = 1
@@ -227,7 +223,6 @@ if __name__ == '__main__':
         exp_replay_size <<= 1
 
     config.EXP_REPLAY_SIZE = exp_replay_size
-    config.BATCH_SIZE = args.batch_size
 
     clip_reward = True
 
