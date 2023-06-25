@@ -11,9 +11,6 @@ class BaseAgent(object):
         self.log_dir = log_dir # log directory
         self.agent_dir = agent_dir # saved agents directory
 
-        self.rewards = [] # save the rewards
-        self.tds = [] # save the rewards
-
         self.action_selections = [0 for _ in range(env['num_actions'])] # the frequency of each action be selected
 
         self.device = config.device
@@ -48,7 +45,3 @@ class BaseAgent(object):
         self.action_selections = [0 for _ in range(len(self.action_selections))]
         for action in actions:
             self.action_selections[int(action)] += (1.0 / n)
-
-
-    def save_td(self, td):
-        self.tds.append(td)
