@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 import os
+import random
 from argparse import ArgumentParser
 from collections import defaultdict
 from tqdm import tqdm
@@ -26,6 +27,7 @@ def parse_args():
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
     parser.add_argument("--valid_freq", type=int, help="validation frequency", default=10)
+    parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
     return args
 
@@ -189,6 +191,10 @@ def WIS_estimator(actions, expert_data, id_index_map):
 
 if __name__ == '__main__':
     args = parse_args()
+
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
     ######################################################################################
     # Load Dataset
