@@ -1,6 +1,7 @@
 import numpy as np
 
 import torch
+import torch.nn as nn
 import torch.optim as optim
 
 from agents.BaseAgent import BaseAgent
@@ -63,8 +64,8 @@ class DQN(BaseAgent):
 
     def declare_networks(self):
         # overload function
-        self.model = None
-        self.target_model = None
+        self.model: nn.Module = None
+        self.target_model: nn.Module = None
         raise NotImplementedError
 
 
@@ -114,6 +115,8 @@ class DQN(BaseAgent):
             Q_threshold = 20
             when die reward -15 else +15
         '''
+        self.model.train()
+
         batch_state, batch_action, batch_reward, non_final_next_states, non_final_mask, empty_next_state_values, indices, weights = batch_vars
 
         # estimate
