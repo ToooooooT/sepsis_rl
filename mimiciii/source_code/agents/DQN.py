@@ -72,8 +72,8 @@ class DQN(BaseAgent):
     def declare_memory(self):
         self.memory = ExperienceReplayMemory(self.experience_replay_size) if not self.priority_replay else PrioritizedReplayMemory(self.experience_replay_size, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames)
 
-    def append_to_replay(self, s, a, r, s_):
-        self.memory.push((s, a, r, s_))
+    def append_to_replay(self, s, a, r, s_, SOFA):
+        self.memory.push((s, a, r, s_, SOFA))
 
     def prep_minibatch(self):
         '''
@@ -90,11 +90,11 @@ class DQN(BaseAgent):
         # random transition batch is taken from replay memory
         transitions, indices, weights = self.memory.sample(self.batch_size)
         
-        batch_state, batch_action, batch_reward, batch_next_state = zip(*transitions)
+        batch_state, batch_action, batch_reward, batch_next_state, _ = zip(*transitions)
 
         batch_state = torch.tensor(np.array(batch_state), device=self.device, dtype=torch.float)
         batch_action = torch.tensor(np.array(batch_action), device=self.device, dtype=torch.int64).view(-1, 1)
-        batch_reward = torch.tensor(np.array(batch_reward), device=self.device, dtype=torch.float).view(-1, 1) # squeeze : delete all dimension with value = 1
+        batch_reward = torch.tensor(np.array(batch_reward), device=self.device, dtype=torch.float).view(-1, 1)
         
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch_next_state)), device=self.device, dtype=torch.bool)
         try: # sometimes all next states are false
