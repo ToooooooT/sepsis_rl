@@ -6,9 +6,9 @@ import torch.optim as optim
 from agents.BaseAgent import BaseAgent
 from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 
-class Model(BaseAgent):
+class DQN(BaseAgent):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents'):
-        super(Model, self).__init__(config=config, env=env, log_dir=log_dir, agent_dir=agent_dir)
+        super().__init__(config=config, env=env, log_dir=log_dir, agent_dir=agent_dir)
 
         # step
         self.nsteps = 1
@@ -91,13 +91,9 @@ class Model(BaseAgent):
         
         batch_state, batch_action, batch_reward, batch_next_state = zip(*transitions)
 
-        batch_state = np.array(batch_state)
-        batch_action = np.array(batch_action)
-        batch_reward = np.array(batch_reward)
-
-        batch_state = torch.tensor(batch_state, device=self.device, dtype=torch.float).view(-1, self.num_feats)
-        batch_action = torch.tensor(batch_action, device=self.device, dtype=torch.int64).squeeze().view(-1, 1) # view = reshape in numpy
-        batch_reward = torch.tensor(batch_reward, device=self.device, dtype=torch.float).squeeze().view(-1, 1) # squeeze : delete all dimension with value = 1
+        batch_state = torch.tensor(np.array(batch_state), device=self.device, dtype=torch.float)
+        batch_action = torch.tensor(np.array(batch_action), device=self.device, dtype=torch.int64).view(-1, 1)
+        batch_reward = torch.tensor(np.array(batch_reward), device=self.device, dtype=torch.float).view(-1, 1) # squeeze : delete all dimension with value = 1
         
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch_next_state)), device=self.device, dtype=torch.bool)
         try: # sometimes all next states are false
