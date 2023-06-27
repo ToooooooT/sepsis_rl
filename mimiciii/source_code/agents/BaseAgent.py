@@ -40,6 +40,10 @@ class BaseAgent(object):
 
 
     def save_action(self, actions):
+        '''
+        Args:
+            actions: numpy.array; expected shape (B, 1)
+        '''
         # save the frequency of each action be selected
         n = actions.shape[0]
         self.action_selections = [0 for _ in range(len(self.action_selections))]
