@@ -10,9 +10,9 @@ from argparse import ArgumentParser
 from collections import defaultdict
 from tqdm import tqdm
 
-from agents import Model as DQN_Agent
+from agents import DQN, SAC, BaseAgent
 from utils import Config, plot_action_dist, plot_action_distribution, plot_estimate_value, animation_action_distribution
-from network import DuellingMLP
+from network import DuellingMLP, PolicyMLP
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -37,7 +37,7 @@ def parse_args():
 ######################################################################################
 # Agent
 ######################################################################################
-class Model(DQN_Agent):
+class D3QN_Agent(DQN):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents'):
         super().__init__(static_policy, env, config, log_dir, agent_dir)
 
@@ -46,7 +46,19 @@ class Model(DQN_Agent):
         self.target_model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
 
 
-def add_dataset_to_replay(train, model, clip_reward):
+class SAC_Agent(SAC):
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents'):
+        super().__init__(static_policy, env, config, log_dir, agent_dir)
+
+    def declare_networks(self):
+        self.actor = PolicyMLP(self.num_feats, self.num_actions).to(self.device)
+        self.qf1 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.qf2 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+
+
+def add_dataset_to_replay(train, train_unnorm, model, clip_reward):
     # put all transitions in replay buffer
     drop_column = ['charttime', 'median_dose_vaso', 'input_total', 'icustayid', 'died_in_hosp', 'mortality_90d',
                 'died_within_48h_of_out_time', 'delay_end_of_record_and_discharge_or_death',
@@ -56,6 +68,7 @@ def add_dataset_to_replay(train, model, clip_reward):
         s_ = train.loc[train.index[i + 1], :]
         a = s['action']
         r = s['reward']
+        SOFA = train_unnorm.loc[index, 'SOFA']
         if s['icustayid'] != s_['icustayid']:
             s_ = None
         else:
@@ -66,16 +79,17 @@ def add_dataset_to_replay(train, model, clip_reward):
                 r = 1
             if r < -1:
                 r = -1
-        model.append_to_replay(s, a, r, s_)
+        model.append_to_replay(s, a, r, s_, SOFA)
 
     # handle last state
     idx = train.index[-1]
     s = train.loc[idx, :]
     a = s['action']
     r = s['reward']
+    SOFA = train_unnorm.loc[idx, 'SOFA']
     s_ = None
     s = np.array(s.drop(drop_column))
-    model.append_to_replay(s, a, r, s_)
+    model.append_to_replay(s, a, r, s_, SOFA)
 
 
 def process_dataset(dataset):
@@ -98,21 +112,27 @@ def process_dataset(dataset):
     return data, id_index_map
 
 
-def testing(test, model: Model):
+def testing(test, model: BaseAgent):
     batch_state, batch_action = test['s'], test['a']
 
     batch_state = torch.tensor(batch_state, device=model.device, dtype=torch.float).view(-1, model.num_feats)
     batch_action = torch.tensor(batch_action, device=model.device, dtype=torch.int64).view(-1, 1)
 
     with torch.no_grad():
-        actions = model.model(batch_state).max(dim=1)[1].view(-1, 1).cpu().numpy()
+        if isinstance(model, D3QN_Agent):
+            model.model.eval()
+            actions = model.model(batch_state).max(dim=1)[1].view(-1, 1).cpu().numpy()
+        elif isinstance(model, SAC_Agent):
+            model.actor.eval()
+            actions, _, _, _ = model.actor.get_action(batch_state)
+            actions = actions.view(-1, 1).cpu().numpy()
         
     model.save_action(actions)
 
     return actions
 
 
-def training(model: Model, valid, config, valid_dataset, id_index_map, args):
+def training(model: BaseAgent, valid, config, valid_dataset, id_index_map, args):
     '''
     Args:
         valid           : batch_state and action (dict)
@@ -195,14 +215,18 @@ if __name__ == '__main__':
     # Load Dataset
     ######################################################################################
     dataset_path = "../data/final_dataset/"
+    full_data = pd.read_csv(os.path.join(dataset_path, f'dataset_{args.hour}.csv'))
     train_dataset = pd.read_csv(os.path.join(dataset_path, f'train_{args.hour}.csv'))
+    icustayids = train_dataset['icustayid'].unique()
+    train_data_unnorm = full_data[[icustayid in icustayids for icustayid in full_data['icustayid']]]
+    train_data_unnorm.index = range(train_dataset.shape[0])
+
     valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{args.hour}.csv'))
 
-    test_data = pd.read_csv(os.path.join(dataset_path, f'{args.test_dataset}_{args.hour}.csv'))
-    test_data_unnorm = pd.read_csv(os.path.join(dataset_path, f'dataset_{args.hour}.csv'))
-    icustayids = test_data['icustayid'].unique()
-    test_data_unnorm = test_data_unnorm[[icustayid in icustayids for icustayid in test_data_unnorm['icustayid']]]
-    test_data_unnorm.index = range(test_data.shape[0])
+    test_dataset = pd.read_csv(os.path.join(dataset_path, f'{args.test_dataset}_{args.hour}.csv'))
+    icustayids = test_dataset['icustayid'].unique()
+    test_data_unnorm = full_data[[icustayid in icustayids for icustayid in full_data['icustayid']]]
+    test_data_unnorm.index = range(test_dataset.shape[0])
 
     ######################################################################################
     # Hyperparameters
@@ -228,19 +252,24 @@ if __name__ == '__main__':
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    path = f'agent={args.agent}-batch_size={config.BATCH_SIZE}-episode={config.EPISODE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq{config.TARGET_NET_UPDATE_FREQ}'
+    path = f'agent={args.agent}-batch_size={config.BATCH_SIZE}-episode={config.EPISODE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
     log_path = os.path.join('./log', path)
     os.makedirs(log_path, exist_ok=True)
     agent_path = os.path.join('./saved_agents', path)
     os.makedirs(agent_path, exist_ok=True)
 
-    model = Model(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
+    if args.agent == 'D3QN':
+        model = D3QN_Agent(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
+    elif args.agent == 'SAC':
+        model = SAC_Agent(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
+    else:
+        raise NotImplementedError
 
     ######################################################################################
     # Training
     ######################################################################################
     print('Adding dataset to replay buffer...')
-    add_dataset_to_replay(train_dataset, model, clip_reward)
+    add_dataset_to_replay(train_dataset, train_data_unnorm, model, clip_reward)
 
     print('Processing validation dataset...')
     valid, id_index_map = process_dataset(valid_dataset)
@@ -254,15 +283,15 @@ if __name__ == '__main__':
     model.load()
 
     print('Processing test dataset...')
-    test, id_index_map = process_dataset(test_data)
+    test, id_index_map = process_dataset(test_dataset)
 
     print('Start testing')
     actions = testing(test, model)
 
-    test_data_unnorm['action'] = test_data['action']
+    test_data_unnorm['action'] = test_dataset['action']
     test_data_unnorm['policy action'] = actions
     test_data_unnorm.to_csv(os.path.join(model.log_dir, 'test_data_predict.csv'), index=False)
-    policy_val, expert_val = WIS_estimator(actions, test_data, id_index_map)
+    policy_val, expert_val = WIS_estimator(actions, test_dataset, id_index_map)
     plot_action_dist(actions, test_data_unnorm, model.log_dir)
     with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
         f.write(f'policy WIS estimator: {policy_val:.5f}\n')
