@@ -207,8 +207,9 @@ class SAC(BaseAgent):
             min_qf_values = torch.min(qf1_values, qf2_values)
         # no need for reparameterization, the expectation can be calculated for discrete actions
         if self.behav_clone:
+            clone = (SOFAs < 5).view(-1)
             actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean() + \
-                            F.cross_entropy(action_probs[(SOFAs < 5).view(-1), :], actions.view(-1)[(SOFAs < 5).view(-1)])
+                            F.cross_entropy(action_probs[clone, :], actions.view(-1)[clone])
         else:
             actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
 
