@@ -1,5 +1,8 @@
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+
+matplotlib.use('Agg')  # Set the backend to Agg
 
 import os
 import numpy as np
@@ -9,7 +12,8 @@ def plot_action_distribution(action_selections, log_dir):
     Args:
         action_selections: the frequency of each action be selected
     '''
-    fig, ax = plt.subplots()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
 
     ax.hist(range(25), weights=action_selections, bins=np.arange(26)-0.5)
 
@@ -27,7 +31,8 @@ def animation_action_distribution(hists, log_dir):
     Args:
         hists: a list of each validation of the frequency of each action be selected
     '''
-    fig, ax = plt.subplots()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
 
     def update(i):
         ax.clear()
@@ -47,7 +52,8 @@ def plot_estimate_value(expert_val, policy_val, log_dir):
         expert_val: list of estimate return value of expert policy
         policy_val: list of estimate return value of learned policy
     '''
-    fig, ax = plt.subplots()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
 
     ax.plot(list(range(len(policy_val))), policy_val)
     ax.plot(list(range(len(expert_val))), expert_val)
