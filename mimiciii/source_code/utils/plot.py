@@ -24,6 +24,7 @@ def plot_action_distribution(action_selections, log_dir):
     ax.set_title(f'action distribution')
 
     plt.savefig(os.path.join(log_dir, f'valid_action_distribution.png'))
+    plt.close()
 
 
 def animation_action_distribution(hists, log_dir):
@@ -44,6 +45,7 @@ def animation_action_distribution(hists, log_dir):
 
     ani = FuncAnimation(fig, update, frames=len(hists), interval=200)
     ani.save(os.path.join(log_dir, 'valid action distribution.gif'), writer='imagemagick')
+    plt.close()
 
 
 def plot_estimate_value(expert_val, policy_val, log_dir):
@@ -65,6 +67,7 @@ def plot_estimate_value(expert_val, policy_val, log_dir):
     ax.set_title('policy vs expert value')
 
     plt.savefig(os.path.join(log_dir, 'valid estimate value.png'))
+    plt.close()
 
 
 def plot_action_dist(actions, test_data_unnorm, log_dir):
@@ -108,3 +111,169 @@ def plot_action_dist(actions, test_data_unnorm, log_dir):
     ax4.set_title('all')
 
     plt.savefig(os.path.join(log_dir, 'test_action_distribution.png'))
+    plt.close()
+
+
+def plot_pos_neg_action_dist(positive_traj, negative_traj, log_dir):
+    # negative_traj['policy action'].hist(bins=np.arange(26)-0.5)
+    f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(8, 8))
+    weight = [0] * 25
+    tmp = negative_traj['policy action'].value_counts()
+    for i in tmp.index:
+        weight[i] = tmp[i]
+    ax1.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    ax1.set_xticks(range(0, 25))
+    ax1.tick_params(axis='x', labelsize=6)
+    ax1.set_title('negative trajectories policy action')
+
+    weight = [0] * 25
+    tmp = negative_traj['action'].value_counts()
+    for i in tmp.index:
+        weight[i] = tmp[i]
+    ax2.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    ax2.set_xticks(range(0, 25))
+    ax2.tick_params(axis='x', labelsize=6)
+    ax2.set_title('negative trajectories expert action')
+
+    weight = [0] * 25
+    tmp = positive_traj['policy action'].value_counts()
+    for i in tmp.index:
+        weight[i] = tmp[i]
+    ax3.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    ax3.set_xticks(range(0, 25))
+    ax3.tick_params(axis='x', labelsize=6)
+    ax3.set_title('positive trajectories policy action')
+
+    weight = [0] * 25
+    tmp = positive_traj['action'].value_counts()
+    for i in tmp.index:
+        weight[i] = tmp[i]
+    ax4.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    ax4.set_xticks(range(0, 25))
+    ax4.tick_params(axis='x', labelsize=6)
+    ax4.set_title('positive trajectories expert action')
+    plt.savefig(os.path.join(log_dir, 'pos_neg_action_compare.png'))
+    plt.close()
+
+
+def plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_dir):
+    f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12,12))
+
+    tmp = positive_traj[positive_traj['action'] != positive_traj['policy action']]['SOFA'].value_counts()
+    weight = [0] * 25
+    for i in tmp.index:
+        i = int(i)
+        weight[i] = tmp[i]
+
+    ax1.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    ax1.set_xticks(range(0, 25))
+    ax1.tick_params(axis='x', labelsize=6)
+    ax1.set_title('positive trajectories different action SOFA distribution')
+
+    tmp = positive_traj[positive_traj['action'] == positive_traj['policy action']]['SOFA'].value_counts()
+    weight = [0] * 25
+    for i in tmp.index:
+        i = int(i)
+        weight[i] = tmp[i]
+
+    ax2.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    ax2.set_xticks(range(0, 25))
+    ax2.tick_params(axis='x', labelsize=6)
+    ax2.set_title('positive trajectories same action SOFA distribution')
+
+    tmp = negative_traj[negative_traj['action'] != negative_traj['policy action']]['SOFA'].value_counts()
+    weight = [0] * 25
+    for i in tmp.index:
+        i = int(i)
+        weight[i] = tmp[i]
+
+    ax3.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    ax3.set_xticks(range(0, 25))
+    ax3.tick_params(axis='x', labelsize=6)
+    ax3.set_title('negative trajectories different action SOFA distribution')
+
+    tmp = negative_traj[negative_traj['action'] == negative_traj['policy action']]['SOFA'].value_counts()
+    weight = [0] * 25
+    for i in tmp.index:
+        i = int(i)
+        weight[i] = tmp[i]
+
+    ax4.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    ax4.set_xticks(range(0, 25))
+    ax4.tick_params(axis='x', labelsize=6)
+    ax4.set_title('negative trajectories same action SOFA distribution')
+
+
+    plt.savefig(os.path.join(log_dir, 'diff_action_SOFA_dist.png'))
+    plt.close()
+
+
+def plot_diff_action(positive_traj, negative_traj, log_dir):
+    f, ax = plt.subplots(5, 5, figsize=(32,32))
+
+    diff = positive_traj[positive_traj['action'] != positive_traj['policy action']]
+    for i in range(5):
+        for j in range(5):
+            weight = [0] * 25
+            idx = i * 5 + j
+            tmp = diff[diff['action'] == idx]['policy action'].value_counts()
+            for k in tmp.index:
+                weight[int(k)] = tmp[int(k)]
+
+            ax[i][j].hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+            ax[i][j].set_xticks(range(0, 25))
+            ax[i][j].tick_params(axis='x', labelsize=6)
+            ax[i][j].set_title(f'expert action: {i * 5 + j}')
+
+    plt.savefig(os.path.join(log_dir, 'pos_diff_action_compare.png'))
+    plt.close()
+
+    f, ax = plt.subplots(5, 5, figsize=(32,32))
+
+    diff = negative_traj[negative_traj['action'] != negative_traj['policy action']]
+    for i in range(5):
+        for j in range(5):
+            weight = [0] * 25
+            idx = i * 5 + j
+            tmp = diff[diff['action'] == idx]['policy action'].value_counts()
+            for k in tmp.index:
+                weight[int(k)] = tmp[int(k)]
+
+            ax[i][j].hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+            ax[i][j].set_xticks(range(0, 25))
+            ax[i][j].tick_params(axis='x', labelsize=6)
+            ax[i][j].set_title(f'expert action: {i * 5 + j}')
+
+    plt.savefig(os.path.join(log_dir, 'neg_diff_action_compare.png'))
+    plt.close()
+
+
+def plot_survival_rate(expected_return, id_index_map, test_data_unnorm, log_dir):
+    min_return = expected_return.min()
+    max_return = expected_return.max()
+    survive = np.zeros((len(id_index_map),))
+    for i, id in enumerate(id_index_map.keys()):
+        index = id_index_map[id][0]
+        survive[i] = 1.0 if test_data_unnorm.loc[index, 'died_in_hosp'] != 1.0 and \
+                    test_data_unnorm.loc[index, 'mortality_90d'] != 1.0 and \
+                    test_data_unnorm.loc[index, 'died_within_48h_of_out_time'] != 1.0 else 0
+
+    x = np.linspace(min_return, max_return)
+    y = []
+    for i in x:
+        try:
+            y.append(survive[np.logical_and(expected_return >= i - 0.5, expected_return <= i + 0.5)].mean())
+        except:
+            y.append(y[-1])
+    plt.plot(x, y)
+
+    x_r = [i / 1.0 for i in range(-7, 27, 3)]
+    y_r = [i / 10.0 for i in range(0, 11, 1)]
+    plt.xticks(x_r)
+    plt.yticks(y_r)
+
+    plt.title('Survival Rate v.s. Expected Return')
+    plt.xlabel("Expected Return")
+    plt.ylabel("Survival Rate")
+    plt.savefig(os.path.join(log_dir, 'survival_rate.png'))
+    plt.close()
