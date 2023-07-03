@@ -268,8 +268,6 @@ def plot_survival_rate(expected_return, id_index_map, test_data_unnorm, log_dir)
     '''
     reference: https://github.com/CaryLi666/ID3QNE-algorithm/blob/main/experiment/survival%20rate/main_shengcunlv-37.py
     '''
-    min_return = expected_return.min()
-    max_return = expected_return.max()
     survive = np.zeros((len(id_index_map),))
     for i, id in enumerate(id_index_map.keys()):
         index = id_index_map[id][0]
