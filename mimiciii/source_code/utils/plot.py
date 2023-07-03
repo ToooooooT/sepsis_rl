@@ -2,10 +2,13 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
+from scipy.stats import sem
+
 matplotlib.use('Agg')  # Set the backend to Agg
 
 import os
 import numpy as np
+
 
 def plot_action_distribution(action_selections, log_dir):
     '''
@@ -248,7 +251,23 @@ def plot_diff_action(positive_traj, negative_traj, log_dir):
     plt.close()
 
 
+def sliding_mean(data_array, window=1):
+    new_list = []
+    for i in range(len(data_array)):
+        indices = range(max(i - window, 0),
+                        min(i + window, len(data_array)))
+        avg = 0
+        for j in indices:
+            avg += data_array[j]
+        avg /= float(len(indices))
+        new_list.append(avg)
+    return np.array(new_list)
+
+
 def plot_survival_rate(expected_return, id_index_map, test_data_unnorm, log_dir):
+    '''
+    reference: https://github.com/CaryLi666/ID3QNE-algorithm/blob/main/experiment/survival%20rate/main_shengcunlv-37.py
+    '''
     min_return = expected_return.min()
     max_return = expected_return.max()
     survive = np.zeros((len(id_index_map),))
@@ -258,14 +277,25 @@ def plot_survival_rate(expected_return, id_index_map, test_data_unnorm, log_dir)
                     test_data_unnorm.loc[index, 'mortality_90d'] != 1.0 and \
                     test_data_unnorm.loc[index, 'died_within_48h_of_out_time'] != 1.0 else 0
 
-    x = np.linspace(min_return, max_return)
-    y = []
-    for i in x:
+    bin_medians = []
+    mort = []
+    mort_std = []
+    i = -7
+    while i <= 25:
+        count = survive[np.logical_and(expected_return >= i - 0.5, expected_return <= i + 0.5)]
         try:
-            y.append(survive[np.logical_and(expected_return >= i - 0.5, expected_return <= i + 0.5)].mean())
-        except:
-            y.append(y[-1])
-    plt.plot(x, y)
+            res = sum(count) / len(count)
+            if len(count) >= 2:
+                bin_medians.append(i)
+                mort.append(res)
+                mort_std.append(sem(count))
+        except ZeroDivisionError:
+            pass
+        i += 1
+
+    plt.plot(bin_medians, sliding_mean(mort), color='g')
+    plt.fill_between(bin_medians, sliding_mean(mort) - 1 * mort_std,
+                     sliding_mean(mort) + 1 * mort_std, color='palegreen')
 
     x_r = [i / 1.0 for i in range(-7, 27, 3)]
     y_r = [i / 10.0 for i in range(0, 11, 1)]
