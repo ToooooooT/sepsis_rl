@@ -196,7 +196,8 @@ def WIS_estimator(actions, action_probs, expert_data, id_index_map, args):
             if args.agent == 'D3QN':
                 ratio = ratio * 0.99 if int(actions[index]) == int(expert_data.loc[index, 'action']) else ratio * 0.01
             elif args.agent == 'SAC':
-                ratio *= action_probs[index, int(actions[index])]
+                # let the minimum probability be 0.01 to avoid nan
+                ratio *= max(action_probs[index, int(expert_data.loc[index, 'action'])], 0.01)
             # total reward
             reward = gamma * reward + expert_data.loc[index, 'reward']
 
@@ -204,7 +205,7 @@ def WIS_estimator(actions, action_probs, expert_data, id_index_map, args):
         policy_return[i] = ratio * reward
         expert_return[i] = reward 
 
-    avg_policy_return = (policy_return / weights).mean()
+    avg_policy_return = (policy_return / weights.sum()).sum()
     avg_expert_return = expert_return.mean()
     return avg_policy_return, avg_expert_return, policy_return
 
@@ -274,7 +275,7 @@ if __name__ == '__main__':
     # Training
     ######################################################################################
     print('Adding dataset to replay buffer...')
-    add_dataset_to_replay(train_dataset, train_data_unnorm, model, clip_reward)
+    add_dataset_to_replay(train_dataset[:1000], train_data_unnorm[:1000], model, clip_reward)
 
     print('Processing validation dataset...')
     valid, id_index_map = process_dataset(valid_dataset)
