@@ -149,19 +149,23 @@ def training(model: BaseAgent, valid, config, valid_dataset, id_index_map, args)
     avg_policy_returns = list()
     hists = list() # save model actions of validation in every episode 
     valid_freq = args.valid_freq
+    max_expected_return = 0
 
     for i in tqdm(range(1, config.EPISODE + 1)):
         loss = model.update(i)
         writer.add_scalars('loss', loss, i)
 
         if i % valid_freq == 0:
-            model.save()
             actions, action_probs = testing(valid, model)
             if i % 1000 == 0:
                 hists.append(model.action_selections)
             avg_p_return, avg_e_return, _ = WIS_estimator(actions, action_probs, valid_dataset, id_index_map, args)
             avg_policy_returns.append(avg_p_return)
             avg_expert_returns.append(avg_e_return)
+
+            if avg_p_return > max_expected_return:
+                max_expected_return = avg_p_return
+                model.save()
 
             writer.add_scalars('WIS_estimator', dict(zip(['learned', 'expert'], [avg_p_return, avg_e_return])), i)
 
@@ -258,7 +262,7 @@ if __name__ == '__main__':
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    path = f'agent={args.agent}-batch_size={config.BATCH_SIZE}-episode={config.EPISODE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
+    path = f'agent={args.agent}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
     log_path = os.path.join('./log', path)
     os.makedirs(log_path, exist_ok=True)
     agent_path = os.path.join('./saved_agents', path)
@@ -275,7 +279,7 @@ if __name__ == '__main__':
     # Training
     ######################################################################################
     print('Adding dataset to replay buffer...')
-    add_dataset_to_replay(train_dataset[:1000], train_data_unnorm[:1000], model, clip_reward)
+    add_dataset_to_replay(train_dataset, train_data_unnorm, model, clip_reward)
 
     print('Processing validation dataset...')
     valid, id_index_map = process_dataset(valid_dataset)
