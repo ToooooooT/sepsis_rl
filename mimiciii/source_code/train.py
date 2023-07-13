@@ -24,13 +24,14 @@ def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--hour", type=int, help="hours of one state", default=4)
     parser.add_argument("--batch_size", type=int, help="batch_size", default=32)
-    parser.add_argument("--episode", type=int, help="episode", default=70000)
+    parser.add_argument("--episode", type=int, help="episode", default=100000)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
     parser.add_argument("--valid_freq", type=int, help="validation frequency", default=50)
+    parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
     parser.add_argument("--target_net_freq", type=int, help="the frequency of updates for the target networks", default=1)
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
@@ -149,6 +150,7 @@ def training(model: BaseAgent, valid, config, valid_dataset, id_index_map, args)
     avg_policy_returns = list()
     hists = list() # save model actions of validation in every episode 
     valid_freq = args.valid_freq
+    gif_freq = args.gif_freq
     max_expected_return = 0
 
     for i in tqdm(range(1, config.EPISODE + 1)):
@@ -157,7 +159,7 @@ def training(model: BaseAgent, valid, config, valid_dataset, id_index_map, args)
 
         if i % valid_freq == 0:
             actions, action_probs = testing(valid, model)
-            if i % 1000 == 0:
+            if i % gif_freq == 0:
                 hists.append(model.action_selections)
             avg_p_return, avg_e_return, _ = WIS_estimator(actions, action_probs, valid_dataset, id_index_map, args)
             avg_policy_returns.append(avg_p_return)
@@ -171,7 +173,7 @@ def training(model: BaseAgent, valid, config, valid_dataset, id_index_map, args)
 
     plot_action_distribution(model.action_selections, model.log_dir)
     animation_action_distribution(hists, model.log_dir)
-    plot_estimate_value(avg_expert_returns, avg_policy_returns, model.log_dir)
+    plot_estimate_value(avg_expert_returns, avg_policy_returns, model.log_dir, valid_freq)
 
 
 def WIS_estimator(actions, action_probs, expert_data, id_index_map, args):
@@ -262,7 +264,10 @@ if __name__ == '__main__':
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    path = f'agent={args.agent}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
+    if args.agent == 'D3QN':
+        path = f'agent={args.agent}-episode{config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
+    else:
+        path = f'agent={args.agent}-episode{config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
     log_path = os.path.join('./log', path)
     os.makedirs(log_path, exist_ok=True)
     agent_path = os.path.join('./saved_agents', path)

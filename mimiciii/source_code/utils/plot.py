@@ -51,7 +51,7 @@ def animation_action_distribution(hists, log_dir):
     plt.close()
 
 
-def plot_estimate_value(expert_val, policy_val, log_dir):
+def plot_estimate_value(expert_val, policy_val, log_dir, freq):
     '''
     Args:
         expert_val: list of estimate return value of expert policy
@@ -64,10 +64,13 @@ def plot_estimate_value(expert_val, policy_val, log_dir):
     ax.plot(list(range(len(expert_val))), expert_val)
     ax.legend(['policy', 'expert'],loc='best')
 
-    ax.set_xlabel('epoch * 1000')
-    ax.set_ylabel('estimate value')
+    if freq > 1:
+        ax.set_xlabel(f'epoch * {freq}')
+    else:
+        ax.set_xlabel(f'epoch')
+    ax.set_ylabel('expected return')
 
-    ax.set_title('policy vs expert value')
+    ax.set_title('policy vs expert return')
 
     plt.savefig(os.path.join(log_dir, 'valid estimate value.png'))
     plt.close()
