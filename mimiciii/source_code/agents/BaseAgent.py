@@ -19,13 +19,13 @@ class BaseAgent(object):
     def save(self):
         if not os.path.exists(self.agent_dir):
             os.mkdir(self.agent_dir)
-        torch.save(self.model.state_dict(), os.path.join(self.agent_dir, 'model.dump'))
-        torch.save(self.optimizer.state_dict(), os.path.join(self.agent_dir, 'optim.dump'))
+        torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'model.dump'))
+        torch.save(self.optimizer.state_dict(), os.path.join(self.log_dir, 'optim.dump'))
     
 
     def load(self):
-        fname_model = os.path.join(self.agent_dir, "model.dump")
-        fname_optim = os.path.join(self.agent_dir, "optim.dump")
+        fname_model = os.path.join(self.log_dir, "model.dump")
+        fname_optim = os.path.join(self.log_dir, "optim.dump")
 
         if os.path.isfile(fname_model):
             self.model.load_state_dict(torch.load(fname_model))
