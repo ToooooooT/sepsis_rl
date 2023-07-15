@@ -308,3 +308,25 @@ def plot_survival_rate(expected_return, id_index_map, test_data_unnorm, log_dir)
     plt.ylabel("Survival Rate")
     plt.savefig(os.path.join(log_dir, 'survival_rate.png'))
     plt.close()
+
+
+def plot_expected_return_distribution(expected_return, log_dir):
+    expected_return = np.round(expected_return).astype(np.int32)
+    max_return, min_return = max(expected_return), min(expected_return)
+    expected_return_count = np.zeros((max_return - min_return + 1))
+    unique_vals, counts = np.unique(expected_return, return_counts=True)
+    expected_return_count[unique_vals - min_return] = counts
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    ax.hist(range(min_return, max_return + 1), weights=expected_return_count, bins=np.arange(min_return, max_return + 1)-0.5)
+
+    ax.set_xlabel('expected return')
+    ax.set_ylabel('count')
+    ax.set_xticks(range(min_return, max_return + 1))
+
+    ax.set_title(f'expected return distribution')
+
+    plt.savefig(os.path.join(log_dir, f'expected_return_distribution.png'))
+    plt.close()

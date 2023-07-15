@@ -13,7 +13,7 @@ from tqdm import tqdm
 from agents import DQN, SAC, BaseAgent
 from utils import Config, plot_action_dist, plot_action_distribution, plot_estimate_value, \
                 animation_action_distribution, plot_pos_neg_action_dist, plot_diff_action_SOFA_dist, \
-                plot_diff_action, plot_survival_rate
+                plot_diff_action, plot_survival_rate, plot_expected_return_distribution
 from network import DuellingMLP, PolicyMLP
 
 from torch.utils.tensorboard import SummaryWriter
@@ -265,9 +265,9 @@ if __name__ == '__main__':
     env = {'num_feats': 49, 'num_actions': 25}
 
     if args.agent == 'D3QN':
-        path = f'agent={args.agent}-episode{config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
+        path = f'D3QN/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
     else:
-        path = f'agent={args.agent}-episode{config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
+        path = f'SAC/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
     log_path = os.path.join('./log', path)
     os.makedirs(log_path, exist_ok=True)
     agent_path = os.path.join('./saved_agents', path)
@@ -309,7 +309,8 @@ if __name__ == '__main__':
     negative_traj = test_data_unnorm.query('died_in_hosp == 1.0 | died_within_48h_of_out_time == 1.0 | mortality_90d == 1.0')
     positive_traj = test_data_unnorm.query('died_in_hosp != 1.0 & died_within_48h_of_out_time != 1.0 & mortality_90d != 1.0')
     avg_policy_return, avg_expert_return, policy_return = WIS_estimator(actions, action_probs, test_dataset, id_index_map, args)
-    plot_action_dist(actions, test_data_unnorm, model.log_dir)
+    plot_expected_return_distribution(policy_return, log_path)
+    plot_action_dist(actions, test_data_unnorm, log_path)
     plot_pos_neg_action_dist(positive_traj, negative_traj, log_path)
     plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_path)
     plot_diff_action(positive_traj, negative_traj, log_path)
