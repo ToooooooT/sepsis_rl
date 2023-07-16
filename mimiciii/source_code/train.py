@@ -213,7 +213,7 @@ def WIS_estimator(actions, action_probs, expert_data, id_index_map, args):
 
     avg_policy_return = (policy_return / weights.sum()).sum()
     avg_expert_return = expert_return.mean()
-    return avg_policy_return, avg_expert_return, policy_return
+    return avg_policy_return, avg_expert_return, policy_return / weights.mean()
 
 
 if __name__ == '__main__':
