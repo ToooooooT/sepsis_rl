@@ -312,12 +312,15 @@ def plot_survival_rate(expected_return, id_index_map, test_data_unnorm, log_dir)
 
 def plot_expected_return_distribution(expected_return, log_dir):
     expected_return = np.round(expected_return).astype(np.int32)
-    max_return, min_return = max(expected_return), min(expected_return)
+    # igonre the outlier expected return
+    expected_return = np.clip(expected_return, -25, 25)
+    max_return = expected_return.max()
+    min_return = expected_return.min()
     expected_return_count = np.zeros((max_return - min_return + 1))
     unique_vals, counts = np.unique(expected_return, return_counts=True)
     expected_return_count[unique_vals - min_return] = counts
 
-    fig = plt.figure()
+    fig = plt.figure(figsize=(16, 8))
     ax = fig.add_subplot(111)
 
     ax.hist(range(min_return, max_return + 1), weights=expected_return_count, bins=np.arange(min_return, max_return + 1)-0.5)
