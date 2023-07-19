@@ -6,8 +6,11 @@ import pandas as pd
 import numpy as np
 import random
 import os
+from tqdm import tqdm
 from math import tanh
 import matplotlib.pyplot as plt
+from collections import defaultdict
+import pickle
 
 pd.options.mode.chained_assignment = None
 
@@ -148,6 +151,32 @@ def normalization(period, dataset):
         dataset[feature] = (dataset[feature] - avg) / std
 
 
+def process_dataset(dataset, save_path):
+    drop_column = ['charttime', 'median_dose_vaso', 'input_total', 'icustayid', 'died_in_hosp', 'mortality_90d',
+                'died_within_48h_of_out_time', 'delay_end_of_record_and_discharge_or_death',
+                'input_4hourly', 'max_dose_vaso', 'reward', 'action']
+    data = {'s': [], 'a': []}
+    id_index_map = defaultdict(list)
+    terminal_index = set()
+    for index in tqdm(dataset.index):
+        s = dataset.iloc[index, :]
+        a = s['action']
+        id_index_map[s['icustayid']].append(index)
+        s.drop(drop_column, inplace=True)
+        data['s'].append(s)
+        data['a'].append(a)
+
+    for key, value in id_index_map.items():
+        terminal_index.add(value[-1])
+
+    data['s'] = np.array(data['s'])
+    data['a'] = np.array(data['a'])
+
+    save_obj = {'data': data, 'id_index_map': id_index_map, 'terminal_index': terminal_index}
+    with open(save_path, 'wb') as file:
+        pickle.dump(save_obj, file)
+
+
 if __name__ == '__main__':
     source_path = '../../data/final_dataset/'
 
@@ -180,3 +209,11 @@ if __name__ == '__main__':
     train_dataset.to_csv(os.path.join(source_path, 'train_4.csv'), index=False)
     valid_dataset.to_csv(os.path.join(source_path, 'valid_4.csv'), index=False)
     test_dataset.to_csv(os.path.join(source_path, 'test_4.csv'), index=False)
+
+    train_dataset = train_dataset.reset_index(drop=True)
+    valid_dataset = valid_dataset.reset_index(drop=True)
+    test_dataset = test_dataset.reset_index(drop=True)
+
+    process_dataset(train_dataset, os.path.join(source_path, 'train.pkl'))
+    process_dataset(valid_dataset, os.path.join(source_path, 'valid.pkl'))
+    process_dataset(test_dataset, os.path.join(source_path, 'test.pkl'))
