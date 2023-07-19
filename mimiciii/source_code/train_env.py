@@ -24,13 +24,13 @@ def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--hour", type=int, help="hours of one state", default=4)
     parser.add_argument("--batch_size", type=int, help="batch_size", default=32)
-    parser.add_argument("--episode", type=int, help="episode", default=60000)
+    parser.add_argument("--episode", type=int, help="episode", default=100)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-3)
     parser.add_argument("--optimizer", type=str, help="optimizer", default="adam")
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
-    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=50)
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=1)
     parser.add_argument("--hidden_size", type=str, help="the dimension of hidden layer size of environment model", default="500,500")
-    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=8)
+    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=32)
     parser.add_argument("--device", type=str, help="device", default="cpu")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
@@ -42,26 +42,31 @@ def parse_args():
 class sepsis_dataset(Dataset):
     def __init__(self, state, action, id_index_map, terminal_index) -> None:
         super().__init__()
-        self.state = state
         self.state_dim = state.shape[1]
-        self.action = np.array([(x // 5, x % 5) for x in action])
+        # add a zero in last row to avoid overflow of index in next state
+        state = np.vstack((state, np.zeros((1, self.state_dim))))
+        self.state = state
+
         self.action_dim = 2
+        # add a zero in last row to avoid overflow of index in next state
+        self.action = np.array([(x // 5, x % 5) for x in action])
+        self.action = np.vstack((self.action, np.zeros((1, self.action_dim))))
+
         self.data = np.concatenate([self.state, self.action], axis=1)
+
         self.id_index_map = id_index_map
         self.terminal_index = terminal_index
 
     def __len__(self):
-        return len(self.state)
+        return len(self.action) - 1
 
     def __getitem__(self, index):
         state = self.state[index]
-        if index == len(self.state) - 1:
-            state_action_pair, next_state, done = self.data[index], np.zeros((self.state_dim,)), np.array([1])
-        elif index in self.terminal_index:
-            state_action_pair, next_state, done = self.data[index], self.state[index + 1], np.array([1])
-        else:
-            state_action_pair, next_state, done =  self.data[index], self.state[index + 1], np.array([0])
-        return torch.tensor(state_action_pair, dtype=torch.float), torch.tensor(next_state - state, dtype=torch.float), \
+        next_state = self.state[index + 1]
+        state_action_pair = self.data[index]
+        done = np.array([int(index in self.terminal_index)]) 
+        return torch.tensor(state_action_pair, dtype=torch.float), \
+            torch.tensor(next_state - state, dtype=torch.float), \
             torch.tensor(done, dtype=torch.float)
 
 
@@ -121,7 +126,7 @@ def testing(model: EnvMLP, input, label, done, device):
     with torch.no_grad():
         pred = model(input)
         loss = F.mse_loss(pred * (1 - done), label * (1 - done))
-    return loss.detach().cpu().item(), pred.detach().cpu().numpy() + input.detach().cpu().numpy()
+    return loss.detach().cpu().item(), pred.detach().cpu().numpy() + input[:, :-2].detach().cpu().numpy()
 
 
 if __name__ == '__main__':
@@ -130,6 +135,9 @@ if __name__ == '__main__':
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
+
+    if args.device == 'cuda':
+        assert(torch.cuda.is_available())
 
     ######################################################################################
     # Load Dataset
@@ -163,7 +171,7 @@ if __name__ == '__main__':
     log_path = os.path.join('./log', path)
     os.makedirs(log_path, exist_ok=True)
     hidden_size = [int(x) for x in args.hidden_size.split(',')]
-    model = EnvMLP(env['num_feats'], 2, hidden_size=hidden_size)
+    model = EnvMLP(env['num_feats'], 2, hidden_size=hidden_size).to(args.device)
     writer = SummaryWriter(log_path)
     if args.optimizer == 'adam':
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
