@@ -6,6 +6,7 @@ import pandas as pd
 import torch
 import os
 import random
+import pickle
 from argparse import ArgumentParser
 from collections import defaultdict
 from tqdm import tqdm
@@ -95,48 +96,6 @@ def add_dataset_to_replay(train, train_unnorm, model, clip_reward):
     model.append_to_replay(s, a, r, s_, SOFA)
 
 
-def process_dataset(dataset):
-    drop_column = ['charttime', 'median_dose_vaso', 'input_total', 'icustayid', 'died_in_hosp', 'mortality_90d',
-                'died_within_48h_of_out_time', 'delay_end_of_record_and_discharge_or_death',
-                'input_4hourly', 'max_dose_vaso', 'reward', 'action']
-    data = {'s': [], 'a': []}
-    id_index_map = defaultdict(list)
-    for index in tqdm(dataset.index):
-        s = dataset.iloc[index, :]
-        a = s['action']
-        id_index_map[s['icustayid']].append(index)
-        s.drop(drop_column, inplace=True)
-        data['s'].append(s)
-        data['a'].append(a)
-
-    data['s'] = np.array(data['s'])
-    data['a'] = np.array(data['a'])
-
-    return data, id_index_map
-
-
-def testing(test, model: BaseAgent):
-    batch_state, batch_action = test['s'], test['a']
-
-    batch_state = torch.tensor(batch_state, device=model.device, dtype=torch.float).view(-1, model.num_feats)
-    batch_action = torch.tensor(batch_action, device=model.device, dtype=torch.int64).view(-1, 1)
-
-    with torch.no_grad():
-        if isinstance(model, D3QN_Agent):
-            model.model.eval()
-            actions = model.model(batch_state).max(dim=1)[1].view(-1, 1).cpu().numpy()
-            ret = (actions, None)
-        elif isinstance(model, SAC_Agent):
-            model.actor.eval()
-            actions, _, _, action_probs = model.actor.get_action(batch_state)
-            actions = actions.view(-1, 1).cpu().numpy()
-            ret = (actions, action_probs)
-        
-    model.save_action(actions)
-
-    return ret
-
-
 def training(model: BaseAgent, valid, config, valid_dataset, id_index_map, args):
     '''
     Args:
@@ -174,6 +133,28 @@ def training(model: BaseAgent, valid, config, valid_dataset, id_index_map, args)
     plot_action_distribution(model.action_selections, model.log_dir)
     animation_action_distribution(hists, model.log_dir)
     plot_estimate_value(avg_expert_returns, avg_policy_returns, model.log_dir, valid_freq)
+
+
+def testing(test, model: BaseAgent):
+    batch_state, batch_action = test['s'], test['a']
+
+    batch_state = torch.tensor(batch_state, device=model.device, dtype=torch.float).view(-1, model.num_feats)
+    batch_action = torch.tensor(batch_action, device=model.device, dtype=torch.int64).view(-1, 1)
+
+    with torch.no_grad():
+        if isinstance(model, D3QN_Agent):
+            model.model.eval()
+            actions = model.model(batch_state).max(dim=1)[1].view(-1, 1).cpu().numpy()
+            ret = (actions, None)
+        elif isinstance(model, SAC_Agent):
+            model.actor.eval()
+            actions, _, _, action_probs = model.actor.get_action(batch_state)
+            actions = actions.view(-1, 1).cpu().numpy()
+            ret = (actions, action_probs)
+        
+    model.save_action(actions)
+
+    return ret
 
 
 def WIS_estimator(actions, action_probs, expert_data, id_index_map, args):
@@ -238,11 +219,17 @@ if __name__ == '__main__':
     train_data_unnorm.index = range(train_dataset.shape[0])
 
     valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{args.hour}.csv'))
+    with open(os.path.join(dataset_path, 'valid.pkl'), 'rb') as file:
+        valid_dict = pickle.load(file)
+    valid, valid_id_index_map, valid_terminal_index = valid_dict['data'], valid_dict['id_index_map'], valid_dict['terminal_index']
 
     test_dataset = pd.read_csv(os.path.join(dataset_path, f'{args.test_dataset}_{args.hour}.csv'))
     icustayids = test_dataset['icustayid'].unique()
     test_data_unnorm = full_data[[icustayid in icustayids for icustayid in full_data['icustayid']]]
     test_data_unnorm.index = range(test_dataset.shape[0])
+    with open(os.path.join(dataset_path, 'test.pkl'), 'rb') as file:
+        test_dict = pickle.load(file)
+    test, test_id_index_map, test_terminal_index = test_dict['data'], test_dict['id_index_map'], test_dict['terminal_index']
 
     ######################################################################################
     # Hyperparameters
@@ -290,19 +277,13 @@ if __name__ == '__main__':
     print('Adding dataset to replay buffer...')
     add_dataset_to_replay(train_dataset, train_data_unnorm, model, clip_reward)
 
-    print('Processing validation dataset...')
-    valid, id_index_map = process_dataset(valid_dataset)
-
     print('Start training...')
-    training(model, valid, config, valid_dataset, id_index_map, args)
+    training(model, valid, config, valid_dataset, valid_id_index_map, args)
 
     ######################################################################################
     # Testing
     ######################################################################################
     model.load()
-
-    print('Processing test dataset...')
-    test, id_index_map = process_dataset(test_dataset)
 
     print('Start testing')
     actions, action_probs = testing(test, model)
@@ -312,13 +293,13 @@ if __name__ == '__main__':
     test_data_unnorm.to_csv(os.path.join(model.log_dir, 'test_data_predict.csv'), index=False)
     negative_traj = test_data_unnorm.query('died_in_hosp == 1.0 | died_within_48h_of_out_time == 1.0 | mortality_90d == 1.0')
     positive_traj = test_data_unnorm.query('died_in_hosp != 1.0 & died_within_48h_of_out_time != 1.0 & mortality_90d != 1.0')
-    avg_policy_return, avg_expert_return, policy_return = WIS_estimator(actions, action_probs, test_dataset, id_index_map, args)
+    avg_policy_return, avg_expert_return, policy_return = WIS_estimator(actions, action_probs, test_dataset, test_id_index_map, args)
     plot_expected_return_distribution(policy_return, log_path)
     plot_action_dist(actions, test_data_unnorm, log_path)
     plot_pos_neg_action_dist(positive_traj, negative_traj, log_path)
     plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_path)
     plot_diff_action(positive_traj, negative_traj, log_path)
-    plot_survival_rate(policy_return, id_index_map, test_data_unnorm, log_path)
+    plot_survival_rate(policy_return, test_id_index_map, test_data_unnorm, log_path)
     with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
         f.write(f'policy WIS estimator: {avg_policy_return:.5f}\n')
         f.write(f'expert: {avg_expert_return:.5f}')
