@@ -8,7 +8,6 @@ import os
 import random
 import pickle
 from argparse import ArgumentParser
-from collections import defaultdict
 from tqdm import tqdm
 
 from network import EnvMLP
@@ -68,30 +67,6 @@ class sepsis_dataset(Dataset):
         return torch.tensor(state_action_pair, dtype=torch.float), \
             torch.tensor(next_state - state, dtype=torch.float), \
             torch.tensor(done, dtype=torch.float)
-
-
-def process_dataset(dataset):
-    drop_column = ['charttime', 'median_dose_vaso', 'input_total', 'icustayid', 'died_in_hosp', 'mortality_90d',
-                'died_within_48h_of_out_time', 'delay_end_of_record_and_discharge_or_death',
-                'input_4hourly', 'max_dose_vaso', 'reward', 'action']
-    data = {'s': [], 'a': []}
-    id_index_map = defaultdict(list)
-    terminal_index = set()
-    for index in tqdm(dataset.index):
-        s = dataset.iloc[index, :]
-        a = s['action']
-        id_index_map[s['icustayid']].append(index)
-        s.drop(drop_column, inplace=True)
-        data['s'].append(s)
-        data['a'].append(a)
-
-    for key, value in id_index_map.items():
-        terminal_index.add(value[-1])
-
-    data['s'] = np.array(data['s'])
-    data['a'] = np.array(data['a'])
-
-    return data, id_index_map, terminal_index
 
 
 def training(model: EnvMLP, optimizer, input, label, done, device):
@@ -167,7 +142,7 @@ if __name__ == '__main__':
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    path = f'Env/batch_size={args.batch_size}-lr={args.lr}'
+    path = f'Env/batch_size={args.batch_size}-lr={args.lr}-episode={args.episode}'
     log_path = os.path.join('./log', path)
     os.makedirs(log_path, exist_ok=True)
     hidden_size = [int(x) for x in args.hidden_size.split(',')]
