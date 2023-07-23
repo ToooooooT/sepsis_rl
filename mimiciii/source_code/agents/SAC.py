@@ -97,12 +97,12 @@ class SAC(BaseAgent):
             'qf1': self.qf1.state_dict(),
             'qf2': self.qf2.state_dict(),
             }, 
-            os.path.join(self.agent_dir, 'model.pth')
+            os.path.join(self.log_dir, 'model.pth')
         )
 
     
     def load(self):
-        fname = os.path.join(self.agent_dir, 'model.pth')
+        fname = os.path.join(self.log_dir, 'model.pth')
 
         if os.path.isfile(fname):
             checkpoint = torch.load(fname)
@@ -231,7 +231,7 @@ class SAC(BaseAgent):
             self.update_target_model(self.target_qf1, self.qf1)
             self.update_target_model(self.target_qf2, self.qf2)
 
-        return {'qf_loss': qf_loss, 'actor_loss': actor_loss}
+        return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item()}
 
 
     def update_target_model(self, target, source):

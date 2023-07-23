@@ -241,7 +241,7 @@ if __name__ == '__main__':
     ######################################################################################
     model.load()
 
-    print('Start testing')
+    print('Start testing...')
     actions, action_probs = testing(test, model)
 
     test_data_unnorm['action'] = test_dataset['action']

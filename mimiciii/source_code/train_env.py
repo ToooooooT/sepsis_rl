@@ -222,7 +222,7 @@ if __name__ == '__main__':
         test_loss += loss
         est_next_states_test.append(pred)
 
-    with open(os.path.join(log_path, 'est_next_states_train.p'), 'wb') as f:
+    with open(os.path.join(log_path, 'est_next_states_test.p'), 'wb') as f:
         pickle.dump(np.concatenate(est_next_states_test, axis=0), f)
     with open(os.path.join(log_path, 'train_record.txt'), 'a') as f:
         f.write(f'testing loss: {test_loss:.5f}\n')
