@@ -217,12 +217,11 @@ def plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_dir):
 def plot_diff_action(positive_traj, negative_traj, log_dir):
     f, ax = plt.subplots(5, 5, figsize=(32,32))
 
-    diff = positive_traj[positive_traj['action'] != positive_traj['policy action']]
     for i in range(5):
         for j in range(5):
             weight = [0] * 25
             idx = i * 5 + j
-            tmp = diff[diff['action'] == idx]['policy action'].value_counts()
+            tmp = positive_traj[positive_traj['action'] == idx]['policy action'].value_counts()
             for k in tmp.index:
                 weight[int(k)] = tmp[int(k)]
 
@@ -236,12 +235,11 @@ def plot_diff_action(positive_traj, negative_traj, log_dir):
 
     f, ax = plt.subplots(5, 5, figsize=(32,32))
 
-    diff = negative_traj[negative_traj['action'] != negative_traj['policy action']]
     for i in range(5):
         for j in range(5):
             weight = [0] * 25
             idx = i * 5 + j
-            tmp = diff[diff['action'] == idx]['policy action'].value_counts()
+            tmp = negative_traj[negative_traj['action'] == idx]['policy action'].value_counts()
             for k in tmp.index:
                 weight[int(k)] = tmp[int(k)]
 

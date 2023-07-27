@@ -16,7 +16,7 @@ def WIS_estimator(actions, action_probs, expert_data, id_index_map, args):
     num = len(id_index_map)
     policy_return = np.zeros((num,), dtype=np.float64) 
     expert_return = np.zeros((num,)) 
-    weights = np.zeros((num, 50))
+    weights = np.zeros((num, 50)) # assume the patient max length is 50 
     length = np.zeros((num,), dtype=np.int32) # the horizon length of each patient
     for i, id in enumerate(id_index_map.keys()):
         start, end = id_index_map[id][0], id_index_map[id][-1]
@@ -24,7 +24,7 @@ def WIS_estimator(actions, action_probs, expert_data, id_index_map, args):
         reward = 0
         length[i] = int(end - start + 1)
         for j, index in enumerate(range(end, start - 1, -1)):
-            # assume policy take the max action in probability of 0.99 and any othe actions of 0.01 
+            # assume policy take the max action in probability of 0.99 and any other actions of 0.01 
             if args.agent == 'D3QN':
                 weights[i, end - start - j] = 0.99 if int(actions[index]) == int(expert_data.loc[index, 'action']) else 0.01
             elif args.agent == 'SAC':
