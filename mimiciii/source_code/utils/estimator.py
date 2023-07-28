@@ -40,5 +40,5 @@ def WIS_estimator(actions, action_probs, expert_data, id_index_map, args):
         w_H = np.cumprod(weights[l <= length], axis=1)[:, l - 1].mean()
         policy_return[i] /= w_H
 
-    policy_return = np.clip(policy_return, -25, 25)
+    policy_return = np.clip(policy_return, -40, 40)
     return policy_return.mean(), expert_return.mean(), policy_return

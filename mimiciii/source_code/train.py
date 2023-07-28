@@ -217,13 +217,11 @@ if __name__ == '__main__':
         path = f'SAC/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
     log_path = os.path.join('./log', path)
     os.makedirs(log_path, exist_ok=True)
-    agent_path = os.path.join('./saved_agents', path)
-    os.makedirs(agent_path, exist_ok=True)
 
     if args.agent == 'D3QN':
-        model = D3QN_Agent(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
+        model = D3QN_Agent(static_policy=False, env=env, config=config, log_dir=log_path)
     elif args.agent == 'SAC':
-        model = SAC_Agent(static_policy=False, env=env, config=config, log_dir=log_path, agent_dir=agent_path)
+        model = SAC_Agent(static_policy=False, env=env, config=config, log_dir=log_path)
     else:
         raise NotImplementedError
 
