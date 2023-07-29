@@ -52,10 +52,10 @@ def map_action(s, hour):
     return a
 
 
-def add_reward_action(dataset, hour):
+def add_reward_action(dataset: pd.DataFrame, hour):
     dataset['reward'] = [0] * dataset.shape[0]
     dataset['action'] = [0] * dataset.shape[0]
-    for index in dataset.index[:-1]:
+    for index in tqdm(dataset.index[:-1]):
         s = dataset.loc[index, :]
         s_ = dataset.loc[index + 1, :]
         if s['icustayid'] != s_['icustayid']:
@@ -74,7 +74,7 @@ def add_reward_action(dataset, hour):
     dataset.loc[dataset.index[-1], 'reward'] = r
     dataset.loc[dataset.index[-1], 'action'] = a
 
-def plot_reward_action(dataset, name):
+def plot_reward_action(dataset: pd.DataFrame, name):
     rewards, actions, sofa = list(), list(), list()
     for index in dataset.index:
         s = dataset.loc[index, :]
@@ -121,7 +121,7 @@ def plot_reward_action(dataset, name):
     plt.savefig(f'../log/{name} action distribution.png')
 
 
-def normalization(period, dataset):
+def normalization(period, dataset: pd.DataFrame):
     dataset['PaO2_FiO2'].replace(np.inf, np.nan, inplace=True)
     dataset['PaO2_FiO2'].replace(-np.inf, np.nan, inplace=True)
     mean_PaO2_FiO2 = dataset['PaO2_FiO2'].mean(skipna=True)
@@ -151,26 +151,62 @@ def normalization(period, dataset):
         dataset[feature] = (dataset[feature] - avg) / std
 
 
-def process_dataset(dataset, save_path):
+def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_path):
     drop_column = ['charttime', 'median_dose_vaso', 'input_total', 'icustayid', 'died_in_hosp', 'mortality_90d',
                 'died_within_48h_of_out_time', 'delay_end_of_record_and_discharge_or_death',
                 'input_4hourly', 'max_dose_vaso', 'reward', 'action']
-    data = {'s': [], 'a': []}
+    data = {'s': [], 'a': [], 'r': [], 's_': [], 'done': [], 'SOFA': [], 'is_alive': []}
+    state_dim = len(set(dataset.columns) - set(drop_column))
     id_index_map = defaultdict(list)
     terminal_index = set()
-    for index in tqdm(dataset.index):
+    for index in tqdm(dataset.index[:-1]):
         s = dataset.iloc[index, :]
+        s_ = dataset.loc[index + 1, :]
         a = s['action']
+        r = s['reward']
+        SOFA = unnorm_dataset.loc[index, 'SOFA']
+        if s['icustayid'] != s_['icustayid']:
+            done = 1
+            s_ = [0] * state_dim
+            terminal_index.add(index)
+        else:
+            done = 0
+            s_ = s_.drop(drop_column)
         id_index_map[s['icustayid']].append(index)
         s.drop(drop_column, inplace=True)
         data['s'].append(s)
         data['a'].append(a)
+        data['r'].append(r)
+        data['s_'].append(s_)
+        data['done'].append(done)
+        data['SOFA'].append(SOFA)
+        data['is_alive'].append(1 if r != -15 else 0)
 
-    for key, value in id_index_map.items():
-        terminal_index.add(value[-1])
+    index = dataset.index[-1]
+    terminal_index.add(index)
+    s = dataset.loc[index, :]
+    s_ = [0] * state_dim
+    a = s['action']
+    r = s['reward']
+    SOFA = unnorm_dataset.loc[index, 'SOFA']
+    id_index_map[s['icustayid']].append(index)
+    s.drop(drop_column, inplace=True)
+    done = 1
+    data['s'].append(s)
+    data['a'].append(a)
+    data['r'].append(r)
+    data['s_'].append(s_)
+    data['done'].append(done)
+    data['SOFA'].append(SOFA)
+    data['is_alive'].append(1 if r != -15 else 0)
 
     data['s'] = np.array(data['s'])
     data['a'] = np.array(data['a'])
+    data['r'] = np.array(data['r'])
+    data['s_'] = np.array(data['s_'])
+    data['done'] = np.array(data['done'])
+    data['SOFA'] = np.array(data['SOFA'])
+    data['is_alive'] = np.array(data['is_alive'])
 
     save_obj = {'data': data, 'id_index_map': id_index_map, 'terminal_index': terminal_index}
     with open(save_path, 'wb') as file:
@@ -199,6 +235,18 @@ if __name__ == '__main__':
     valid_dataset = dataset[[x in valid_id for x in dataset['icustayid']]]
     test_dataset = dataset[[x in test_id for x in dataset['icustayid']]]
 
+    train_dataset = train_dataset.reset_index(drop=True)
+    valid_dataset = valid_dataset.reset_index(drop=True)
+    test_dataset = test_dataset.reset_index(drop=True)
+
+    unnorm_train_dataset = train_dataset.copy(deep=True).reset_index(drop=True)
+    unnorm_valid_dataset = valid_dataset.copy(deep=True).reset_index(drop=True)
+    unnorm_test_dataset = test_dataset.copy(deep=True).reset_index(drop=True)
+
+    unnorm_train_dataset.to_csv(os.path.join(source_path, 'train_4.csv'), index=False)
+    unnorm_valid_dataset.to_csv(os.path.join(source_path, 'valid_4.csv'), index=False)
+    unnorm_test_dataset.to_csv(os.path.join(source_path, 'test_4.csv'), index=False)
+
     plot_reward_action(train_dataset, 'train')
     plot_reward_action(valid_dataset, 'valid')
     plot_reward_action(test_dataset, 'test')
@@ -206,14 +254,6 @@ if __name__ == '__main__':
     normalization(hour, valid_dataset)
     normalization(hour, test_dataset)
 
-    train_dataset.to_csv(os.path.join(source_path, 'train_4.csv'), index=False)
-    valid_dataset.to_csv(os.path.join(source_path, 'valid_4.csv'), index=False)
-    test_dataset.to_csv(os.path.join(source_path, 'test_4.csv'), index=False)
-
-    train_dataset = train_dataset.reset_index(drop=True)
-    valid_dataset = valid_dataset.reset_index(drop=True)
-    test_dataset = test_dataset.reset_index(drop=True)
-
-    process_dataset(train_dataset, os.path.join(source_path, 'train.pkl'))
-    process_dataset(valid_dataset, os.path.join(source_path, 'valid.pkl'))
-    process_dataset(test_dataset, os.path.join(source_path, 'test.pkl'))
+    process_dataset(train_dataset, unnorm_train_dataset, os.path.join(source_path, 'train.pkl'))
+    process_dataset(valid_dataset, unnorm_valid_dataset, os.path.join(source_path, 'valid.pkl'))
+    process_dataset(test_dataset, unnorm_test_dataset, os.path.join(source_path, 'test.pkl'))
