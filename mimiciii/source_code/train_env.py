@@ -40,6 +40,11 @@ def parse_args():
 ######################################################################################
 class sepsis_dataset(Dataset):
     def __init__(self, state, action, id_index_map, terminal_index) -> None:
+        '''
+        Args:
+            state: numpy array; expected shape (B, S)
+            action: numpy arrat; expected shape (B,)
+        '''
         super().__init__()
         self.state_dim = state.shape[1]
         # add a zero in last row to avoid overflow of index in next state
@@ -125,15 +130,15 @@ if __name__ == '__main__':
 
     with open(os.path.join(dataset_path, 'train.pkl'), 'rb') as file:
         train_dict = pickle.load(file)
-    train, train_id_index_map, train_terminal_index = train_dict['data'], train_dict['id_index_map'], train_dict['terminal_index']
+    train_data, train_id_index_map, train_terminal_index = train_dict['data'], train_dict['id_index_map'], train_dict['terminal_index']
 
     with open(os.path.join(dataset_path, 'valid.pkl'), 'rb') as file:
         valid_dict = pickle.load(file)
-    valid, valid_id_index_map, valid_terminal_index = valid_dict['data'], valid_dict['id_index_map'], valid_dict['terminal_index']
+    valid_data, valid_id_index_map, valid_terminal_index = valid_dict['data'], valid_dict['id_index_map'], valid_dict['terminal_index']
 
     with open(os.path.join(dataset_path, 'test.pkl'), 'rb') as file:
         test_dict = pickle.load(file)
-    test, test_id_index_map, test_terminal_index = test_dict['data'], test_dict['id_index_map'], test_dict['terminal_index']
+    test_data, test_id_index_map, test_terminal_index = test_dict['data'], test_dict['id_index_map'], test_dict['terminal_index']
 
     ######################################################################################
     # Hyperparameters
@@ -156,21 +161,21 @@ if __name__ == '__main__':
     ######################################################################################
     # Create Dataloader
     ######################################################################################
-    train_loader = DataLoader(sepsis_dataset(train['s'], train['a'], train_id_index_map, train_terminal_index),
+    train_loader = DataLoader(sepsis_dataset(train_data['s'], train_data['a'], train_id_index_map, train_terminal_index),
                               batch_size=args.batch_size,
                               shuffle=True,
                               drop_last=True,
                               pin_memory=True,
                               num_workers=args.num_worker)
 
-    valid_loader = DataLoader(sepsis_dataset(valid['s'], valid['a'], valid_id_index_map, valid_terminal_index),
+    valid_loader = DataLoader(sepsis_dataset(valid_data['s'], valid_data['a'], valid_id_index_map, valid_terminal_index),
                               batch_size=args.batch_size,
                               shuffle=False,
                               drop_last=False,
                               pin_memory=True,
                               num_workers=args.num_worker)
 
-    test_loader = DataLoader(sepsis_dataset(test['s'], test['a'], test_id_index_map, test_terminal_index),
+    test_loader = DataLoader(sepsis_dataset(test_data['s'], test_data['a'], test_id_index_map, test_terminal_index),
                              batch_size=args.batch_size,
                              shuffle=False,
                              drop_last=False,
@@ -222,8 +227,6 @@ if __name__ == '__main__':
         test_loss += loss
         est_next_states_test.append(pred)
 
-    with open(os.path.join(log_path, 'est_next_states_test.p'), 'wb') as f:
-        pickle.dump(np.concatenate(est_next_states_test, axis=0), f)
     with open(os.path.join(log_path, 'train_record.txt'), 'a') as f:
         f.write(f'testing loss: {test_loss:.5f}\n')
     print(f'testing loss: {test_loss:.5f}')
