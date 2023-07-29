@@ -8,9 +8,12 @@ import random
 import os
 from tqdm import tqdm
 from math import tanh
+import matplotlib
 import matplotlib.pyplot as plt
 from collections import defaultdict
 import pickle
+
+matplotlib.use('Agg')  # Set the backend to Agg
 
 pd.options.mode.chained_assignment = None
 
