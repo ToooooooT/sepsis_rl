@@ -210,6 +210,8 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
     data['done'] = np.array(data['done'])
     data['SOFA'] = np.array(data['SOFA'])
     data['is_alive'] = np.array(data['is_alive'])
+    data['iv'] = data['a'] / 5
+    data['vaso'] = data['a'] % 5
 
     save_obj = {'data': data, 'id_index_map': id_index_map, 'terminal_index': terminal_index}
     with open(save_path, 'wb') as file:
