@@ -12,6 +12,7 @@ from utils import ExperienceReplayMemory, PrioritizedReplayMemory
 class SAC(BaseAgent):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents') -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, agent_dir=agent_dir)
+        self.device = config.device
 
         # algorithm control
         self.priority_replay = config.USE_PRIORITY_REPLAY

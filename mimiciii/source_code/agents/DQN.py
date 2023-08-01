@@ -10,6 +10,7 @@ from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 class DQN(BaseAgent):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents'):
         super().__init__(config=config, env=env, log_dir=log_dir, agent_dir=agent_dir)
+        self.device = config.device
 
         # step
         self.nsteps = 1
