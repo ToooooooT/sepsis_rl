@@ -8,6 +8,7 @@ matplotlib.use('Agg')  # Set the backend to Agg
 
 import os
 import numpy as np
+import pandas as pd
 
 
 def plot_action_distribution(action_selections, log_dir):
@@ -15,17 +16,11 @@ def plot_action_distribution(action_selections, log_dir):
     Args:
         action_selections: the frequency of each action be selected
     '''
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-
-    ax.hist(range(25), weights=action_selections, bins=np.arange(26)-0.5)
-
-    ax.set_xlabel('action index')
-    ax.set_ylabel('freq')
-    ax.set_xticks(range(0, 25))
-
-    ax.set_title(f'action distribution')
-
+    plt.bar(range(25), height=action_selections)
+    plt.xlabel('action index')
+    plt.ylabel('freq')
+    plt.xticks(range(0, 25))
+    plt.title(f'action distribution')
     plt.savefig(os.path.join(log_dir, f'valid_action_distribution.png'))
     plt.close()
 
@@ -35,18 +30,17 @@ def animation_action_distribution(hists, log_dir):
     Args:
         hists: a list of each validation of the frequency of each action be selected
     '''
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    f, ax = plt.subplots(1, 1)
 
     def update(i):
         ax.clear()
-        ax.hist(range(25), weights=hists[i], bins=np.arange(26)-0.5)
+        ax.bar(range(25), height=hists[i])
         ax.set_xlabel('action index')
         ax.set_ylabel('freq')
         ax.set_xticks(range(0, 25))
         ax.set_title(f'action distribution {i}')
 
-    ani = FuncAnimation(fig, update, frames=len(hists), interval=200)
+    ani = FuncAnimation(f, update, frames=len(hists), interval=200)
     ani.save(os.path.join(log_dir, 'valid action distribution.gif'), writer='imagemagick')
     plt.close()
 
@@ -57,178 +51,138 @@ def plot_estimate_value(policy_val, log_dir, freq):
         expert_val: list of estimate return value of expert policy
         policy_val: list of estimate return value of learned policy
     '''
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-
-    ax.plot(list(range(len(policy_val))), policy_val)
-    ax.legend(['policy'], loc='best')
+    plt.plot(list(range(len(policy_val))), policy_val)
+    plt.legend(['policy'], loc='best')
 
     if freq > 1:
-        ax.set_xlabel(f'epoch * {freq}')
+        plt.xlabel(f'epoch * {freq}')
     else:
-        ax.set_xlabel(f'epoch')
-    ax.set_ylabel('expected return')
+        plt.xlabel(f'epoch')
+    plt.ylabel('expected return')
 
-    ax.set_title('Learned policy expected return')
-
+    plt.title('Learned policy expected return')
     plt.savefig(os.path.join(log_dir, 'valid estimate value.png'))
     plt.close()
 
 
-def plot_action_dist(actions, test_data_unnorm, log_dir):
+def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir):
     '''
-    actions                 : policy action (tensor)
-    test_data_unnorm        : original expert dataset unnormalize (DataFrame)
+    Args:
+        actions : policy action; expected shape (B, 1)
+        dataset : original expert dataset unnormalize (DataFrame)
     '''
-    actions_low = [0] * 25
-    actions_mid = [0] * 25
-    actions_high = [0] * 25
-    actions_all = [0] * 25
-    for index in test_data_unnorm.index:
-        # action distribtuion
-        if test_data_unnorm.loc[index, 'SOFA'] <= 5:
-            actions_low[int(actions[index])] += 1
-        elif test_data_unnorm.loc[index, 'SOFA'] < 15:
-            actions_mid[int(actions[index])] += 1
-        else:
-            actions_high[int(actions[index])] += 1
-        actions_all[int(actions[index])] += 1
+    mask_low = dataset['SOFA'] <= 5
+    mask_mid = (dataset['SOFA'] > 5) & (dataset['SOFA'] < 15)
+    mask_high = dataset['SOFA'] >= 15
+
+    # Count the occurrences of each unique action for each category
+    actions_all = np.bincount(actions.ravel().astype(int), minlength=25)
+    actions_low = np.bincount(actions[mask_low].ravel().astype(int), minlength=25)
+    actions_mid = np.bincount(actions[mask_mid].ravel().astype(int), minlength=25)
+    actions_high = np.bincount(actions[mask_high].ravel().astype(int), minlength=25)
 
     f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(16,4))
-    ax1.hist(range(25), weights=actions_low, bins=np.arange(26)-0.5)
+    ax1.bar(range(25), height=actions_low)
     ax1.set_xticks(range(0, 25))
     ax1.tick_params(axis='x', labelsize=6)
     ax1.set_title('low SOFA')
 
-    ax2.hist(range(25), weights=actions_mid, bins=np.arange(26)-0.5)
+    ax2.bar(range(25), height=actions_mid)
     ax2.set_xticks(range(0, 25))
     ax2.tick_params(axis='x', labelsize=6)
     ax2.set_title('mid SOFA')
 
-    ax3.hist(range(25), weights=actions_high, bins=np.arange(26)-0.5)
+    ax3.bar(range(25), height=actions_high)
     ax3.set_xticks(range(0, 25))
     ax3.tick_params(axis='x', labelsize=6)
     ax3.set_title('high SOFA')
 
-    ax4.hist(range(25), weights=actions_all, bins=np.arange(26)-0.5)
+    ax4.bar(range(25), height=actions_all)
     ax4.set_xticks(range(0, 25))
     ax4.tick_params(axis='x', labelsize=6)
     ax4.set_title('all')
 
+    plt.tight_layout()
     plt.savefig(os.path.join(log_dir, 'test_action_distribution.png'))
     plt.close()
 
 
-def plot_pos_neg_action_dist(positive_traj, negative_traj, log_dir):
-    # negative_traj['policy action'].hist(bins=np.arange(26)-0.5)
+def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(8, 8))
-    weight = [0] * 25
-    tmp = negative_traj['policy action'].value_counts()
-    for i in tmp.index:
-        weight[i] = tmp[i]
-    ax1.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    height = np.bincount(negative_traj['policy action'], minlength=25)[:25]
+    ax1.bar(range(25), height=height)
     ax1.set_xticks(range(0, 25))
     ax1.tick_params(axis='x', labelsize=6)
     ax1.set_title('negative trajectories policy action')
 
-    weight = [0] * 25
-    tmp = negative_traj['action'].value_counts()
-    for i in tmp.index:
-        weight[i] = tmp[i]
-    ax2.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    height = np.bincount(negative_traj['action'], minlength=25)[:25]
+    ax2.bar(range(25), height=height)
     ax2.set_xticks(range(0, 25))
     ax2.tick_params(axis='x', labelsize=6)
     ax2.set_title('negative trajectories expert action')
 
-    weight = [0] * 25
-    tmp = positive_traj['policy action'].value_counts()
-    for i in tmp.index:
-        weight[i] = tmp[i]
-    ax3.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    height = np.bincount(positive_traj['policy action'], minlength=25)[:25]
+    ax3.bar(range(25), height=height)
     ax3.set_xticks(range(0, 25))
     ax3.tick_params(axis='x', labelsize=6)
     ax3.set_title('positive trajectories policy action')
 
-    weight = [0] * 25
-    tmp = positive_traj['action'].value_counts()
-    for i in tmp.index:
-        weight[i] = tmp[i]
-    ax4.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    height = np.bincount(positive_traj['action'], minlength=25)[:25]
+    ax4.bar(range(25), height=height)
     ax4.set_xticks(range(0, 25))
     ax4.tick_params(axis='x', labelsize=6)
     ax4.set_title('positive trajectories expert action')
+
+    plt.tight_layout()
     plt.savefig(os.path.join(log_dir, 'pos_neg_action_compare.png'))
     plt.close()
 
 
-def plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_dir):
+def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12,12))
 
-    tmp = positive_traj[positive_traj['action'] != positive_traj['policy action']]['SOFA'].value_counts()
-    weight = [0] * 25
-    for i in tmp.index:
-        i = int(i)
-        weight[i] = tmp[i]
-
-    ax1.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    height = np.bincount(positive_traj[positive_traj['action'] != positive_traj['policy action']]['SOFA'], minlength=25)[:25]
+    ax1.bar(range(25), height=height)
     ax1.set_xticks(range(0, 25))
     ax1.tick_params(axis='x', labelsize=6)
     ax1.set_title('positive trajectories different action SOFA distribution')
 
-    tmp = positive_traj[positive_traj['action'] == positive_traj['policy action']]['SOFA'].value_counts()
-    weight = [0] * 25
-    for i in tmp.index:
-        i = int(i)
-        weight[i] = tmp[i]
-
-    ax2.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    height = np.bincount(positive_traj[positive_traj['action'] == positive_traj['policy action']]['SOFA'], minlength=25)[:25]
+    ax2.bar(range(25), height=height)
     ax2.set_xticks(range(0, 25))
     ax2.tick_params(axis='x', labelsize=6)
     ax2.set_title('positive trajectories same action SOFA distribution')
 
-    tmp = negative_traj[negative_traj['action'] != negative_traj['policy action']]['SOFA'].value_counts()
-    weight = [0] * 25
-    for i in tmp.index:
-        i = int(i)
-        weight[i] = tmp[i]
-
-    ax3.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    height = np.bincount(negative_traj[negative_traj['action'] != negative_traj['policy action']]['SOFA'], minlength=25)[:25]
+    ax3.bar(range(25), height=height)
     ax3.set_xticks(range(0, 25))
     ax3.tick_params(axis='x', labelsize=6)
     ax3.set_title('negative trajectories different action SOFA distribution')
 
-    tmp = negative_traj[negative_traj['action'] == negative_traj['policy action']]['SOFA'].value_counts()
-    weight = [0] * 25
-    for i in tmp.index:
-        i = int(i)
-        weight[i] = tmp[i]
-
-    ax4.hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+    height = np.bincount(negative_traj[negative_traj['action'] == negative_traj['policy action']]['SOFA'], minlength=25)[:25]
+    ax4.bar(range(25), height=height)
     ax4.set_xticks(range(0, 25))
     ax4.tick_params(axis='x', labelsize=6)
     ax4.set_title('negative trajectories same action SOFA distribution')
 
-
+    plt.tight_layout()
     plt.savefig(os.path.join(log_dir, 'diff_action_SOFA_dist.png'))
     plt.close()
 
 
-def plot_diff_action(positive_traj, negative_traj, log_dir):
+def plot_diff_action(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir):
     f, ax = plt.subplots(5, 5, figsize=(32,32))
 
     for i in range(5):
         for j in range(5):
-            weight = [0] * 25
             idx = i * 5 + j
-            tmp = positive_traj[positive_traj['action'] == idx]['policy action'].value_counts()
-            for k in tmp.index:
-                weight[int(k)] = tmp[int(k)]
-
-            ax[i][j].hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+            height = np.bincount(positive_traj[positive_traj['action'] == idx]['policy action'], minlength=25)[:25]
+            ax[i][j].bar(range(25), height=height)
             ax[i][j].set_xticks(range(0, 25))
             ax[i][j].tick_params(axis='x', labelsize=6)
             ax[i][j].set_title(f'expert action: {i * 5 + j}')
 
+    plt.tight_layout()
     plt.savefig(os.path.join(log_dir, 'pos_diff_action_compare.png'))
     plt.close()
 
@@ -236,22 +190,19 @@ def plot_diff_action(positive_traj, negative_traj, log_dir):
 
     for i in range(5):
         for j in range(5):
-            weight = [0] * 25
             idx = i * 5 + j
-            tmp = negative_traj[negative_traj['action'] == idx]['policy action'].value_counts()
-            for k in tmp.index:
-                weight[int(k)] = tmp[int(k)]
-
-            ax[i][j].hist(range(25), weights=weight, bins=np.arange(26)-0.5)
+            height = np.bincount(negative_traj[negative_traj['action'] == idx]['policy action'], minlength=25)[:25]
+            ax[i][j].bar(range(25), height=height)
             ax[i][j].set_xticks(range(0, 25))
             ax[i][j].tick_params(axis='x', labelsize=6)
             ax[i][j].set_title(f'expert action: {i * 5 + j}')
 
+    plt.tight_layout()
     plt.savefig(os.path.join(log_dir, 'neg_diff_action_compare.png'))
     plt.close()
 
 
-def sliding_mean(data_array, window=1):
+def sliding_mean(data_array: list, window=1):
     new_list = []
     for i in range(len(data_array)):
         indices = range(max(i - window, 0),
@@ -264,69 +215,114 @@ def sliding_mean(data_array, window=1):
     return np.array(new_list)
 
 
-def plot_survival_rate(expected_return, id_index_map, test_data_unnorm, log_dir):
+def plot_survival_rate(expected_return: np.ndarray, id_index_map: dict, dataset: pd.DataFrame, name: list, log_dir):
     '''
+    Args:
+        expected_return : expected shape (k, N); k is number of estimators
+        id_index_map    : indexes of each icustayid (dict)
+        dataset         : original dataset
+        name            : list of name of estimator
+
     reference: https://github.com/CaryLi666/ID3QNE-algorithm/blob/main/experiment/survival%20rate/main_shengcunlv-37.py
     '''
+    n = len(name)
+    if expected_return.ndim == 1:
+        expected_return = expected_return.reshape(1, -1)
+    assert(n == expected_return.shape[0])
+
     survive = np.zeros((len(id_index_map),))
     for i, id in enumerate(id_index_map.keys()):
         index = id_index_map[id][0]
-        survive[i] = 1.0 if test_data_unnorm.loc[index, 'died_in_hosp'] != 1.0 and \
-                    test_data_unnorm.loc[index, 'mortality_90d'] != 1.0 and \
-                    test_data_unnorm.loc[index, 'died_within_48h_of_out_time'] != 1.0 else 0
+        survive[i] = 1.0 if dataset.loc[index, 'died_in_hosp'] != 1.0 and \
+                    dataset.loc[index, 'mortality_90d'] != 1.0 and \
+                    dataset.loc[index, 'died_within_48h_of_out_time'] != 1.0 else 0
 
-    bin_medians = []
-    mort = []
-    mort_std = []
-    i = -7
-    while i <= 25:
-        count = survive[np.logical_and(expected_return >= i - 0.5, expected_return <= i + 0.5)]
-        try:
-            res = sum(count) / len(count)
-            if len(count) >= 2:
-                bin_medians.append(i)
-                mort.append(res)
-                mort_std.append(sem(count))
-        except ZeroDivisionError:
-            pass
-        i += 1
+    bin_medians = [[] for _ in range(n)]
+    mort = [[] for _ in range(n)]
+    mort_std = [[] for _ in range(n)]
+    for k in range(n):
+        i = -7
+        while i <= 25:
+            count = survive[np.logical_and(expected_return[k] >= i - 0.5, expected_return[k] <= i + 0.5)]
+            try:
+                res = sum(count) / len(count)
+                if len(count) >= 2:
+                    bin_medians[k].append(i)
+                    mort[k].append(res)
+                    mort_std[k].append(sem(count))
+            except ZeroDivisionError:
+                pass
+            i += 0.5
 
-    plt.plot(bin_medians, sliding_mean(mort), color='g')
-    plt.fill_between(bin_medians, sliding_mean(mort) - 1 * mort_std,
-                     sliding_mean(mort) + 1 * mort_std, color='palegreen')
+    f, ax = plt.subplots(n, 1, figsize=(16, n * 8))
 
-    x_r = [i / 1.0 for i in range(-7, 27, 3)]
-    y_r = [i / 10.0 for i in range(0, 11, 1)]
-    plt.xticks(x_r)
-    plt.yticks(y_r)
+    if n == 1:
+        ax.plot(bin_medians[0], sliding_mean(mort[0]), color='g')
+        ax.fill_between(bin_medians[0], sliding_mean(mort[0]) - 1 * mort_std[0],
+                        sliding_mean(mort[0]) + 1 * mort_std[0], color='palegreen')
 
-    plt.title('Survival Rate v.s. Expected Return')
-    plt.xlabel("Expected Return")
-    plt.ylabel("Survival Rate")
+        x_r = [i / 1.0 for i in range(-7, 27, 3)]
+        y_r = [i / 10.0 for i in range(0, 11, 1)]
+        ax.set_xticks(x_r)
+        ax.set_yticks(y_r)
+        ax.set_title(f'{name[0]} Survival Rate v.s. Expected Return')
+        ax.set_xlabel("Expected Return")
+        ax.set_ylabel("Survival Rate")
+    else:
+        for k in range(n):
+            ax[k].plot(bin_medians[k], sliding_mean(mort[k]), color='g')
+            ax[k].fill_between(bin_medians[k], sliding_mean(mort[k]) - 1 * mort_std[k],
+                            sliding_mean(mort[k]) + 1 * mort_std[k], color='palegreen')
+
+            x_r = [i / 1.0 for i in range(-7, 27, 3)]
+            y_r = [i / 10.0 for i in range(0, 11, 1)]
+            ax[k].set_xticks(x_r)
+            ax[k].set_yticks(y_r)
+            ax[k].set_title(f'{name[k]} Survival Rate v.s. Expected Return')
+            ax[k].set_xlabel("Expected Return")
+            ax[k].set_ylabel("Survival Rate")
+
+    plt.tight_layout()
     plt.savefig(os.path.join(log_dir, 'survival_rate.png'))
     plt.close()
 
 
-def plot_expected_return_distribution(expected_return, log_dir):
+def plot_expected_return_distribution(expected_return: np.ndarray, name: list, log_dir):
+    '''
+    Args:
+        expected_return : expected shape (k, N); k is number of estimators
+        name            : list of name of estimator
+    '''
+    clip_val = 25
+    n = len(name)
+    if expected_return.ndim == 1:
+        expected_return = expected_return.reshape(1, -1)
+    assert(n == expected_return.shape[0])
     expected_return = np.round(expected_return).astype(np.int32)
     # igonre the outlier expected return
-    expected_return = np.clip(expected_return, -25, 25)
-    max_return = expected_return.max()
-    min_return = expected_return.min()
-    expected_return_count = np.zeros((max_return - min_return + 1))
-    unique_vals, counts = np.unique(expected_return, return_counts=True)
-    expected_return_count[unique_vals - min_return] = counts
+    expected_return = np.clip(expected_return, -clip_val, clip_val)
+    expected_return_count = np.apply_along_axis(
+        lambda x: np.bincount(x + clip_val, minlength=2 * clip_val + 1),
+        axis=1,
+        arr=expected_return
+    )
 
-    fig = plt.figure(figsize=(16, 8))
-    ax = fig.add_subplot(111)
+    f, ax = plt.subplots(n, 1, figsize=(16, n * 8))
 
-    ax.hist(range(min_return, max_return + 1), weights=expected_return_count, bins=np.arange(min_return, max_return + 1)-0.5)
+    if n > 1:
+        for i in range(n):
+            ax[i].bar(range(-clip_val, clip_val + 1), height=expected_return_count[i])
+            ax[i].set_xlabel('expected return')
+            ax[i].set_ylabel('count')
+            ax[i].set_xticks(range(-clip_val, clip_val + 1))
+            ax[i].set_title(f'{name[i]} expected return distribution')
+    else:
+        ax.bar(range(-clip_val, clip_val + 1), height=expected_return_count[0])
+        ax.set_xlabel('expected return')
+        ax.set_ylabel('count')
+        ax.set_xticks(range(-clip_val, clip_val + 1))
+        ax.set_title(f'{name[0]} expected return distribution')
 
-    ax.set_xlabel('expected return')
-    ax.set_ylabel('count')
-    ax.set_xticks(range(min_return, max_return + 1))
-
-    ax.set_title(f'expected return distribution')
-
+    plt.tight_layout()
     plt.savefig(os.path.join(log_dir, f'expected_return_distribution.png'))
     plt.close()

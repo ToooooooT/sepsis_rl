@@ -113,6 +113,11 @@ def training(model: BaseAgent, valid_data, config, valid_dataset: pd.DataFrame, 
 
 
 def testing(test_data, model: BaseAgent):
+    '''
+    Returns:
+        actions     : np.ndarray expected shape (B, 1)
+        action_probs: np.ndarray expected shape (B, D)
+    '''
     batch_state, batch_action = test_data['s'], test_data['a']
 
     batch_state = torch.tensor(batch_state, device=model.device, dtype=torch.float).view(-1, model.num_feats)
@@ -126,7 +131,8 @@ def testing(test_data, model: BaseAgent):
         elif isinstance(model, SAC_Agent):
             model.actor.eval()
             actions, _, _, action_probs = model.actor.get_action(batch_state)
-            actions = actions.view(-1, 1).cpu().numpy()
+            actions = actions.view(-1, 1).detach().cpu().numpy()
+            action_probs = actions.detach().cpu().numpy()
             ret = (actions, action_probs)
         
     model.save_action(actions)
@@ -230,14 +236,15 @@ if __name__ == '__main__':
     negative_traj = test_dataset.query('died_in_hosp == 1.0 | died_within_48h_of_out_time == 1.0 | mortality_90d == 1.0')
     positive_traj = test_dataset.query('died_in_hosp != 1.0 & died_within_48h_of_out_time != 1.0 & mortality_90d != 1.0')
     avg_policy_return, policy_return = WIS_estimator(actions, action_probs, test_dataset, test_id_index_map, args)
+    policy_return = policy_return.reshape(1, -1)
 
-    plot_expected_return_distribution(policy_return, log_path)
+    plot_expected_return_distribution(policy_return, ['WIS'], log_path)
+    plot_survival_rate(policy_return, test_id_index_map, test_dataset, ['WIS'], log_path)
 
     plot_action_dist(actions, test_dataset, log_path)
     plot_pos_neg_action_dist(positive_traj, negative_traj, log_path)
     plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_path)
     plot_diff_action(positive_traj, negative_traj, log_path)
-    plot_survival_rate(policy_return, test_id_index_map, test_dataset, log_path)
     with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
         f.write(f'policy WIS estimator: {avg_policy_return:.5f}\n')
     print(f'policy WIS estimator: {avg_policy_return:.5f}')
