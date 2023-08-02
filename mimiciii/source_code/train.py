@@ -75,7 +75,7 @@ def add_dataset_to_replay(train_data, model, clip_reward):
         model.append_to_replay(s[i], a[i], r[i], s_[i], SOFA[i])
 
 
-def training(model: BaseAgent, valid_data, config, valid_dataset: pd.DataFrame, id_index_map, args):
+def training(model: BaseAgent, valid_data, config, valid_dataset: pd.DataFrame, valid_id_index_map, args):
     '''
     Args:
         valid           : batch_state and action (dict)
@@ -95,10 +95,10 @@ def training(model: BaseAgent, valid_data, config, valid_dataset: pd.DataFrame, 
         writer.add_scalars('loss', loss, i)
 
         if i % valid_freq == 0:
-            actions, action_probs = testing(valid_data, model)
+            _, action_probs, _ = testing(valid_data, model)
             if i % gif_freq == 0:
                 hists.append(model.action_selections)
-            avg_p_return, _ = WIS_estimator(actions, action_probs, valid_dataset, id_index_map, args)
+            avg_p_return, _ = WIS_estimator(action_probs, valid_dataset, valid_id_index_map)
             avg_policy_returns.append(avg_p_return)
 
             if avg_p_return > max_expected_return:
@@ -115,8 +115,9 @@ def training(model: BaseAgent, valid_data, config, valid_dataset: pd.DataFrame, 
 def testing(test_data, model: BaseAgent):
     '''
     Returns:
-        actions     : np.ndarray expected shape (B, 1)
-        action_probs: np.ndarray expected shape (B, D)
+        actions     : np.ndarray; expected shape (B, 1)
+        action_probs: np.ndarray; expected shape (B, D)
+        est_q_values: np.ndarray; expected shape (B, 1)
     '''
     batch_state, batch_action = test_data['s'], test_data['a']
 
@@ -126,18 +127,23 @@ def testing(test_data, model: BaseAgent):
     with torch.no_grad():
         if isinstance(model, D3QN_Agent):
             model.model.eval()
-            actions = model.model(batch_state).max(dim=1)[1].view(-1, 1).cpu().numpy()
-            ret = (actions, None)
+            est_q_values, actions = model.model(batch_state).max(dim=1)
+            actions = actions.view(-1, 1).detach().cpu().numpy() # (B, 1)
+            est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy() # (B, 1)
+            # assume policy take the max action in probability of 0.99 and any other actions of 0.01 
+            action_probs = np.full((actions.shape[0], 25), 0.01)
+            action_probs[np.arange(actions.shape[0]), actions[:, 0]] = 0.99
         elif isinstance(model, SAC_Agent):
+            # TODO: est_q_values
             model.actor.eval()
             actions, _, _, action_probs = model.actor.get_action(batch_state)
-            actions = actions.view(-1, 1).detach().cpu().numpy()
-            action_probs = actions.detach().cpu().numpy()
-            ret = (actions, action_probs)
-        
+            actions = actions.view(-1, 1).detach().cpu().numpy() # (B, 1)
+            action_probs = action_probs.detach().cpu().numpy() # (B, D)
+            est_q_values = None
+
     model.save_action(actions)
 
-    return ret
+    return actions, action_probs, est_q_values
 
 
 if __name__ == '__main__':
@@ -229,22 +235,22 @@ if __name__ == '__main__':
     model.load()
 
     print('Start testing...')
-    actions, action_probs = testing(test_data, model)
+    actions, action_probs, est_q_values = testing(test_data, model)
 
     test_dataset['policy action'] = actions
     test_dataset.to_csv(os.path.join(model.log_dir, 'test_data_predict.csv'), index=False)
     negative_traj = test_dataset.query('died_in_hosp == 1.0 | died_within_48h_of_out_time == 1.0 | mortality_90d == 1.0')
     positive_traj = test_dataset.query('died_in_hosp != 1.0 & died_within_48h_of_out_time != 1.0 & mortality_90d != 1.0')
-    avg_policy_return, policy_return = WIS_estimator(actions, action_probs, test_dataset, test_id_index_map, args)
-    policy_return = policy_return.reshape(1, -1)
+    avg_WIS_policy_return, WIS_policy_return = WIS_estimator(action_probs, test_dataset, test_id_index_map)
+    WIS_policy_return = WIS_policy_return.reshape(1, -1)
 
-    plot_expected_return_distribution(policy_return, ['WIS'], log_path)
-    plot_survival_rate(policy_return, test_id_index_map, test_dataset, ['WIS'], log_path)
+    plot_expected_return_distribution(WIS_policy_return, ['WIS'], log_path)
+    plot_survival_rate(WIS_policy_return, test_id_index_map, test_dataset, ['WIS'], log_path)
 
     plot_action_dist(actions, test_dataset, log_path)
     plot_pos_neg_action_dist(positive_traj, negative_traj, log_path)
     plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_path)
     plot_diff_action(positive_traj, negative_traj, log_path)
     with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
-        f.write(f'policy WIS estimator: {avg_policy_return:.5f}\n')
-    print(f'policy WIS estimator: {avg_policy_return:.5f}')
+        f.write(f'policy WIS estimator: {avg_WIS_policy_return:.5f}\n')
+    print(f'policy WIS estimator: {avg_WIS_policy_return:.5f}')
