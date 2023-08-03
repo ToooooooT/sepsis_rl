@@ -4,6 +4,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 import torch.nn.functional as F
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
 
 def WIS_estimator(action_probs: np.ndarray, expert_data: pd.DataFrame, id_index_map):
     '''
@@ -80,39 +81,41 @@ class sepsis_dataset(Dataset):
 
 
 class DR_estimator():
-    def __init__(self, train_data: dict, dataset: pd.DataFrame, data_dict: dict, args, device) -> None:
+    def __init__(self, train_data: dict, valid_data: dict, test_dataset: pd.DataFrame, test_data_dict: dict, args, device) -> None:
         '''
         Args:
             train_data      : processed training dataset
+            valid_data      : processed training dataset
             dataset         : unnormalization testing dataset, with action and reward 
             data_dict       : processed testing dataset
             args            : arguments from main file
         '''
-        self.dataset = dataset
-        self.data = data_dict['data']
-        self.id_index_map = data_dict['id_index_map']
-        self.terminal_index = data_dict['terminal_index']
+        self.test_dataset = test_dataset
+        self.test_data = test_data_dict['data']
+        self.id_index_map = test_data_dict['id_index_map']
+        self.terminal_index = test_data_dict['terminal_index']
         self.env_model = torch.load(args.env_model_path)['env']
-
         self.args = args
         self.device = device
 
+        # train logistic regression to predict alive or not
         self.clf = LogisticRegression(max_iter=1000)
         train_feat = np.concatenate([train_data['s'], train_data['iv'].reshape(-1, 1), train_data['vaso'].reshape(-1, 1)], axis=1)
         self.clf.fit(train_feat, train_data['is_alive'])
+        valid_feat = np.concatenate([valid_data['s'], valid_data['iv'].reshape(-1, 1), valid_data['vaso'].reshape(-1, 1)], axis=1)
+        y_pred = self.clf.predict(valid_feat)
+        accuracy = accuracy_score(valid_data['is_alive'], y_pred)
+        print(f'validation score: {accuracy:.5f}, survival rate: {np.array(y_pred).mean():.5f}')
 
         # for estimate reward
-        sofa_mean = dataset['SOFA'].mean()
-        sofa_std = dataset['SOFA'].std()
-        lact_mean = dataset['Arterial_lactate'].mean()
-        lact_std = dataset['Arterial_lactate'].std()
-
-        norm_sofa = (dataset['SOFA'] - sofa_mean) / sofa_std
-        norm_lact = (dataset['Arterial_lactate'] - lact_mean) / lact_std
-
+        sofa_mean = test_dataset['SOFA'].mean()
+        sofa_std = test_dataset['SOFA'].std()
+        lact_mean = test_dataset['Arterial_lactate'].mean()
+        lact_std = test_dataset['Arterial_lactate'].std()
+        norm_sofa = (test_dataset['SOFA'] - sofa_mean) / sofa_std
+        norm_lact = (test_dataset['Arterial_lactate'] - lact_mean) / lact_std
         min_norm_sofa = norm_sofa.min()
         max_norm_sofa = norm_sofa.max()
-
         min_norm_lact = norm_lact.min()
         max_norm_lact = norm_lact.max()
 
@@ -178,7 +181,7 @@ class DR_estimator():
         Returns:
             np.ndarray, expected shape (B, S) 
         '''
-        test_loader = DataLoader(sepsis_dataset(self.data['s'], policy_actions, self.id_index_map, self.terminal_index),
+        test_loader = DataLoader(sepsis_dataset(self.test_data['s'], policy_actions, self.id_index_map, self.terminal_index),
                                 batch_size=self.args.batch_size,
                                 shuffle=False,
                                 drop_last=False,
@@ -208,7 +211,7 @@ class DR_estimator():
         '''
         iv = policy_actions / 5
         vaso = policy_actions % 5
-        state = self.data['s']
+        state = self.test_data['s']
         clf_feat = np.concatenate([state, iv, vaso], axis=1)
         c0 = -0.1 / 4
         c1 = -0.5 / 4
@@ -224,11 +227,11 @@ class DR_estimator():
 
         est_rewards = []
         est_alives = []
-        icustayids = self.dataset['icustayid'].values
-        lacts = self.dataset['Arterial_lactate'].values
-        sofas = self.dataset['SOFA'].values
-        for index in self.dataset.index:
-            if index == len(self.dataset) - 1 or icustayids[index] != icustayids[index + 1]:
+        icustayids = self.test_dataset['icustayid'].values
+        lacts = self.test_dataset['Arterial_lactate'].values
+        sofas = self.test_dataset['SOFA'].values
+        for index in self.test_dataset.index:
+            if index == len(self.test_dataset) - 1 or icustayids[index] != icustayids[index + 1]:
                 terminal_feat = clf_feat[index, :].reshape(1, -1)
                 est_outcome = self.clf.predict(terminal_feat)[0]
                 est_alives.append(est_outcome)

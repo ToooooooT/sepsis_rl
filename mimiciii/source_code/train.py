@@ -91,7 +91,7 @@ def training(model: BaseAgent, train_data: dict, valid_dataset: pd.DataFrame, va
     max_expected_return = -np.inf
     valid_data = valid_dict['data']
     valid_id_index_map = valid_dict['id_index_map']
-    dre = DR_estimator(train_data, valid_dataset, valid_dict, args, model.device)
+    dre = DR_estimator(train_data, valid_data, valid_dataset, valid_dict, args, model.device)
 
     for i in tqdm(range(1, config.EPISODE + 1)):
         loss = model.update(i)
@@ -185,6 +185,7 @@ if __name__ == '__main__':
     valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{args.hour}.csv'))
     with open(os.path.join(dataset_path, 'valid.pkl'), 'rb') as file:
         valid_dict = pickle.load(file)
+    valid_data = valid_dict['data']
 
     # test
     test_dataset = pd.read_csv(os.path.join(dataset_path, f'test_{args.hour}.csv'))
@@ -250,7 +251,7 @@ if __name__ == '__main__':
     test_dataset['policy action'] = actions
     # estimate expected return
     avg_wis_policy_return, wis_policy_return = WIS_estimator(action_probs, test_dataset, test_id_index_map)
-    dre = DR_estimator(train_data, test_dataset, test_dict, args, config.device)
+    dre = DR_estimator(train_data, valid_data, test_dataset, test_dict, args, config.device)
     avg_dr_policy_return, dr_policy_return, est_alive = \
         dre.estimate_expected_return(est_q_values, actions, action_probs, test_dataset, test_id_index_map)
     # plot expected return result
