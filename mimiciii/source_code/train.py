@@ -14,7 +14,7 @@ from agents import DQN, SAC, BaseAgent
 from utils import Config, plot_action_dist, plot_action_distribution, plot_estimate_value, \
                 animation_action_distribution, plot_pos_neg_action_dist, plot_diff_action_SOFA_dist, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
-                WIS_estimator
+                WIS_estimator, DR_estimator
 from network import DuellingMLP, PolicyMLP
 
 from torch.utils.tensorboard import SummaryWriter
@@ -34,10 +34,10 @@ def parse_args():
     parser.add_argument("--valid_freq", type=int, help="validation frequency", default=50)
     parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
     parser.add_argument("--target_net_freq", type=int, help="the frequency of updates for the target networks", default=1)
-    parser.add_argument("--env_model_path", type=str, help="path of environment model", default="./log/Env/batch_size=32-lr=0.001/model.pth")
+    parser.add_argument("--env_model_path", type=str, help="path of environment model", default="./log/Env/batch_size=32-lr=0.001-episode=200/model.pth")
     parser.add_argument("--device", type=str, help="device", default="cpu")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
-    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=32)
+    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=20)
     args = parser.parse_args()
     return args
 
@@ -74,42 +74,54 @@ def add_dataset_to_replay(train_data, model, clip_reward):
     for i in range(s.shape[0]):
         model.append_to_replay(s[i], a[i], r[i], s_[i], SOFA[i])
 
-
-def training(model: BaseAgent, valid_data, config, valid_dataset: pd.DataFrame, valid_id_index_map, args):
+def training(model: BaseAgent, train_data: dict, valid_dataset: pd.DataFrame, valid_dict: dict, config, args):
     '''
     Args:
-        valid           : batch_state and action (dict)
+        train_data      : processed training dataset
         valid_dataset   : original valid dataset (DataFrame)
-        id_index_map    : indexes of each icustayid (dict)
+        valud_dict      : processed validation dataset
     '''
     writer = SummaryWriter(model.log_dir)
     loss = 0
-    avg_policy_returns = list()
+    avg_wis_policy_returns = list()
+    avg_dr_policy_returns = list()
     hists = list() # save model actions of validation in every episode 
     valid_freq = args.valid_freq
     gif_freq = args.gif_freq
-    max_expected_return = 0
+    max_expected_return = -np.inf
+    valid_data = valid_dict['data']
+    valid_id_index_map = valid_dict['id_index_map']
+    dre = DR_estimator(train_data, valid_dataset, valid_dict, args, model.device)
 
     for i in tqdm(range(1, config.EPISODE + 1)):
         loss = model.update(i)
         writer.add_scalars('loss', loss, i)
 
         if i % valid_freq == 0:
-            _, action_probs, _ = testing(valid_data, model)
+            actions, action_probs, est_q_values = testing(valid_data, model)
+            # store actions
             if i % gif_freq == 0:
                 hists.append(model.action_selections)
-            avg_p_return, _ = WIS_estimator(action_probs, valid_dataset, valid_id_index_map)
-            avg_policy_returns.append(avg_p_return)
-
-            if avg_p_return > max_expected_return:
-                max_expected_return = avg_p_return
-                model.save()
-
-            writer.add_scalar('WIS_estimator', avg_p_return, i)
+            # estimate expected return
+            avg_wis_p_return, _ = WIS_estimator(action_probs, valid_dataset, valid_id_index_map)
+            avg_wis_policy_returns.append(avg_wis_p_return)
+            avg_dr_p_return, _, _ = dre.estimate_expected_return(est_q_values, actions, action_probs, valid_dataset, valid_id_index_map)
+            avg_dr_policy_returns.append(avg_wis_p_return)
+            if args.agent == 'D3QN':
+                if avg_dr_p_return > max_expected_return:
+                    max_expected_return = avg_dr_p_return
+                    model.save()
+            elif args.agent == 'SAC':
+                if avg_wis_p_return > max_expected_return:
+                    max_expected_return = avg_wis_p_return
+                    model.save()
+            # record in tensorboard
+            writer.add_scalars('expected return validation', \
+                               dict(zip(['WIS', 'DR'], [avg_wis_p_return, avg_dr_p_return])), i)
 
     plot_action_distribution(model.action_selections, model.log_dir)
     animation_action_distribution(hists, model.log_dir)
-    plot_estimate_value(avg_policy_returns, model.log_dir, valid_freq)
+    plot_estimate_value(avg_wis_policy_returns, model.log_dir, valid_freq)
 
 
 def testing(test_data, model: BaseAgent):
@@ -134,12 +146,12 @@ def testing(test_data, model: BaseAgent):
             action_probs = np.full((actions.shape[0], 25), 0.01)
             action_probs[np.arange(actions.shape[0]), actions[:, 0]] = 0.99
         elif isinstance(model, SAC_Agent):
-            # TODO: est_q_values
             model.actor.eval()
             actions, _, _, action_probs = model.actor.get_action(batch_state)
             actions = actions.view(-1, 1).detach().cpu().numpy() # (B, 1)
             action_probs = action_probs.detach().cpu().numpy() # (B, D)
-            est_q_values = None
+            # TODO: est_q_values
+            est_q_values = np.zeros((actions.shape[0], 1))
 
     model.save_action(actions)
 
@@ -167,20 +179,18 @@ if __name__ == '__main__':
     icustayids = train_dataset['icustayid'].unique()
     with open(os.path.join(dataset_path, 'train.pkl'), 'rb') as file:
         train_dict = pickle.load(file)
-    train_data, train_id_index_map, train_terminal_index = train_dict['data'], train_dict['id_index_map'], train_dict['terminal_index']
-
+    train_data = train_dict['data']
 
     # validation
     valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{args.hour}.csv'))
     with open(os.path.join(dataset_path, 'valid.pkl'), 'rb') as file:
         valid_dict = pickle.load(file)
-    valid_data, valid_id_index_map, valid_terminal_index = valid_dict['data'], valid_dict['id_index_map'], valid_dict['terminal_index']
 
     # test
     test_dataset = pd.read_csv(os.path.join(dataset_path, f'test_{args.hour}.csv'))
     with open(os.path.join(dataset_path, 'test.pkl'), 'rb') as file:
         test_dict = pickle.load(file)
-    test_data, test_id_index_map, test_terminal_index = test_dict['data'], test_dict['id_index_map'], test_dict['terminal_index']
+    test_data, test_id_index_map = test_dict['data'], test_dict['id_index_map'], 
 
     ######################################################################################
     # Hyperparameters
@@ -227,7 +237,7 @@ if __name__ == '__main__':
     add_dataset_to_replay(train_data, model, clip_reward)
 
     print('Start training...')
-    training(model, valid_data, config, valid_dataset, valid_id_index_map, args)
+    training(model, train_data, valid_dataset, valid_dict, config, args)
 
     ######################################################################################
     # Testing
@@ -238,19 +248,30 @@ if __name__ == '__main__':
     actions, action_probs, est_q_values = testing(test_data, model)
 
     test_dataset['policy action'] = actions
-    test_dataset.to_csv(os.path.join(model.log_dir, 'test_data_predict.csv'), index=False)
+    # estimate expected return
+    avg_wis_policy_return, wis_policy_return = WIS_estimator(action_probs, test_dataset, test_id_index_map)
+    dre = DR_estimator(train_data, test_dataset, test_dict, args, config.device)
+    avg_dr_policy_return, dr_policy_return, est_alive = \
+        dre.estimate_expected_return(est_q_values, actions, action_probs, test_dataset, test_id_index_map)
+    # plot expected return result
+    policy_returns = np.vstack((wis_policy_return, dr_policy_return))
+    plot_expected_return_distribution(policy_returns, ['WIS', 'DR'], log_path)
+    plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'DR'], log_path)
+    # plot action distribution
     negative_traj = test_dataset.query('died_in_hosp == 1.0 | died_within_48h_of_out_time == 1.0 | mortality_90d == 1.0')
     positive_traj = test_dataset.query('died_in_hosp != 1.0 & died_within_48h_of_out_time != 1.0 & mortality_90d != 1.0')
-    avg_WIS_policy_return, WIS_policy_return = WIS_estimator(action_probs, test_dataset, test_id_index_map)
-    WIS_policy_return = WIS_policy_return.reshape(1, -1)
-
-    plot_expected_return_distribution(WIS_policy_return, ['WIS'], log_path)
-    plot_survival_rate(WIS_policy_return, test_id_index_map, test_dataset, ['WIS'], log_path)
-
     plot_action_dist(actions, test_dataset, log_path)
     plot_pos_neg_action_dist(positive_traj, negative_traj, log_path)
     plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_path)
     plot_diff_action(positive_traj, negative_traj, log_path)
+    # store result in text file
     with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
-        f.write(f'policy WIS estimator: {avg_WIS_policy_return:.5f}\n')
-    print(f'policy WIS estimator: {avg_WIS_policy_return:.5f}')
+        f.write(f'policy WIS estimator: {avg_wis_policy_return:.5f}\n')
+        f.write(f'policy DR estimator: {avg_dr_policy_return:.5f}\n')
+        f.write(f'Logistic regression survival rate: {est_alive.mean():.5f}\n')
+    # print result
+    print(f'policy WIS estimator: {avg_wis_policy_return:.5f}')
+    print(f'policy DR estimator: {avg_dr_policy_return:.5f}')
+    print(f'Logistic regression survival rate: {est_alive.mean():.5f}')
+
+    test_dataset.to_csv(os.path.join(model.log_dir, 'test_data_predict.csv'), index=False)

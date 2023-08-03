@@ -13,7 +13,7 @@ def WIS_estimator(action_probs: np.ndarray, expert_data: pd.DataFrame, id_index_
     id_index_map    : indexes of each icustayid (dict)
     Returns:
         avg_policy_return: average policy return
-        policy_return: expected return of each patient; numpy array expected shape (B,)
+        policy_return: expected return of each patient; numpy array expected shape (1, B)
     '''
     # compute all trajectory total reward and weight imporatance sampling
     gamma = 0.99
@@ -40,11 +40,16 @@ def WIS_estimator(action_probs: np.ndarray, expert_data: pd.DataFrame, id_index_
         policy_return[i] /= w_H
 
     policy_return = np.clip(policy_return, -40, 40)
-    return policy_return.mean(), policy_return
+    return policy_return.mean(), policy_return.reshape(1, -1)
 
 
 class sepsis_dataset(Dataset):
-    def __init__(self, state, action, id_index_map, terminal_index) -> None:
+    def __init__(self, state: np.ndarray, action: np.ndarray, id_index_map, terminal_index) -> None:
+        '''
+        Args:
+            state: expected shape (B, S)
+            action: expected shape (B, 1)
+        '''
         super().__init__()
         self.state_dim = state.shape[1]
         # add a zero in last row to avoid overflow of index in next state
@@ -53,7 +58,7 @@ class sepsis_dataset(Dataset):
 
         self.action_dim = 2
         # add a zero in last row to avoid overflow of index in next state
-        self.action = np.array([(x // 5, x % 5) for x in action])
+        self.action = np.array([(x // 5, x % 5) for x in action]).reshape(-1, 2)
         self.action = np.vstack((self.action, np.zeros((1, self.action_dim))))
 
         self.data = np.concatenate([self.state, self.action], axis=1)
@@ -92,8 +97,8 @@ class DR_estimator():
         self.args = args
         self.device = device
 
-        self.clf = LogisticRegression()
-        train_feat = np.concatenate([train_data['s'], train_data['iv'], train_data['vaso']], axis=1)
+        self.clf = LogisticRegression(max_iter=1000)
+        train_feat = np.concatenate([train_data['s'], train_data['iv'].reshape(-1, 1), train_data['vaso'].reshape(-1, 1)], axis=1)
         self.clf.fit(train_feat, train_data['is_alive'])
 
         # for estimate reward
@@ -123,18 +128,19 @@ class DR_estimator():
                                  id_index_map: dict):
         '''
         Args:
-        est_q_values     : estimate q value; expected shape: (B, 1) 
-        actions         : policy action; expected shape: (B, 1)
-        action_probs    : probability of policy action; expected shape: (B, 1)
-        expert_data     : original expert dataset
-        id_index_map    : indexes of each icustayid
+            est_q_values    : estimate q value; expected shape: (B, 1) 
+            actions         : policy action; expected shape: (B, 1)
+            action_probs    : probability of policy action; expected shape: (B, 1)
+            expert_data     : original expert dataset
+            id_index_map    : indexes of each icustayid
         Returns:
             average policy return
-            policy_return: expected return of each patient; expected shape (B,)
+            policy_return   : expected return of each patient; expected shape (1, B)
+            est_alive       : estimate alive; expected shape (B,)
         '''
         # compute all trajectory total reward and weight imporatance sampling
         est_next_states = self.estimate_next_state(actions)
-        est_reward = self.estimate_reward(est_next_states, actions)
+        est_reward, est_alive = self.estimate_reward(est_next_states, actions)
         gamma = 0.99
         num = len(id_index_map)
         policy_return = np.zeros((num,), dtype=np.float64) 
@@ -151,7 +157,7 @@ class DR_estimator():
                                                     gamma * reward - est_q_values[index])
             policy_return[i] = reward
 
-        return policy_return[i].mean(), policy_return
+        return policy_return[i].mean(), policy_return.reshape(1, -1), est_alive
 
 
     def testing(self, input, label, done):
@@ -166,6 +172,12 @@ class DR_estimator():
 
 
     def estimate_next_state(self, policy_actions: np.ndarray):
+        '''
+        Args:
+            policy_actions: expected shape (B, 1)
+        Returns:
+            np.ndarray, expected shape (B, S) 
+        '''
         test_loader = DataLoader(sepsis_dataset(self.data['s'], policy_actions, self.id_index_map, self.terminal_index),
                                 batch_size=self.args.batch_size,
                                 shuffle=False,
@@ -181,7 +193,7 @@ class DR_estimator():
             test_loss += loss
             est_next_states.append(pred)
 
-        return np.array(est_next_states)
+        return np.vstack(est_next_states)
 
 
     def estimate_reward(self, est_next_states: np.ndarray, policy_actions: np.ndarray):
@@ -190,6 +202,9 @@ class DR_estimator():
             policy_actions: expected shape: (B, 1)
             est_next_states: next state estimate from environment model;
                                 SOFA: -2 (index), lactate: -10 (index)
+        Returns:
+            est_rewards: np.ndarray, expected shape: (B,)
+            est_alive: np.ndarray, expected shape: (B,)
         '''
         iv = policy_actions / 5
         vaso = policy_actions % 5
@@ -207,20 +222,20 @@ class DR_estimator():
         est_next_sofa = sofa_std * (est_next_sofa * (max_norm_sofa - min_norm_sofa) + min_norm_sofa) + sofa_mean
         est_next_lact = lact_std * (est_next_lact * (max_norm_lact - min_norm_lact) + min_norm_lact) + lact_mean
 
-        rewards = []
+        est_rewards = []
+        est_alives = []
+        icustayids = self.dataset['icustayid'].values
+        lacts = self.dataset['Arterial_lactate'].values
+        sofas = self.dataset['SOFA'].values
         for index in self.dataset.index:
-            if index == len(self.dataset) - 1 or self.dataset.loc[index, 'icustay_id'] \
-                != self.dataset.loc[index + 1, 'icustay_id']:
-                terminal_feat = clf_feat[index, :]
-                est_outcome = self.clf.predict(terminal_feat)
-                try:
-                    rewards.append(15 if est_outcome == 1 else -15)
-                except:
-                    print(f'estimate outcome: {est_outcome}')
-                    raise ValueError
+            if index == len(self.dataset) - 1 or icustayids[index] != icustayids[index + 1]:
+                terminal_feat = clf_feat[index, :].reshape(1, -1)
+                est_outcome = self.clf.predict(terminal_feat)[0]
+                est_alives.append(est_outcome)
+                est_rewards.append(15 if est_outcome == 1 else -15)
             else:
-                lact_cur = self.dataset.loc[index, 'Arterial_lactate']
-                sofa_cur = self.dataset.loc[index, 'SOFA']
+                lact_cur = lacts[index]
+                sofa_cur = sofas[index]
                 lact_next = est_next_lact[index]
                 sofa_next = est_next_sofa[index]
                 reward = 0
@@ -228,6 +243,6 @@ class DR_estimator():
                     reward += c0
                 reward += c1 * (sofa_next - sofa_cur)
                 reward += c2 * np.tanh(lact_next - lact_cur)
-                rewards.append(reward)
+                est_rewards.append(reward)
 
-        return np.array(rewards)
+        return np.array(est_rewards), np.array(est_alives)
