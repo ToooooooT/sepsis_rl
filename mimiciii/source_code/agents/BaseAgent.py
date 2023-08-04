@@ -17,8 +17,7 @@ class BaseAgent(object):
 
 
     def save(self):
-        if not os.path.exists(self.agent_dir):
-            os.mkdir(self.agent_dir)
+        os.makedirs(self.log_dir, exist_ok=True)
         torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'model.dump'))
         torch.save(self.optimizer.state_dict(), os.path.join(self.log_dir, 'optim.dump'))
     

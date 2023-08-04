@@ -92,7 +92,7 @@ class SAC(BaseAgent):
 
 
     def save(self):
-        os.makedirs(self.agent_dir, exist_ok=True)
+        os.makedirs(self.log_dir, exist_ok=True)
         torch.save({
             'actor': self.actor.state_dict(),
             'qf1': self.qf1.state_dict(),
