@@ -121,7 +121,9 @@ def training(model: BaseAgent, train_data: dict, valid_dataset: pd.DataFrame, va
 
     plot_action_distribution(model.action_selections, model.log_dir)
     animation_action_distribution(hists, model.log_dir)
-    plot_estimate_value(avg_wis_policy_returns, model.log_dir, valid_freq)
+    avg_wis_policy_returns = np.array(avg_wis_policy_returns)
+    avg_dr_policy_returns = np.array(avg_dr_policy_returns)
+    plot_estimate_value(np.vstack((avg_wis_policy_returns, avg_dr_policy_returns)), ['WIS', 'DR'], model.log_dir, valid_freq)
 
 
 def testing(test_data, model: BaseAgent):

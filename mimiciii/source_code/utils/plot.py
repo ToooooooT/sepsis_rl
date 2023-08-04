@@ -45,22 +45,25 @@ def animation_action_distribution(hists, log_dir):
     plt.close()
 
 
-def plot_estimate_value(policy_val, log_dir, freq):
+def plot_estimate_value(policy_val: np.ndarray, names: list, log_dir, freq):
     '''
     Args:
-        expert_val: list of estimate return value of expert policy
-        policy_val: list of estimate return value of learned policy
+        policy_val: estimate return value of learned policy during training process; expected shape (k, T)
     '''
-    plt.plot(list(range(len(policy_val))), policy_val)
-    plt.legend(['policy'], loc='best')
+    colors = ['blue', 'red']
+    f, ax = plt.subplots(1, 1)
+    x = np.arange(policy_val.shape[1])
+    for i in range(policy_val.shape[0]):
+        ax.plot(x, policy_val[i], color=colors[i], label=names[i])
+    ax.legend(names, loc='best')
 
     if freq > 1:
-        plt.xlabel(f'epoch * {freq}')
+        ax.set_xlabel(f'epoch * {freq}')
     else:
-        plt.xlabel(f'epoch')
-    plt.ylabel('expected return')
+        ax.set_xlabel(f'epoch')
+    ax.set_ylabel('expected return')
 
-    plt.title('Learned policy expected return')
+    ax.set_title('Learned policy expected return')
     plt.savefig(os.path.join(log_dir, 'valid estimate value.png'))
     plt.close()
 
@@ -241,7 +244,7 @@ def plot_survival_rate(expected_return: np.ndarray, id_index_map: dict, dataset:
     mort = [[] for _ in range(n)]
     mort_std = [[] for _ in range(n)]
     for k in range(n):
-        i = -7
+        i = -25
         while i <= 25:
             count = survive[np.logical_and(expected_return[k] >= i - 0.5, expected_return[k] <= i + 0.5)]
             try:
