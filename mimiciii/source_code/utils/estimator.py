@@ -3,8 +3,7 @@ import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 import torch
 import torch.nn.functional as F
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
+import joblib
 
 def WIS_estimator(action_probs: np.ndarray, expert_data: pd.DataFrame, id_index_map):
     '''
@@ -81,7 +80,7 @@ class sepsis_dataset(Dataset):
 
 
 class DR_estimator():
-    def __init__(self, train_data: dict, valid_data: dict, test_dataset: pd.DataFrame, test_data_dict: dict, args, device) -> None:
+    def __init__(self, test_dataset: pd.DataFrame, test_data_dict: dict, args, device) -> None:
         '''
         Args:
             train_data      : processed training dataset
@@ -99,13 +98,7 @@ class DR_estimator():
         self.device = device
 
         # train logistic regression to predict alive or not
-        self.clf = LogisticRegression(max_iter=1000)
-        train_feat = np.concatenate([train_data['s'], train_data['iv'].reshape(-1, 1), train_data['vaso'].reshape(-1, 1)], axis=1)
-        self.clf.fit(train_feat, train_data['is_alive'])
-        valid_feat = np.concatenate([valid_data['s'], valid_data['iv'].reshape(-1, 1), valid_data['vaso'].reshape(-1, 1)], axis=1)
-        y_pred = self.clf.predict(valid_feat)
-        accuracy = accuracy_score(valid_data['is_alive'], y_pred)
-        print(f'validation score: {accuracy:.5f}, survival rate: {np.array(y_pred).mean():.5f}')
+        self.clf = joblib.load(args.clf_model_path)
 
         # for estimate reward
         sofa_mean = test_dataset['SOFA'].mean()

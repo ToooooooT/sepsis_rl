@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
     parser.add_argument("--target_net_freq", type=int, help="the frequency of updates for the target networks", default=1)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="./log/Env/batch_size=32-lr=0.001-episode=200/model.pth")
+    parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="./log/Clf/LG_clf.sav")
     parser.add_argument("--device", type=str, help="device", default="cpu")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=20)
@@ -74,7 +75,7 @@ def add_dataset_to_replay(train_data, model, clip_reward):
     for i in range(s.shape[0]):
         model.append_to_replay(s[i], a[i], r[i], s_[i], SOFA[i])
 
-def training(model: BaseAgent, train_data: dict, valid_dataset: pd.DataFrame, valid_dict: dict, config, args):
+def training(model: BaseAgent, valid_dataset: pd.DataFrame, valid_dict: dict, config, args):
     '''
     Args:
         train_data      : processed training dataset
@@ -91,7 +92,7 @@ def training(model: BaseAgent, train_data: dict, valid_dataset: pd.DataFrame, va
     max_expected_return = -np.inf
     valid_data = valid_dict['data']
     valid_id_index_map = valid_dict['id_index_map']
-    dre = DR_estimator(train_data, valid_data, valid_dataset, valid_dict, args, model.device)
+    dre = DR_estimator(valid_dataset, valid_dict, args, model.device)
 
     for i in tqdm(range(1, config.EPISODE + 1)):
         loss = model.update(i)
@@ -187,13 +188,12 @@ if __name__ == '__main__':
     valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{args.hour}.csv'))
     with open(os.path.join(dataset_path, 'valid.pkl'), 'rb') as file:
         valid_dict = pickle.load(file)
-    valid_data = valid_dict['data']
 
     # test
     test_dataset = pd.read_csv(os.path.join(dataset_path, f'test_{args.hour}.csv'))
     with open(os.path.join(dataset_path, 'test.pkl'), 'rb') as file:
         test_dict = pickle.load(file)
-    test_data, test_id_index_map = test_dict['data'], test_dict['id_index_map'], 
+    test_data, test_id_index_map = test_dict['data'], test_dict['id_index_map']
 
     ######################################################################################
     # Hyperparameters
@@ -240,7 +240,7 @@ if __name__ == '__main__':
     add_dataset_to_replay(train_data, model, clip_reward)
 
     print('Start training...')
-    training(model, train_data, valid_dataset, valid_dict, config, args)
+    training(model, valid_dataset, valid_dict, config, args)
 
     ######################################################################################
     # Testing
@@ -253,7 +253,7 @@ if __name__ == '__main__':
     test_dataset['policy action'] = actions
     # estimate expected return
     avg_wis_policy_return, wis_policy_return = WIS_estimator(action_probs, test_dataset, test_id_index_map)
-    dre = DR_estimator(train_data, valid_data, test_dataset, test_dict, args, config.device)
+    dre = DR_estimator(test_dataset, test_dict, args, config.device)
     avg_dr_policy_return, dr_policy_return, est_alive = \
         dre.estimate_expected_return(est_q_values, actions, action_probs, test_dataset, test_id_index_map)
     # plot expected return result
