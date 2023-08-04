@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
+    parser.add_argument("--clip_expected_return", type=int, help="the value of clipping expected return", default=40)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
     parser.add_argument("--valid_freq", type=int, help="validation frequency", default=50)
     parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
@@ -104,7 +105,7 @@ def training(model: BaseAgent, valid_dataset: pd.DataFrame, valid_dict: dict, co
             if i % gif_freq == 0:
                 hists.append(model.action_selections)
             # estimate expected return
-            avg_wis_p_return, _ = WIS_estimator(action_probs, valid_dataset, valid_id_index_map)
+            avg_wis_p_return, _ = WIS_estimator(action_probs, valid_dataset, valid_id_index_map, args.clip_expected_return)
             avg_wis_policy_returns.append(avg_wis_p_return)
             avg_dr_p_return, _, _ = dre.estimate_expected_return(est_q_values, actions, action_probs, valid_dataset, valid_id_index_map)
             avg_dr_policy_returns.append(avg_wis_p_return)
@@ -252,7 +253,7 @@ if __name__ == '__main__':
 
     test_dataset['policy action'] = actions
     # estimate expected return
-    avg_wis_policy_return, wis_policy_return = WIS_estimator(action_probs, test_dataset, test_id_index_map)
+    avg_wis_policy_return, wis_policy_return = WIS_estimator(action_probs, test_dataset, test_id_index_map, args.clip_expected_return)
     dre = DR_estimator(test_dataset, test_dict, args, config.device)
     avg_dr_policy_return, dr_policy_return, est_alive = \
         dre.estimate_expected_return(est_q_values, actions, action_probs, test_dataset, test_id_index_map)

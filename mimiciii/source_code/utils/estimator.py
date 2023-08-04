@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 import joblib
 
-def WIS_estimator(action_probs: np.ndarray, expert_data: pd.DataFrame, id_index_map):
+def WIS_estimator(action_probs: np.ndarray, expert_data: pd.DataFrame, id_index_map, clip_expected_return):
     '''
     Args:
     action_probs    : policy action probabilities; expected shape (B, D)
@@ -39,7 +39,7 @@ def WIS_estimator(action_probs: np.ndarray, expert_data: pd.DataFrame, id_index_
         w_H = np.cumprod(weights[l <= length], axis=1)[:, l - 1].mean()
         policy_return[i] /= w_H
 
-    policy_return = np.clip(policy_return, -40, 40)
+    policy_return = np.clip(policy_return, -clip_expected_return, clip_expected_return)
     return policy_return.mean(), policy_return.reshape(1, -1)
 
 
@@ -153,6 +153,7 @@ class DR_estimator():
                                                     gamma * reward - est_q_values[index])
             policy_return[i] = reward
 
+        policy_return = np.clip(policy_return, -self.args.clip_expected_return, self.args.clip_expected_return)
         return policy_return[i].mean(), policy_return.reshape(1, -1), est_alive
 
 
