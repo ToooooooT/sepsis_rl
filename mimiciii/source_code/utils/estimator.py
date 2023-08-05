@@ -154,7 +154,7 @@ class DR_estimator():
             policy_return[i] = reward
 
         policy_return = np.clip(policy_return, -self.args.clip_expected_return, self.args.clip_expected_return)
-        return policy_return[i].mean(), policy_return.reshape(1, -1), est_alive
+        return policy_return.mean(), policy_return.reshape(1, -1), est_alive
 
 
     def testing(self, input, label, done):

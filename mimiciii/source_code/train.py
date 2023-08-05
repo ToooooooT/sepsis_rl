@@ -108,7 +108,7 @@ def training(model: BaseAgent, valid_dataset: pd.DataFrame, valid_dict: dict, co
             avg_wis_p_return, _ = WIS_estimator(action_probs, valid_dataset, valid_id_index_map, args.clip_expected_return)
             avg_wis_policy_returns.append(avg_wis_p_return)
             avg_dr_p_return, _, _ = dre.estimate_expected_return(est_q_values, actions, action_probs, valid_dataset, valid_id_index_map)
-            avg_dr_policy_returns.append(avg_wis_p_return)
+            avg_dr_policy_returns.append(avg_dr_p_return)
             if args.agent == 'D3QN':
                 if avg_dr_p_return > max_expected_return:
                     max_expected_return = avg_dr_p_return
