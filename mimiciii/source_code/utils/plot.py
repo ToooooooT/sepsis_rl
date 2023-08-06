@@ -264,7 +264,7 @@ def plot_survival_rate(expected_return: np.ndarray, id_index_map: dict, dataset:
         ax.fill_between(bin_medians[0], sliding_mean(mort[0]) - 1 * mort_std[0],
                         sliding_mean(mort[0]) + 1 * mort_std[0], color='palegreen')
 
-        x_r = [i / 1.0 for i in range(-7, 27, 3)]
+        x_r = [i / 1.0 for i in range(-25, 27, 3)]
         y_r = [i / 10.0 for i in range(0, 11, 1)]
         ax.set_xticks(x_r)
         ax.set_yticks(y_r)
@@ -277,7 +277,7 @@ def plot_survival_rate(expected_return: np.ndarray, id_index_map: dict, dataset:
             ax[k].fill_between(bin_medians[k], sliding_mean(mort[k]) - 1 * mort_std[k],
                             sliding_mean(mort[k]) + 1 * mort_std[k], color='palegreen')
 
-            x_r = [i / 1.0 for i in range(-7, 27, 3)]
+            x_r = [i / 1.0 for i in range(-25, 27, 3)]
             y_r = [i / 10.0 for i in range(0, 11, 1)]
             ax[k].set_xticks(x_r)
             ax[k].set_yticks(y_r)
