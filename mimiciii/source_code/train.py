@@ -14,7 +14,7 @@ from agents import DQN, SAC, BaseAgent
 from utils import Config, plot_action_dist, plot_action_distribution, plot_estimate_value, \
                 animation_action_distribution, plot_pos_neg_action_dist, plot_diff_action_SOFA_dist, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
-                WIS_estimator, DR_estimator
+                WIS_estimator, DR_estimator, plot_action_diff_survival_rate
 from network import DuellingMLP, PolicyMLP
 
 from torch.utils.tensorboard import SummaryWriter
@@ -252,6 +252,8 @@ if __name__ == '__main__':
     actions, action_probs, est_q_values = testing(test_data, model)
 
     test_dataset['policy action'] = actions
+    test_dataset['policy iv'] = actions / 5
+    test_dataset['policy vaso'] = actions % 5
     # estimate expected return
     avg_wis_policy_return, wis_policy_return = WIS_estimator(action_probs, test_dataset, test_id_index_map, args.clip_expected_return)
     dre = DR_estimator(test_dataset, test_dict, args, config.device)
@@ -268,6 +270,7 @@ if __name__ == '__main__':
     plot_pos_neg_action_dist(positive_traj, negative_traj, log_path)
     plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_path)
     plot_diff_action(positive_traj, negative_traj, log_path)
+    plot_action_diff_survival_rate(train_dataset, test_dataset, log_path)
     # store result in text file
     with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
         f.write(f'policy WIS estimator: {avg_wis_policy_return:.5f}\n')
