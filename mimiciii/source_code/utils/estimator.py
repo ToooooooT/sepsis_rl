@@ -149,7 +149,7 @@ class DR_estimator():
             reward = est_reward[end] + rho * (dataset.loc[end, 'reward'] - est_q_values[end])
             for index in range(end - 1, start - 1, -1):
                 rho = action_probs[index, int(expert_actions[index])]
-                reward = est_reward[index] + rho * (dataset.loc[end, 'reward'] + \
+                reward = est_reward[index] + rho * (dataset.loc[index, 'reward'] + \
                                                     gamma * reward - est_q_values[index])
             policy_return[i] = reward
 
