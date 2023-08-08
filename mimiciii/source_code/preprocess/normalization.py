@@ -158,20 +158,24 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
     drop_column = ['charttime', 'median_dose_vaso', 'input_total', 'icustayid', 'died_in_hosp', 'mortality_90d',
                 'died_within_48h_of_out_time', 'delay_end_of_record_and_discharge_or_death',
                 'input_4hourly', 'max_dose_vaso', 'reward', 'action']
-    data = {'s': [], 'a': [], 'r': [], 's_': [], 'done': [], 'SOFA': [], 'is_alive': []}
+    data = {'s': [], 'a': [], 'r': [], 's_': [], 'a_': [], 'bloc_num': [], 'done': [], 'SOFA': [], 'is_alive': []}
     state_dim = len(set(dataset.columns) - set(drop_column))
     id_index_map = defaultdict(list)
     terminal_index = set()
+    bloc_num = 1
     for index in tqdm(dataset.index[:-1]):
         s = dataset.iloc[index, :]
         s_ = dataset.loc[index + 1, :]
         a = s['action']
+        a_ = s_['action']
         r = s['reward']
         SOFA = unnorm_dataset.loc[index, 'SOFA']
         if s['icustayid'] != s_['icustayid']:
             done = 1
             s_ = [0] * state_dim
+            a_ = -1
             terminal_index.add(index)
+            bloc_num += 1
         else:
             done = 0
             s_ = s_.drop(drop_column)
@@ -181,15 +185,18 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
         data['a'].append(a)
         data['r'].append(r)
         data['s_'].append(s_)
+        data['a_'].append(a_)
         data['done'].append(done)
         data['SOFA'].append(SOFA)
         data['is_alive'].append(1 if r != -15 else 0)
+        data['bloc_num'].append(bloc_num)
 
     index = dataset.index[-1]
     terminal_index.add(index)
     s = dataset.loc[index, :]
     s_ = [0] * state_dim
     a = s['action']
+    a_ = -1
     r = s['reward']
     SOFA = unnorm_dataset.loc[index, 'SOFA']
     id_index_map[s['icustayid']].append(index)
@@ -199,17 +206,21 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
     data['a'].append(a)
     data['r'].append(r)
     data['s_'].append(s_)
+    data['a_'].append(a_)
     data['done'].append(done)
     data['SOFA'].append(SOFA)
     data['is_alive'].append(1 if r != -15 else 0)
+    data['bloc_num'].append(bloc_num)
 
     data['s'] = np.array(data['s'])
     data['a'] = np.array(data['a'])
     data['r'] = np.array(data['r'])
     data['s_'] = np.array(data['s_'])
+    data['a_'] = np.array(data['a_'])
     data['done'] = np.array(data['done'])
     data['SOFA'] = np.array(data['SOFA'])
     data['is_alive'] = np.array(data['is_alive'])
+    data['bloc_num'] = np.array(data['bloc_num'])
     data['iv'] = data['a'] / 5
     data['vaso'] = data['a'] % 5
 
