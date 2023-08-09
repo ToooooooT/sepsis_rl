@@ -11,7 +11,7 @@ from argparse import ArgumentParser
 from tqdm import tqdm
 
 from agents import DQN, SAC, BaseAgent
-from utils import Config, plot_action_dist, plot_action_distribution, plot_estimate_value, \
+from utils import Config, plot_action_dist, plot_estimate_value, \
                 animation_action_distribution, plot_pos_neg_action_dist, plot_diff_action_SOFA_dist, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
                 WIS_estimator, DR_estimator, plot_action_diff_survival_rate
@@ -103,7 +103,7 @@ def training(model: BaseAgent, valid_dataset: pd.DataFrame, valid_dict: dict, co
             actions, action_probs, est_q_values = testing(valid_data, model)
             # store actions
             if i % gif_freq == 0:
-                hists.append(model.action_selections)
+                hists.append(np.bincount(actions.reshape(-1), minlength=25))
             # estimate expected return
             avg_wis_p_return, _ = WIS_estimator(action_probs, valid_dataset, valid_id_index_map, args.clip_expected_return)
             avg_wis_policy_returns.append(avg_wis_p_return)
@@ -121,7 +121,6 @@ def training(model: BaseAgent, valid_dataset: pd.DataFrame, valid_dict: dict, co
             writer.add_scalars('expected return validation', \
                                dict(zip(['WIS', 'DR'], [avg_wis_p_return, avg_dr_p_return])), i)
 
-    plot_action_distribution(model.action_selections, model.log_dir)
     animation_action_distribution(hists, model.log_dir)
     avg_wis_policy_returns = np.array(avg_wis_policy_returns)
     avg_dr_policy_returns = np.array(avg_dr_policy_returns)
@@ -135,10 +134,7 @@ def testing(test_data, model: BaseAgent):
         action_probs: np.ndarray; expected shape (B, D)
         est_q_values: np.ndarray; expected shape (B, 1)
     '''
-    batch_state, batch_action = test_data['s'], test_data['a']
-
-    batch_state = torch.tensor(batch_state, device=model.device, dtype=torch.float).view(-1, model.num_feats)
-    batch_action = torch.tensor(batch_action, device=model.device, dtype=torch.int64).view(-1, 1)
+    batch_state = torch.tensor(test_data['s'], device=model.device, dtype=torch.float).view(-1, model.num_feats)
 
     with torch.no_grad():
         if isinstance(model, D3QN_Agent):

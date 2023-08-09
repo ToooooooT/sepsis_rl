@@ -11,20 +11,6 @@ import numpy as np
 import pandas as pd
 
 
-def plot_action_distribution(action_selections, log_dir):
-    '''
-    Args:
-        action_selections: the frequency of each action be selected
-    '''
-    plt.bar(range(25), height=action_selections)
-    plt.xlabel('action index')
-    plt.ylabel('freq')
-    plt.xticks(range(0, 25))
-    plt.title(f'action distribution')
-    plt.savefig(os.path.join(log_dir, f'valid_action_distribution.png'))
-    plt.close()
-
-
 def animation_action_distribution(hists, log_dir):
     '''
     Args:
