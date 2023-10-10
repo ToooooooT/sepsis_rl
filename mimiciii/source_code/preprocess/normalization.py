@@ -63,7 +63,7 @@ def add_reward_action(dataset: pd.DataFrame, hour):
         s_ = dataset.loc[index + 1, :]
         if s['icustayid'] != s_['icustayid']:
             s_ = None
-            r = -15 if int(s['died_in_hosp']) or int(s['died_within_48h_of_out_time']) or int(s['mortality_90d']) else 15
+            r = -15 if int(s['mortality_90d']) else 15
         else:
             r = get_reward(s, s_)
         a = map_action(s, hour)
@@ -72,7 +72,7 @@ def add_reward_action(dataset: pd.DataFrame, hour):
 
     # handle last state
     s = dataset.loc[dataset.index[-1], :]
-    r = -15 if int(s['died_in_hosp']) or int(s['died_within_48h_of_out_time']) or int(s['mortality_90d']) else 15
+    r = -15 if int(s['mortality_90d']) else 15
     a = map_action(s, hour)
     dataset.loc[dataset.index[-1], 'reward'] = r
     dataset.loc[dataset.index[-1], 'action'] = a

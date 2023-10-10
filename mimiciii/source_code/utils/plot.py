@@ -222,9 +222,7 @@ def plot_survival_rate(expected_return: np.ndarray, id_index_map: dict, dataset:
     survive = np.zeros((len(id_index_map),))
     for i, id in enumerate(id_index_map.keys()):
         index = id_index_map[id][0]
-        survive[i] = 1.0 if dataset.loc[index, 'died_in_hosp'] != 1.0 and \
-                    dataset.loc[index, 'mortality_90d'] != 1.0 and \
-                    dataset.loc[index, 'died_within_48h_of_out_time'] != 1.0 else 0
+        survive[i] = 1.0 if dataset.loc[index, 'mortality_90d'] != 1.0 else 0
 
     bin_medians = [[] for _ in range(n)]
     mort = [[] for _ in range(n)]

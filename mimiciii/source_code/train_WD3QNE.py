@@ -24,16 +24,12 @@ def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--hour", type=int, help="hours of one state", default=4)
     parser.add_argument("--batch_size", type=int, help="batch_size", default=32)
-    parser.add_argument("--episode", type=int, help="episode", default=100)
-    parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
-    parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
-    parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
+    parser.add_argument("--episode", type=int, help="episode", default=100)
     parser.add_argument("--clip_expected_return", type=int, help="the value of clipping expected return", default=40)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
-    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=50)
-    parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
-    parser.add_argument("--target_net_freq", type=int, help="the frequency of updates for the target networks", default=1)
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=1)
+    parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="./log/Env/batch_size=32-lr=0.001-episode=200/model.pth")
     parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="./log/Clf/LG_clf.sav")
     parser.add_argument("--device", type=str, help="device", default="cpu")
@@ -111,9 +107,11 @@ def testing(test_data, model: Dist_DQN):
             torch.tensor(test_data['a_'], device=args.device, dtype=torch.float),
             torch.tensor(test_data['r'], device=args.device, dtype=torch.float),
             torch.tensor(test_data['done'], device=args.device, dtype=torch.float))
-    Q_value, agent_actions, phy_actions, est_q_values = do_eval(model, batchs)
+    Q_value, agent_actions, phy_actions, _ = do_eval(model, batchs)
+    Q_value = Q_value.detach().cpu().numpy()
     agent_actions = agent_actions.view(-1, 1).detach().cpu().numpy()
-    est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy()
+    # est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy()
+    est_q_values = Q_value[np.arange(Q_value.shape[0]), agent_actions.reshape(-1)]
     action_probs = np.full((agent_actions.shape[0], 25), 0.01)
     action_probs[np.arange(agent_actions.shape[0]), agent_actions[:, 0]] = 0.99
     return agent_actions, action_probs, est_q_values
@@ -160,28 +158,18 @@ if __name__ == '__main__':
 
     config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config.EPISODE = args.episode
-    config.USE_PRIORITY_REPLAY = args.use_pri
     config.LR = args.lr
-    config.REG_LAMBDA = args.reg_lambda
-    config.TARGET_NET_UPDATE_FREQ = args.target_net_freq
     config.BATCH_SIZE = args.batch_size
-
-    # memory
-    exp_replay_size = 1
-    while exp_replay_size < train_dataset.shape[0]:
-        exp_replay_size <<= 1
-
-    config.EXP_REPLAY_SIZE = exp_replay_size
 
     clip_reward = True
 
     env = {'num_feats': 49, 'num_actions': 25}
 
-    path = f'WD3QNE/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
+    path = f'WD3QNE/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-lr={config.LR}'
     log_path = os.path.join('./log', path)
     os.makedirs(log_path, exist_ok=True)
 
-    model = Dist_DQN(log_dir=log_path, state_dim=env['num_feats'])
+    model = Dist_DQN(log_dir=log_path, state_dim=env['num_feats'], lr=config.LR, batch_size=config.BATCH_SIZE)
 
     ######################################################################################
     # Training
@@ -210,8 +198,8 @@ if __name__ == '__main__':
     plot_expected_return_distribution(policy_returns, ['WIS', 'DR'], log_path)
     plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'DR'], log_path)
     # plot action distribution
-    negative_traj = test_dataset.query('died_in_hosp == 1.0 | died_within_48h_of_out_time == 1.0 | mortality_90d == 1.0')
-    positive_traj = test_dataset.query('died_in_hosp != 1.0 & died_within_48h_of_out_time != 1.0 & mortality_90d != 1.0')
+    negative_traj = test_dataset.query('mortality_90d == 1.0')
+    positive_traj = test_dataset.query('mortality_90d != 1.0')
     plot_action_dist(actions, test_dataset, log_path)
     plot_pos_neg_action_dist(positive_traj, negative_traj, log_path)
     plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_path)
