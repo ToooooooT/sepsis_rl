@@ -3,13 +3,12 @@ import torch
 
 
 class BaseAgent(object):
-    def __init__(self, config, env, log_dir='./log', agent_dir='./saved_agents'):
+    def __init__(self, config, env, log_dir='./logs'):
         self.model = None
         self.target_model = None
         self.optimizer = None
 
         self.log_dir = log_dir # log directory
-        self.agent_dir = agent_dir # saved agents directory
 
         self.action_selections = [0 for _ in range(env['num_actions'])] # the frequency of each action be selected
 

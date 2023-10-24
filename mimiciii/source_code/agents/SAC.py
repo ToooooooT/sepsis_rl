@@ -10,8 +10,8 @@ from agents import BaseAgent
 from utils import ExperienceReplayMemory, PrioritizedReplayMemory
 
 class SAC(BaseAgent):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents') -> None:
-        super().__init__(config=config, env=env, log_dir=log_dir, agent_dir=agent_dir)
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs') -> None:
+        super().__init__(config=config, env=env, log_dir=log_dir)
         self.device = config.device
 
         # algorithm control

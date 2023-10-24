@@ -3,13 +3,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 
 from agents.BaseAgent import BaseAgent
 from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 
 class DQN(BaseAgent):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log', agent_dir='./saved_agents'):
-        super().__init__(config=config, env=env, log_dir=log_dir, agent_dir=agent_dir)
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
+        super().__init__(config=config, env=env, log_dir=log_dir)
         self.device = config.device
 
         # step
@@ -73,8 +74,8 @@ class DQN(BaseAgent):
     def declare_memory(self):
         self.memory = ExperienceReplayMemory(self.experience_replay_size) if not self.priority_replay else PrioritizedReplayMemory(self.experience_replay_size, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames)
 
-    def append_to_replay(self, s, a, r, s_, SOFA):
-        self.memory.push((s, a, r, s_, SOFA))
+    def append_to_replay(self, s, a, r, s_, done):
+        self.memory.push((s, a, r, s_, done))
 
     def prep_minibatch(self):
         '''
@@ -82,72 +83,41 @@ class DQN(BaseAgent):
             batch_state: expected shape (B, S)
             batch_action: expected shape (B, D)
             batch_reward: expected shape (B, 1)
-            non_final_next_state: expected shape (., D)
-            non_final_mask: true if it is not final state; expected shape (B)
-            empty_next_state_values: expected shape
+            batch_next_state: expected shape (B, S)
+            batch_done: expected shape (B, 1)
             indices: a list of index
             weights: expected shape (B,)
         '''
         # random transition batch is taken from replay memory
         transitions, indices, weights = self.memory.sample(self.batch_size)
         
-        batch_state, batch_action, batch_reward, batch_next_state, _ = zip(*transitions)
+        batch_state, batch_action, batch_reward, batch_next_state, batch_done = zip(*transitions)
 
         batch_state = torch.tensor(np.array(batch_state), device=self.device, dtype=torch.float)
         batch_action = torch.tensor(np.array(batch_action), device=self.device, dtype=torch.int64).view(-1, 1)
         batch_reward = torch.tensor(np.array(batch_reward), device=self.device, dtype=torch.float).view(-1, 1)
+        batch_next_state = torch.tensor(np.array(batch_next_state), device=self.device, dtype=torch.float)
+        batch_done = torch.tensor(np.array(batch_done), device=self.device, dtype=torch.float).view(-1, 1)
         
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch_next_state)), device=self.device, dtype=torch.bool)
-        try: # sometimes all next states are false
-            non_final_next_states = torch.tensor(np.array([s for s in batch_next_state if s is not None]), device=self.device, dtype=torch.float).view(-1, self.num_feats)
-            empty_next_state_values = False
-        except:
-            non_final_next_states = None
-            empty_next_state_values = True
-            # why try have error?
-            assert(True)
+        return batch_state, batch_action, batch_reward, batch_next_state, batch_done, indices, weights
 
-        return batch_state, batch_action, batch_reward, non_final_next_states, non_final_mask, empty_next_state_values, indices, weights
 
-    def compute_loss(self, batch_vars): # faster
-        '''
-            loss function = E[Q_double-target - Q_estimate]^2 + lambda * max(|Q_estimate| - Q_threshold, 0)
-            Q_double-target = reward + gamma * Q_double-target(next_state, argmax_a(Q(next_state, a)))
-            Q_threshold = 20
-            when die reward -15 else +15
-        '''
+    def compute_loss(self, batch_vars):
+        batch_state, batch_action, batch_reward, batch_next_state, batch_done, indices, weights = batch_vars
         self.model.train()
-
-        batch_state, batch_action, batch_reward, non_final_next_states, non_final_mask, empty_next_state_values, indices, weights = batch_vars
-
-        # estimate
-        q_values = self.model(batch_state)
-        current_q_values = q_values.gather(1, batch_action) 
-        
-        # compute target value
+        q_values = self.model(batch_state).gather(1, batch_action)
         with torch.no_grad():
-            # unnecessary to compute gradient and do back propogation
-            max_next_q_values = torch.zeros(self.batch_size, device=self.device, dtype=torch.float).unsqueeze(dim=1)
-            if not empty_next_state_values:
-                max_next_action = self.get_max_next_state_action(non_final_next_states)
-                max_next_q_values[non_final_mask] = self.target_model(non_final_next_states).gather(1, max_next_action)
+            max_next_action = self.get_max_next_state_action(batch_next_state)
+            target_q_values = self.target_model(batch_next_state).gather(1, max_next_action)
 
-            # empirical hack to make the Q values never exceed the threshold - helps learning
-            if self.reg_lambda > 0:
-                max_next_q_values[max_next_q_values > self.reward_threshold] = self.reward_threshold
-                max_next_q_values[max_next_q_values < -self.reward_threshold] = -self.reward_threshold
-
-            expected_q_values = batch_reward + ((self.gamma ** self.nsteps) * max_next_q_values)
-
-        td_error = (expected_q_values - current_q_values).pow(2)
         if self.priority_replay:
+            td_error = (q_values - target_q_values).pow(2)
             self.memory.update_priorities(indices, (td_error / 10).detach().squeeze().abs().cpu().numpy().tolist()) # ?
-            loss = 0.5 * (td_error * weights).mean() + self.reg_lambda * max(current_q_values.abs().max() - self.reward_threshold, 0)
-            # loss = 0.5 * (td_error * weights).mean()
+            loss = 0.5 * (td_error * weights).mean()
         else:
-            loss = 0.5 * td_error.mean() + self.reg_lambda * max(current_q_values.abs().max() - self.reward_threshold, 0)
-            # loss = 0.5 * td_error.mean()
+            loss = F.mse_loss(q_values, batch_reward + self.gamma * target_q_values * (1 - batch_done))
         return loss
+
 
     def update(self, t):
         if self.static_policy:
@@ -160,8 +130,8 @@ class DQN(BaseAgent):
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
-        for param in self.model.parameters():
-            param.grad.data.clamp_(-1, 1) # clamp_ : let gradient be in interval (-1, 1)
+        # for param in self.model.parameters():
+        #     param.grad.data.clamp_(-1, 1) # clamp_ : let gradient be in interval (-1, 1)
         self.optimizer.step()
 
         # update the target network
@@ -169,10 +139,11 @@ class DQN(BaseAgent):
             self.update_target_model()
         return {'td_error': loss.item()}
 
+
     def get_action(self, s, eps=0):
         with torch.no_grad():
             if np.random.random() >= eps or self.static_policy:
-                X = torch.tensor([s], device=self.device, dtype=torch.float)
+                X = torch.tensor(np.array([s]), device=self.device, dtype=torch.float)
                 a = self.model(X).max(1)[1].view(1, 1)
                 return a.item()
             else:
@@ -184,3 +155,31 @@ class DQN(BaseAgent):
 
     def get_max_next_state_action(self, next_states):
         return self.model(next_states).max(dim=1)[1].view(-1, 1)
+
+
+class WDQN(DQN):
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
+        super().__init__(static_policy, env, config, log_dir)
+
+    def compute_loss(self, batch_vars):
+        batch_state, batch_action, batch_reward, batch_next_state, batch_done, indices, weights = batch_vars
+        self.model.train()
+        q_values = self.model(batch_state).gather(1, batch_action)
+        next_q_values = self.model(batch_next_state)
+        max_next_actions = torch.argmax(next_q_values, dim=1)
+        with torch.no_grad():
+            target_next_q_values = self.target_model(batch_next_state)
+        max_target_next_actions = torch.argmax(target_next_q_values, dim=1)
+        target_next_q_values_softmax = F.softmax(target_next_q_values)
+        sigma = target_next_q_values_softmax.gather(1, max_next_actions)
+        phi = target_next_q_values_softmax.gather(1, max_target_next_actions)
+        p = phi / (phi + sigma)
+        target_q_values = p * target_next_q_values.max(dim=1) + (1 - p) * target_next_q_values.gather(1, max_next_actions)
+
+        if self.priority_replay:
+            td_error = (q_values - target_q_values).pow(2)
+            self.memory.update_priorities(indices, (td_error / 10).detach().squeeze().abs().cpu().numpy().tolist()) # ?
+            loss = 0.5 * (td_error * weights).mean()
+        else:
+            loss = F.mse_loss(q_values, batch_reward + self.gamma * target_q_values * (1 - batch_done))
+        return loss
