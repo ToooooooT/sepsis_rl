@@ -4,6 +4,8 @@ db_data/
 *.csv
 *.png
 log/
+logs/
+preTrained/
 saved_agents/
 __pycache__
 DeepRL*/
@@ -14,3 +16,5 @@ sepsisrl/
 script_*
 log_backup/
 ID3QNE*/
+*.txt
+dataset/
