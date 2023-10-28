@@ -98,7 +98,14 @@ class DQN(BaseAgent):
         batch_reward = torch.tensor(np.array(batch_reward), device=self.device, dtype=torch.float).view(-1, 1)
         batch_next_state = torch.tensor(np.array(batch_next_state), device=self.device, dtype=torch.float)
         batch_done = torch.tensor(np.array(batch_done), device=self.device, dtype=torch.float).view(-1, 1)
-        
+
+        # check shape
+        assert batch_state.dim() == 2 and batch_state.shape[1] == self.num_feats
+        assert batch_action.dim() == 2 and batch_action.shape[1] == 1
+        assert batch_reward.dim() == 2 and batch_reward.shape[1] == 1
+        assert batch_next_state.dim() == 2 and batch_next_state.shape[1] == self.num_feats
+        assert batch_done.dim() == 2 and batch_done.shape[1] == 1
+
         return batch_state, batch_action, batch_reward, batch_next_state, batch_done, indices, weights
 
 
@@ -166,15 +173,15 @@ class WDQN(DQN):
         self.model.train()
         q_values = self.model(batch_state).gather(1, batch_action)
         next_q_values = self.model(batch_next_state)
-        max_next_actions = torch.argmax(next_q_values, dim=1)
+        max_next_actions = torch.argmax(next_q_values, dim=1, keepdim=True)
         with torch.no_grad():
             target_next_q_values = self.target_model(batch_next_state)
-        max_target_next_actions = torch.argmax(target_next_q_values, dim=1)
-        target_next_q_values_softmax = F.softmax(target_next_q_values)
+        max_target_next_actions = torch.argmax(target_next_q_values, dim=1, keepdim=True)
+        target_next_q_values_softmax = F.softmax(target_next_q_values, dim=1)
         sigma = target_next_q_values_softmax.gather(1, max_next_actions)
         phi = target_next_q_values_softmax.gather(1, max_target_next_actions)
         p = phi / (phi + sigma)
-        target_q_values = p * target_next_q_values.max(dim=1) + (1 - p) * target_next_q_values.gather(1, max_next_actions)
+        target_q_values = p * target_next_q_values.max(dim=1)[0].view(-1, 1) + (1 - p) * target_next_q_values.gather(1, max_next_actions)
 
         if self.priority_replay:
             td_error = (q_values - target_q_values).pow(2)
