@@ -23,7 +23,7 @@ def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--batch_size", type=int, help="batch_size", default=128)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
-    parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
+    parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--episode", type=int, help="episode", default=1000000)
     parser.add_argument("--eps_start", type=float, help="epsilon start value", default=1.)
@@ -71,7 +71,7 @@ def training(model: DQN, config: Config, args):
             ep_reward += reward
             step += 1
             t += 1
-            if step % args.update_per_step == 0 and len(model.memory.memory) > config.BATCH_SIZE:
+            if step % args.update_per_step == 0 and step > config.BATCH_SIZE:
                 loss = model.update(i)
                 writer.add_scalars('loss', loss, step)
         eps = max(args.eps_end, args.eps_decay * eps)
@@ -126,10 +126,11 @@ if __name__ == '__main__':
     config.LR = args.lr
     config.BATCH_SIZE = args.batch_size
     config.TARGET_NET_UPDATE_FREQ = args.target_update_freq
+    config.USE_PRIORITY_REPLAY = args.use_pri
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 
-    path = f'{args.agent}/online_batch_size={config.BATCH_SIZE}-lr={config.LR}'
+    path = f'{args.agent}/online_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}'
     log_path = os.path.join('./logs', path)
 
     if args.agent == 'D3QN':
