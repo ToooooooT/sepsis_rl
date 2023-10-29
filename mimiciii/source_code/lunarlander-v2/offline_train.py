@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument("--episode", type=int, help="episode", default=1e8)
     parser.add_argument("--test_freq", type=int, help="test frequency", default=1000)
     parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=50)
+    parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
     return args
@@ -109,6 +110,11 @@ if __name__ == '__main__':
     # Hyperparameters
     ######################################################################################
     config = Config()
+
+    if args.cpu:
+        config.device = torch.device("cpu")
+    else:
+        config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config.EPISODE = args.episode

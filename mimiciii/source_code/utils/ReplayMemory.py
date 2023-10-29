@@ -1,7 +1,6 @@
 import random
 import torch
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 from utils.data_structures import SegmentTree, SumSegmentTree
 
 
@@ -23,7 +22,7 @@ class ExperienceReplayMemory:
 
 
 class PrioritizedReplayMemory(object):
-    def __init__(self, size, alpha=0.6, beta_start=0.4, beta_frames=20000):
+    def __init__(self, size, alpha=0.6, beta_start=0.4, beta_frames=20000, device=None):
         """Create Prioritized Replay buffer.
         Parameters
         ----------
@@ -41,6 +40,7 @@ class PrioritizedReplayMemory(object):
         self._storage = []
         self._maxsize = size
         self._next_idx = 0
+        self._device = device
 
         assert alpha >= 0
         self._alpha = alpha
@@ -138,7 +138,7 @@ class PrioritizedReplayMemory(object):
         # max_weight use the smallest prob in the sample batch?
         max_weights = max(weights)
         weights = [weight / max_weights for weight in weights]
-        weights = torch.tensor(weights, device=device, dtype=torch.float) 
+        weights = torch.tensor(weights, device=self._device, dtype=torch.float) 
         encoded_sample = self._encode_sample(idxes)
         return encoded_sample, idxes, weights
 

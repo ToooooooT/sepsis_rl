@@ -25,12 +25,13 @@ def parse_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
-    parser.add_argument("--episode", type=int, help="episode", default=1e8)
+    parser.add_argument("--episode", type=int, help="episode", default=20000)
     parser.add_argument("--eps_start", type=float, help="epsilon start value", default=1.)
     parser.add_argument("--eps_end", type=float, help="epsilon min value", default=0.01)
     parser.add_argument("--eps_decay", type=float, help="epsilon min value", default=0.995)
     parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=50)
     parser.add_argument("--update_per_step", type=int, help="update parameters per step", default=1)
+    parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
     return args
@@ -79,11 +80,11 @@ def training(model: DQN, config: Config, args):
         print(f'[EPISODE {i}] | episode reward : {ep_reward}')
         if ep_reward > 200:
             count += 1
-            if count > 100:
-                model.save()
+            if count > 50:
                 break
         else:
             count = 0
+    model.save()
 
 
 def testing(model: DQN, episode=10):
@@ -120,7 +121,10 @@ if __name__ == '__main__':
     ######################################################################################
     config = Config()
 
-    config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.cpu:
+        config.device = torch.device("cpu")
+    else:
+        config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config.EPISODE = args.episode
     config.LR = args.lr
     config.BATCH_SIZE = args.batch_size

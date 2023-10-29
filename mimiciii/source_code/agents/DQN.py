@@ -65,7 +65,7 @@ class DQN(BaseAgent):
 
 
     def declare_memory(self):
-        self.memory = ExperienceReplayMemory(self.experience_replay_size) if not self.priority_replay else PrioritizedReplayMemory(self.experience_replay_size, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames)
+        self.memory = ExperienceReplayMemory(self.experience_replay_size) if not self.priority_replay else PrioritizedReplayMemory(self.experience_replay_size, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames, self.device)
 
     def append_to_replay(self, s, a, r, s_, done):
         self.memory.push((s, a, r, s_, done))
