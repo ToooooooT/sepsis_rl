@@ -40,7 +40,7 @@ class PrioritizedReplayMemory(object):
         super(PrioritizedReplayMemory, self).__init__()
         self._storage = []
         self._maxsize = size
-        self._idx = 0
+        self._next_idx = 0
 
         assert alpha >= 0
         self._alpha = alpha
@@ -61,9 +61,15 @@ class PrioritizedReplayMemory(object):
 
     def push(self, data):
         """See ReplayBuffer.store_effect"""
-        self._it_sum[self._idx] = self._max_priority ** self._alpha
-        self._storage.append(data)
-        self._idx += 1
+        idx = self._next_idx
+
+        if self._next_idx >= len(self._storage):
+            self._storage.append(data)
+        else:
+            self._storage[self._next_idx] = data
+        self._next_idx = (self._next_idx + 1) % self._maxsize
+
+        self._it_sum[idx] = self._max_priority ** self._alpha
 
 
     def _encode_sample(self, idxes):
@@ -75,7 +81,7 @@ class PrioritizedReplayMemory(object):
             may have repeat sample
         '''
         res = list()
-        s = self._it_sum.getSum()
+        s = self._it_sum.sum()
         for i in range(batch_size):
             mass = random.uniform(i / batch_size, (i + 1) / batch_size) * s
             idx = self._it_sum.find_prefixsum_idx(mass)
@@ -119,7 +125,7 @@ class PrioritizedReplayMemory(object):
 
         weights = list()
 
-        s = self._it_sum.getSum()
+        s = self._it_sum.sum()
 
         beta = self.beta_by_frame(self.frame)
         self.frame += 1
@@ -153,4 +159,6 @@ class PrioritizedReplayMemory(object):
         for idx, priority in zip(idxes, priorities):
             assert 0 <= idx < len(self._storage)
             # assert (priority + 1e-8) < self._max_priority
-            self._it_sum[idx] = (priority + 1e-3) ** self._alpha
+            self._it_sum[idx] = (priority + 1e-5) ** self._alpha
+
+            self._max_priority = max(self._max_priority, (priority+1e-5))

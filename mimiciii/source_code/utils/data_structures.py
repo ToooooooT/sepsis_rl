@@ -70,29 +70,25 @@ class SegmentTree(object):
         # index of the leaf
         idx += self._capacity
         self._value[idx] = val
-        idx >>= 1
+        idx //= 2
         while idx >= 1:
             self._value[idx] = self._operation(
                 self._value[2 * idx],
                 self._value[2 * idx + 1]
             )
-            idx >>= 1
+            idx //= 2
 
     def __getitem__(self, idx):
         assert 0 <= idx < self._capacity
         return self._value[self._capacity + idx]
 
-    
-    def getSum(self):
-        return self._value[1]
-
 
 class SumSegmentTree(SegmentTree):
     def __init__(self, capacity):
         super(SumSegmentTree, self).__init__(
-            capacity = capacity,
-            operation = operator.add,
-            neutral_element = 0.0
+            capacity=capacity,
+            operation=operator.add,
+            neutral_element=0.0
         )
 
     def sum(self, start=0, end=None):
@@ -115,7 +111,7 @@ class SumSegmentTree(SegmentTree):
             highest index satisfying the prefixsum constraint
         """
         try:
-            assert 0 <= prefixsum <= self._value[1] + 1e-1
+            assert 0 <= prefixsum <= self.sum() + 1e-5
         except AssertionError:
             print("Prefix sum error: {}".format(prefixsum))
             exit()

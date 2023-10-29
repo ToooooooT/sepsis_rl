@@ -118,9 +118,9 @@ class DQN(BaseAgent):
             target_q_values = self.target_model(batch_next_state).gather(1, max_next_action)
 
         if self.priority_replay:
-            td_error = (q_values - target_q_values).pow(2)
-            self.memory.update_priorities(indices, (td_error / 10).detach().squeeze().abs().cpu().numpy().tolist()) # ?
-            loss = 0.5 * (td_error * weights).mean()
+            diff = (q_values - (batch_reward + self.gamma * target_q_values * (1 - batch_done)))
+            self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist()) # ?
+            loss = ((0.5 * diff.pow(2))* weights).mean()
         else:
             loss = F.mse_loss(q_values, batch_reward + self.gamma * target_q_values * (1 - batch_done))
         return loss
@@ -184,9 +184,9 @@ class WDQN(DQN):
         target_q_values = p * target_next_q_values.max(dim=1)[0].view(-1, 1) + (1 - p) * target_next_q_values.gather(1, max_next_actions)
 
         if self.priority_replay:
-            td_error = (q_values - target_q_values).pow(2)
-            self.memory.update_priorities(indices, (td_error / 10).detach().squeeze().abs().cpu().numpy().tolist()) # ?
-            loss = 0.5 * (td_error * weights).mean()
+            diff = (q_values - (batch_reward + self.gamma * target_q_values * (1 - batch_done)))
+            self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist()) # ?
+            loss = ((0.5 * diff.pow(2))* weights).mean()
         else:
             loss = F.mse_loss(q_values, batch_reward + self.gamma * target_q_values * (1 - batch_done))
         return loss
