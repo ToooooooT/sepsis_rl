@@ -1,6 +1,4 @@
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.distributions import Categorical
 
 class PolicyMLP(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_size=(128, 128)) -> None:
@@ -21,13 +19,3 @@ class PolicyMLP(nn.Module):
         y = self.main(x)
         logits = self.output(y)
         return logits
-
-
-    def get_action(self, x):
-        logits = self(x)
-        policy_dist = Categorical(logits=logits)
-        action = policy_dist.sample()
-        # Action probabilities for calculating the adapted soft-Q loss
-        action_probs = policy_dist.probs
-        log_prob = F.log_softmax(logits, dim=1)
-        return action, logits, log_prob, action_probs

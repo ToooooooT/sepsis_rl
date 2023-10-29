@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.distributions import Categorical
 
 import os
 
@@ -21,6 +22,8 @@ class SAC(BaseAgent):
         self.gamma = config.GAMMA
         self.lr = config.LR
 
+        self.is_gradient_clip = config.IS_GRADIENT_CLIP
+
         # memory
         self.target_net_update_freq = config.TARGET_NET_UPDATE_FREQ
         self.experience_replay_size = config.EXP_REPLAY_SIZE
@@ -29,15 +32,12 @@ class SAC(BaseAgent):
         self.priority_beta_start = config.PRIORITY_BETA_START
         self.priority_beta_frames = config.PRIORITY_BETA_FRAMES
 
+        # update target network parameter
+        self.tau = config.TAU
+
         # environment
         self.num_feats = env['num_feats']
         self.num_actions = env['num_actions']
-
-        # loss
-        self.reg_lambda = config.REG_LAMBDA
-        self.reward_threshold = 20
-
-        self.update_count = 0
 
         self.declare_memory()
 
@@ -52,8 +52,12 @@ class SAC(BaseAgent):
         self.target_qf1.eval()
         self.target_qf2.eval()
 
-        # update target network parameter
-        self.tau = 0.001
+        # move model to device
+        self.actor = self.actor.to(self.device)
+        self.qf1 = self.qf1.to(self.device)
+        self.qf2 = self.qf2.to(self.device)
+        self.target_qf1 = self.target_qf1.to(self.device)
+        self.target_qf2 = self.target_qf2.to(self.device)
 
         # Entropy regularization coefficient
         self.autotune = config.AUTOTUNE
@@ -84,7 +88,7 @@ class SAC(BaseAgent):
         self.qf2: nn.Module = None
         self.target_qf1: nn.Module = None
         self.target_qf2: nn.Module = None
-        raise NotImplementedError
+        raise NotImplementedError # override thid function
 
 
     def declare_memory(self):
@@ -113,8 +117,8 @@ class SAC(BaseAgent):
         self.actor.load_state_dict(checkpoint['actor'])
 
 
-    def append_to_replay(self, s, a, r, s_, SOFA):
-        self.memory.push((s, a, r, s_, SOFA))
+    def append_to_replay(self, s, a, r, s_, done):
+        self.memory.push((s, a, r, s_, done))
 
 
     def prep_minibatch(self):
@@ -132,37 +136,19 @@ class SAC(BaseAgent):
         # random transition batch is taken from replay memory
         transitions, indices, weights = self.memory.sample(self.batch_size)
         
-        batch_state, batch_action, batch_reward, batch_next_state, batch_SOFA = zip(*transitions)
+        batch_state, batch_action, batch_reward, batch_next_state, batch_done = zip(*transitions)
 
         batch_state = torch.tensor(np.array(batch_state), device=self.device, dtype=torch.float)
         batch_action = torch.tensor(np.array(batch_action), device=self.device, dtype=torch.int64).view(-1, 1)
         batch_reward = torch.tensor(np.array(batch_reward), device=self.device, dtype=torch.float).view(-1, 1)
-        batch_SOFA= torch.tensor(np.array(batch_SOFA), device=self.device, dtype=torch.float).view(-1, 1)
+        batch_next_state = torch.tensor(np.array(batch_next_state), device=self.device, dtype=torch.float)
+        batch_done = torch.tensor(np.array(batch_done), device=self.device, dtype=torch.float).view(-1, 1)
         
-        batch_done = torch.tensor(tuple(map(lambda s: 0 if s is not None else 1, batch_next_state)), device=self.device, dtype=torch.float).view(-1, 1)
-        batch_next_state = torch.tensor(np.array([s if s is not None else [0] * self.num_feats for s in batch_next_state]), 
-                                        device=self.device, dtype=torch.float).view(-1, self.num_feats)
+        return batch_state, batch_action, batch_reward, batch_next_state, batch_done, indices, weights
 
-        return batch_state, batch_action, batch_reward, batch_next_state, batch_SOFA, batch_done, indices, weights
-
-
-    def update(self, t):
-        # ref: https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/sac_atari.py
-        self.actor.train()
-        self.qf1.train()
-        self.qf2.train()
-
-        states, actions, rewards, next_states, SOFAs, dones, indices, weights = self.prep_minibatch()
-
-        # critic training
-        '''
-            loss function = E[Q_double-target - Q_estimate]^2 + lambda * max(|Q_estimate| - Q_threshold, 0)
-            Q_double-target = reward + gamma * Q_double-target(next_state, argmax_a(Q(next_state, a)))
-            Q_threshold = 20
-            when die reward -15 else +15
-        '''
+    def compute_critic_loss(self, states, actions, rewards, next_states, dones, indices, weights):
         with torch.no_grad():
-            _, _, next_state_log_pi, next_state_action_probs = self.actor.get_action(next_states)
+            _, _, next_state_log_pi, next_state_action_probs = self.get_action(next_states)
             qf1_next_target = self.target_qf1(next_states)
             qf2_next_target = self.target_qf2(next_states)
             # we can use the action probabilities instead of MC sampling to estimate the expectation
@@ -173,47 +159,47 @@ class SAC(BaseAgent):
             min_qf_next_target = min_qf_next_target.sum(dim=1, keepdim=True)
             next_q_value = rewards + (1 - dones) * self.gamma * (min_qf_next_target)
 
-        qf1_values = self.qf1(states)
-        qf2_values = self.qf2(states)
-        qf1_a_values = qf1_values.gather(1, actions)
-        qf2_a_values = qf2_values.gather(1, actions)
-
-        td_error1 = (next_q_value - qf1_a_values).pow(2)
-        td_error2 = (next_q_value - qf2_a_values).pow(2)
-        td_error = td_error1 + td_error2
+        qf1_values = self.qf1(states).gather(1, actions)
+        qf2_values = self.qf2(states).gather(1, actions)
 
         if self.priority_replay:
-            self.memory.update_priorities(indices, (td_error / 10).detach().squeeze().abs().cpu().numpy().tolist()) # ?
-            qf1_loss = 0.5 * (td_error1 * weights).mean()
-            qf2_loss = 0.5 * (td_error2 * weights).mean()
-            # qf1_loss = 0.5 * (td_error1 * weights).mean() + self.reg_lambda * max(qf1_a_values.abs().max() - self.reward_threshold, 0)
-            # qf2_loss = 0.5 * (td_error2 * weights).mean() + self.reg_lambda * max(qf2_a_values.abs().max() - self.reward_threshold, 0)
+            # include actor loss or not?
+            diff1 = next_q_value - qf1_values
+            diff2 = next_q_value - qf2_values
+            diff = diff1 + diff2
+            self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist())
+            qf1_loss = ((0.5 * diff1.pow(2))* weights).mean()
+            qf2_loss = ((0.5 * diff2.pow(2))* weights).mean()
         else:
-            qf1_loss = 0.5 * td_error1.mean()
-            qf2_loss = 0.5 * td_error2.mean()
-            # qf1_loss = 0.5 * td_error1.mean() + self.reg_lambda * max(qf1_a_values.abs().max() - self.reward_threshold, 0)
-            # qf2_loss = 0.5 * td_error2.mean() + self.reg_lambda * max(qf2_a_values.abs().max() - self.reward_threshold, 0)
+            qf1_loss = F.mse_loss(qf1_values, next_q_value)
+            qf2_loss = F.mse_loss(qf2_values, next_q_value)
 
         qf_loss = qf1_loss + qf2_loss
+        return qf_loss
 
-        self.q_optimizer.zero_grad()
-        qf_loss.backward()
-        self.q_optimizer.step()
-
-        # actor training
-        _, logits, log_pi, action_probs = self.actor.get_action(states)
+    def compute_actor_loss(self, states):
+        _, _, log_pi, action_probs = self.get_action(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
             qf2_values = self.qf2(states)
             min_qf_values = torch.min(qf1_values, qf2_values)
         # no need for reparameterization, the expectation can be calculated for discrete actions
-        if self.behav_clone:
-            clone = (SOFAs < 5).view(-1)
-            actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean() + \
-                            F.cross_entropy(action_probs[clone, :], actions.view(-1)[clone])
-        else:
-            actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
+        actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
+        return actor_loss, action_probs, log_pi
 
+    def update(self, t):
+        # ref: https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/sac_atari.py
+        self.actor.train()
+        self.qf1.train()
+        self.qf2.train()
+        states, actions, rewards, next_states, dones, indices, weights = self.prep_minibatch()
+        # update critic 
+        qf_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)
+        self.q_optimizer.zero_grad()
+        qf_loss.backward()
+        self.q_optimizer.step()
+        # update actor 
+        actor_loss, action_probs, log_pi = self.compute_actor_loss()
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
@@ -226,13 +212,22 @@ class SAC(BaseAgent):
             alpha_loss.backward()
             self.a_optimizer.step()
             self.alpha = self.log_alpha.exp().item()
-
         # update the target network
         if t % self.target_net_update_freq == 0:
             self.update_target_model(self.target_qf1, self.qf1)
             self.update_target_model(self.target_qf2, self.qf2)
 
         return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item()}
+
+
+    def get_action(self, x):
+        logits = self.actor(x)
+        policy_dist = Categorical(logits=logits)
+        action = policy_dist.sample()
+        # Action probabilities for calculating the adapted soft-Q loss
+        action_probs = policy_dist.probs
+        log_prob = F.log_softmax(logits, dim=1)
+        return action, logits, log_prob, action_probs
 
 
     def update_target_model(self, target, source):
