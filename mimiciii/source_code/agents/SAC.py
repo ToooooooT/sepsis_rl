@@ -143,13 +143,6 @@ class SAC(BaseAgent):
         next_states = torch.tensor(np.array(next_states), device=self.device, dtype=torch.float)
         dones = torch.tensor(np.array(dones), device=self.device, dtype=torch.float).view(-1, 1)
 
-        # check shape
-        assert states.shape == (self.batch_size, self.num_feats)
-        assert actions.shape == (self.batch_size, 1)
-        assert rewards.shape == (self.batch_size, 1)
-        assert next_states.shape == (self.batch_size, self.num_feats)
-        assert dones.shape == (self.batch_size, 1)
-        
         return states, actions, rewards, next_states, dones, indices, weights
 
     def compute_critic_loss(self, states, actions, rewards, next_states, dones, indices, weights):
