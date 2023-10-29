@@ -38,3 +38,6 @@ class Config(object):
         self.REG_LAMBDA = 5
         self.REWARD_THRESHOLD = 20
         self.IS_GRADIENT_CLIP = False
+
+        # update target network parameter
+        self.TAU = 0.001

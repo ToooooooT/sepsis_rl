@@ -13,9 +13,6 @@ class DQN(BaseAgent):
         super().__init__(config=config, env=env, log_dir=log_dir)
         self.device = config.device
 
-        # step
-        self.nsteps = 1
-
         # algorithm control
         self.priority_replay = config.USE_PRIORITY_REPLAY
 
@@ -33,11 +30,12 @@ class DQN(BaseAgent):
         self.priority_beta_start = config.PRIORITY_BETA_START
         self.priority_beta_frames = config.PRIORITY_BETA_FRAMES
 
+        # update target network parameter
+        self.tau = config.TAU
+
         # environment
         self.num_feats = env['num_feats']
         self.num_actions = env['num_actions']
-
-        self.update_count = 0
 
         self.declare_memory()
 
@@ -47,26 +45,23 @@ class DQN(BaseAgent):
         self.declare_networks()
         self.target_model.load_state_dict(self.model.state_dict())
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        self.target_model.eval()
 
-        # update target network parameter
-        self.tau = 0.001
+        # move model to device
+        self.model = self.model.to(self.device)
+        self.target_model.to(self.device)
 
         if static_policy:
             self.model.eval()
-            self.target_model.eval()
         else:
             self.model.train()
-            self.target_model.train()
-
-        self.model = self.model.to(self.device)
-        self.target_model.to(self.device)
 
 
     def declare_networks(self):
         # overload function
         self.model: nn.Module = None
         self.target_model: nn.Module = None
-        raise NotImplementedError
+        raise NotImplementedError # override thid function
 
 
     def declare_memory(self):
