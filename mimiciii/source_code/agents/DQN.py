@@ -73,49 +73,49 @@ class DQN(BaseAgent):
     def prep_minibatch(self):
         '''
         Returns:
-            batch_state: expected shape (B, S)
-            batch_action: expected shape (B, D)
-            batch_reward: expected shape (B, 1)
-            batch_next_state: expected shape (B, S)
-            batch_done: expected shape (B, 1)
+            states: expected shape (B, S)
+            actions: expected shape (B, D)
+            rewards: expected shape (B, 1)
+            next_states: expected shape (B, S)
+            dones: expected shape (B, 1)
             indices: a list of index
             weights: expected shape (B,)
         '''
         # random transition batch is taken from replay memory
         transitions, indices, weights = self.memory.sample(self.batch_size)
         
-        batch_state, batch_action, batch_reward, batch_next_state, batch_done = zip(*transitions)
+        states, actions, rewards, next_states, dones = zip(*transitions)
 
-        batch_state = torch.tensor(np.array(batch_state), device=self.device, dtype=torch.float)
-        batch_action = torch.tensor(np.array(batch_action), device=self.device, dtype=torch.int64).view(-1, 1)
-        batch_reward = torch.tensor(np.array(batch_reward), device=self.device, dtype=torch.float).view(-1, 1)
-        batch_next_state = torch.tensor(np.array(batch_next_state), device=self.device, dtype=torch.float)
-        batch_done = torch.tensor(np.array(batch_done), device=self.device, dtype=torch.float).view(-1, 1)
+        states = torch.tensor(np.array(states), device=self.device, dtype=torch.float)
+        actions = torch.tensor(np.array(actions), device=self.device, dtype=torch.int64).view(-1, 1)
+        rewards = torch.tensor(np.array(rewards), device=self.device, dtype=torch.float).view(-1, 1)
+        next_states = torch.tensor(np.array(next_states), device=self.device, dtype=torch.float)
+        dones = torch.tensor(np.array(dones), device=self.device, dtype=torch.float).view(-1, 1)
 
         # check shape
-        assert batch_state.dim() == 2 and batch_state.shape[1] == self.num_feats
-        assert batch_action.dim() == 2 and batch_action.shape[1] == 1
-        assert batch_reward.dim() == 2 and batch_reward.shape[1] == 1
-        assert batch_next_state.dim() == 2 and batch_next_state.shape[1] == self.num_feats
-        assert batch_done.dim() == 2 and batch_done.shape[1] == 1
+        assert states.shape == (self.batch_size, self.num_feats)
+        assert actions.shape == (self.batch_size, 1)
+        assert rewards.shape == (self.batch_size, 1)
+        assert next_states.shape == (self.batch_size, self.num_feats)
+        assert dones.shape == (self.batch_size, 1)
 
-        return batch_state, batch_action, batch_reward, batch_next_state, batch_done, indices, weights
+        return states, actions, rewards, next_states, dones, indices, weights
 
 
     def compute_loss(self, batch_vars):
-        batch_state, batch_action, batch_reward, batch_next_state, batch_done, indices, weights = batch_vars
+        states, actions, rewards, next_states, dones, indices, weights = batch_vars
         self.model.train()
-        q_values = self.model(batch_state).gather(1, batch_action)
+        q_values = self.model(states).gather(1, actions)
         with torch.no_grad():
-            max_next_action = self.get_max_next_state_action(batch_next_state)
-            target_q_values = self.target_model(batch_next_state).gather(1, max_next_action)
+            max_next_action = self.get_max_next_state_action(next_states)
+            target_q_values = self.target_model(next_states).gather(1, max_next_action)
 
         if self.priority_replay:
-            diff = (q_values - (batch_reward + self.gamma * target_q_values * (1 - batch_done)))
+            diff = (q_values - (rewards + self.gamma * target_q_values * (1 - dones)))
             self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist())
             loss = ((0.5 * diff.pow(2))* weights).mean()
         else:
-            loss = F.mse_loss(q_values, batch_reward + self.gamma * target_q_values * (1 - batch_done))
+            loss = F.mse_loss(q_values, rewards + self.gamma * target_q_values * (1 - dones))
         return loss
 
 
@@ -163,24 +163,25 @@ class WDQN(DQN):
         super().__init__(static_policy, env, config, log_dir)
 
     def compute_loss(self, batch_vars):
-        batch_state, batch_action, batch_reward, batch_next_state, batch_done, indices, weights = batch_vars
+        states, actions, rewards, next_states, dones, indices, weights = batch_vars
         self.model.train()
-        q_values = self.model(batch_state).gather(1, batch_action)
-        next_q_values = self.model(batch_next_state)
+        q_values = self.model(states).gather(1, actions)
+        next_q_values = self.model(next_states)
         max_next_actions = torch.argmax(next_q_values, dim=1, keepdim=True)
         with torch.no_grad():
-            target_next_q_values = self.target_model(batch_next_state)
+            target_next_q_values = self.target_model(next_states)
         max_target_next_actions = torch.argmax(target_next_q_values, dim=1, keepdim=True)
         target_next_q_values_softmax = F.softmax(target_next_q_values, dim=1)
         sigma = target_next_q_values_softmax.gather(1, max_next_actions)
         phi = target_next_q_values_softmax.gather(1, max_target_next_actions)
         p = phi / (phi + sigma)
-        target_q_values = p * target_next_q_values.max(dim=1)[0].view(-1, 1) + (1 - p) * target_next_q_values.gather(1, max_next_actions)
+        target_q_values = p * target_next_q_values.max(dim=1)[0].view(-1, 1) + \
+                            (1 - p) * target_next_q_values.gather(1, max_next_actions)
 
         if self.priority_replay:
-            diff = (q_values - (batch_reward + self.gamma * target_q_values * (1 - batch_done)))
+            diff = (q_values - (rewards + self.gamma * target_q_values * (1 - dones)))
             self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist())
             loss = ((0.5 * diff.pow(2))* weights).mean()
         else:
-            loss = F.mse_loss(q_values, batch_reward + self.gamma * target_q_values * (1 - batch_done))
+            loss = F.mse_loss(q_values, rewards + self.gamma * target_q_values * (1 - dones))
         return loss

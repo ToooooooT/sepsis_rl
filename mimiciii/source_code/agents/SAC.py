@@ -124,27 +124,33 @@ class SAC(BaseAgent):
     def prep_minibatch(self):
         '''
         Returns:
-            batch_state: expected shape (B, S)
-            batch_action: expected shape (B, D)
-            batch_reward: expected shape (B, 1)
-            batch_next_state: expected shape (B, S)
-            batch_SOFA: expected shape (B, 1)
-            batch_done: expected shape (B, 1)
+            states: expected shape (B, S)
+            actions: expected shape (B, D)
+            rewards: expected shape (B, 1)
+            next_states: expected shape (B, S)
+            dones: expected shape (B, 1)
             indices: a list of index
             weights: expected shape (B,)
         '''
         # random transition batch is taken from replay memory
         transitions, indices, weights = self.memory.sample(self.batch_size)
         
-        batch_state, batch_action, batch_reward, batch_next_state, batch_done = zip(*transitions)
+        states, actions, rewards, next_states, dones = zip(*transitions)
 
-        batch_state = torch.tensor(np.array(batch_state), device=self.device, dtype=torch.float)
-        batch_action = torch.tensor(np.array(batch_action), device=self.device, dtype=torch.int64).view(-1, 1)
-        batch_reward = torch.tensor(np.array(batch_reward), device=self.device, dtype=torch.float).view(-1, 1)
-        batch_next_state = torch.tensor(np.array(batch_next_state), device=self.device, dtype=torch.float)
-        batch_done = torch.tensor(np.array(batch_done), device=self.device, dtype=torch.float).view(-1, 1)
+        states = torch.tensor(np.array(states), device=self.device, dtype=torch.float)
+        actions = torch.tensor(np.array(actions), device=self.device, dtype=torch.int64).view(-1, 1)
+        rewards = torch.tensor(np.array(rewards), device=self.device, dtype=torch.float).view(-1, 1)
+        next_states = torch.tensor(np.array(next_states), device=self.device, dtype=torch.float)
+        dones = torch.tensor(np.array(dones), device=self.device, dtype=torch.float).view(-1, 1)
+
+        # check shape
+        assert states.shape == (self.batch_size, self.num_feats)
+        assert actions.shape == (self.batch_size, 1)
+        assert rewards.shape == (self.batch_size, 1)
+        assert next_states.shape == (self.batch_size, self.num_feats)
+        assert dones.shape == (self.batch_size, 1)
         
-        return batch_state, batch_action, batch_reward, batch_next_state, batch_done, indices, weights
+        return states, actions, rewards, next_states, dones, indices, weights
 
     def compute_critic_loss(self, states, actions, rewards, next_states, dones, indices, weights):
         with torch.no_grad():
