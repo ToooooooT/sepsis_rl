@@ -36,3 +36,5 @@ class Config(object):
         self.TARGET_ENTROPY_SCALE = 0.89
 
         self.REG_LAMBDA = 5
+        self.REWARD_THRESHOLD = 20
+        self.IS_GRADIENT_CLIP = False

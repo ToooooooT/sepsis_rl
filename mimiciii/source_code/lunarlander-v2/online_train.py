@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
-    parser.add_argument("--episode", type=int, help="episode", default=1000000)
+    parser.add_argument("--episode", type=int, help="episode", default=1e8)
     parser.add_argument("--eps_start", type=float, help="epsilon start value", default=1.)
     parser.add_argument("--eps_end", type=float, help="epsilon min value", default=0.01)
     parser.add_argument("--eps_decay", type=float, help="epsilon min value", default=0.995)
@@ -58,7 +58,7 @@ def training(model: DQN, config: Config, args):
     count = 0 # count how many consecutive episode that reward is above 200
     step = 0
     eps = args.eps_start
-    for i in range(config.EPISODE):
+    for i in range(int(config.EPISODE)):
         ep_reward = 0
         state = env.reset()
         done = False
@@ -80,7 +80,7 @@ def training(model: DQN, config: Config, args):
         print(f'[EPISODE {i}] | episode reward : {ep_reward}')
         if ep_reward > 200:
             count += 1
-            if count > 50:
+            if count > 100:
                 model.save()
                 break
         else:

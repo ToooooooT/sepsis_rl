@@ -23,6 +23,8 @@ class DQN(BaseAgent):
         self.gamma = config.GAMMA
         self.lr = config.LR
 
+        self.is_gradient_clip = config.IS_GRADIENT_CLIP
+
         # memory
         self.target_net_update_freq = config.TARGET_NET_UPDATE_FREQ
         self.experience_replay_size = config.EXP_REPLAY_SIZE
@@ -34,10 +36,6 @@ class DQN(BaseAgent):
         # environment
         self.num_feats = env['num_feats']
         self.num_actions = env['num_actions']
-
-        # loss
-        self.reg_lambda = config.REG_LAMBDA
-        self.reward_threshold = 20
 
         self.update_count = 0
 
@@ -119,7 +117,7 @@ class DQN(BaseAgent):
 
         if self.priority_replay:
             diff = (q_values - (batch_reward + self.gamma * target_q_values * (1 - batch_done)))
-            self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist()) # ?
+            self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist())
             loss = ((0.5 * diff.pow(2))* weights).mean()
         else:
             loss = F.mse_loss(q_values, batch_reward + self.gamma * target_q_values * (1 - batch_done))
@@ -137,8 +135,9 @@ class DQN(BaseAgent):
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
-        # for param in self.model.parameters():
-        #     param.grad.data.clamp_(-1, 1) # clamp_ : let gradient be in interval (-1, 1)
+        if self.is_gradient_clip:
+            for param in self.model.parameters():
+                param.grad.data.clamp_(-1, 1) # gradient clipping, let gradient be in interval (-1, 1)
         self.optimizer.step()
 
         # update the target network
@@ -185,7 +184,7 @@ class WDQN(DQN):
 
         if self.priority_replay:
             diff = (q_values - (batch_reward + self.gamma * target_q_values * (1 - batch_done)))
-            self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist()) # ?
+            self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist())
             loss = ((0.5 * diff.pow(2))* weights).mean()
         else:
             loss = F.mse_loss(q_values, batch_reward + self.gamma * target_q_values * (1 - batch_done))
