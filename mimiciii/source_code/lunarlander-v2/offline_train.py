@@ -13,8 +13,8 @@ import gym
 import pickle
 
 from utils import Config
-from agents import DQN, WDQN
-from network import DuellingMLP
+from agents import DQN, WDQN, SAC
+from network import DuellingMLP, PolicyMLP
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
-    parser.add_argument("--episode", type=int, help="episode", default=1e8)
+    parser.add_argument("--episode", type=int, help="episode", default=3e7)
     parser.add_argument("--test_freq", type=int, help="test frequency", default=1000)
     parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=50)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
@@ -50,6 +50,28 @@ class WD3QN_Agent(WDQN):
         self.model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
         self.target_model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
 
+class SAC_Agent(SAC):
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs') -> None:
+        super().__init__(static_policy, env, config, log_dir)
+
+    def declare_networks(self):
+        self.actor = PolicyMLP(self.num_feats, self.num_actions).to(self.device)
+        self.qf1 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.qf2 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+
+def get_agent(args, log_path, env_spec, config):
+    if args.agent == 'D3QN':
+        model = D3QN_Agent(log_dir=log_path, env=env_spec, config=config)
+    elif args.agent == 'WD3QN':
+        model = WD3QN_Agent(log_dir=log_path, env=env_spec, config=config)
+    elif args.agent == 'SAC':
+        model = SAC_Agent(log_dir=log_path, env=env_spec, config=config)
+    else:
+        raise NotImplementedError
+    return model
+
 def add_dataset_to_replay(train_data, model: DQN):
     # put all transitions in replay buffer
     s, a, r, s_, done = train_data['s'], train_data['a'], train_data['r'], train_data['s_'], train_data['done']
@@ -68,8 +90,8 @@ def training(model: DQN, config: Config, args):
             writer.add_scalar('test average reward', avg_reward, i)
             print(f'[EPISODE {i}] | test average reward : {avg_reward}')
             if avg_reward > 200:
-                model.save()
                 break
+    model.save()
 
 
 def testing(model: DQN, episode=10):
@@ -129,12 +151,7 @@ if __name__ == '__main__':
     path = f'{args.agent}/offline_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}'
     log_path = os.path.join('./logs', path)
 
-    if args.agent == 'D3QN':
-        model = D3QN_Agent(log_dir=log_path, env=env_spec, config=config)
-    elif args.agent == 'WD3QN':
-        model = WD3QN_Agent(log_dir=log_path, env=env_spec, config=config)
-    else:
-        raise NotImplementedError
+    model = get_agent(args, log_path, env_spec, config)
 
     os.makedirs(log_path, exist_ok=True)
     add_dataset_to_replay(train_data, model)
