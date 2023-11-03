@@ -9,7 +9,6 @@ class PolicyMLP(nn.Module):
         self.main = []
         for i in range(len(self.layer_size) - 2):
             self.main.append(nn.Linear(self.layer_size[i], self.layer_size[i + 1]))
-            self.main.append(nn.BatchNorm1d(self.layer_size[i + 1]))
             self.main.append(nn.LeakyReLU())
         self.main = nn.Sequential(*self.main)
         self.output = nn.Linear(self.layer_size[-2], self.layer_size[-1])
