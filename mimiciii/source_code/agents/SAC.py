@@ -147,7 +147,7 @@ class SAC(BaseAgent):
 
     def compute_critic_loss(self, states, actions, rewards, next_states, dones, indices, weights):
         with torch.no_grad():
-            _, _, next_state_log_pi, next_state_action_probs = self.get_action(next_states)
+            _, _, next_state_log_pi, next_state_action_probs = self.get_action_probs(next_states)
             qf1_next_target = self.target_qf1(next_states)
             qf2_next_target = self.target_qf2(next_states)
             # we can use the action probabilities instead of MC sampling to estimate the expectation
@@ -177,7 +177,7 @@ class SAC(BaseAgent):
         return qf_loss
 
     def compute_actor_loss(self, states):
-        _, _, log_pi, action_probs = self.get_action(states)
+        _, _, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
             qf2_values = self.qf2(states)
@@ -198,7 +198,7 @@ class SAC(BaseAgent):
         qf_loss.backward()
         self.q_optimizer.step()
         # update actor 
-        actor_loss, action_probs, log_pi = self.compute_actor_loss()
+        actor_loss, action_probs, log_pi = self.compute_actor_loss(states)
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
@@ -206,7 +206,7 @@ class SAC(BaseAgent):
         if self.autotune:
             # Entropy regularization coefficient training
             # reuse action probabilities for temperature loss
-            alpha_loss = (action_probs.detach() * (-self.log_alpha * (log_pi + self.target_entropy).detach())).mean()
+            alpha_loss = (action_probs.detach() * (-self.log_alpha.exp() * (log_pi + self.target_entropy).detach())).mean()
             self.a_optimizer.zero_grad()
             alpha_loss.backward()
             self.a_optimizer.step()
@@ -219,7 +219,10 @@ class SAC(BaseAgent):
         return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item()}
 
 
-    def get_action(self, x):
+    def get_action_probs(self, x):
+        '''
+        for training
+        '''
         logits = self.actor(x)
         policy_dist = Categorical(logits=logits)
         action = policy_dist.sample()
@@ -227,6 +230,20 @@ class SAC(BaseAgent):
         action_probs = policy_dist.probs
         log_prob = F.log_softmax(logits, dim=1)
         return action, logits, log_prob, action_probs
+
+    def get_action(self, s, eps=0):
+        '''
+        for interacting with environment
+        '''
+        with torch.no_grad():
+            if np.random.random() >= eps or self.static_policy:
+                x = torch.tensor(np.array([s]), device=self.device, dtype=torch.float)
+                logits = self.actor(x)
+                policy_dist = Categorical(logits=logits)
+                action = policy_dist.sample()
+                return action.item()
+
+        return np.random.randint(0, self.num_actions)
 
 
     def update_target_model(self, target, source):

@@ -135,13 +135,16 @@ class DQN(BaseAgent):
 
 
     def get_action(self, s, eps=0):
+        '''
+        for interacting with environment
+        '''
         with torch.no_grad():
             if np.random.random() >= eps or self.static_policy:
                 X = torch.tensor(np.array([s]), device=self.device, dtype=torch.float)
                 a = self.model(X).max(1)[1].view(1, 1)
                 return a.item()
-            else:
-                return np.random.randint(0, self.num_actions)
+
+        return np.random.randint(0, self.num_actions)
 
     def update_target_model(self):
         for target_param, param in zip(self.target_model.parameters(), self.model.parameters()):
