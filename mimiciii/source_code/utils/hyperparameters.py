@@ -40,4 +40,4 @@ class Config(object):
         self.IS_GRADIENT_CLIP = False
 
         # update target network parameter
-        self.TAU = 0.001
+        self.TAU = 0.005

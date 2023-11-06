@@ -216,7 +216,7 @@ class SAC(BaseAgent):
             self.update_target_model(self.target_qf1, self.qf1)
             self.update_target_model(self.target_qf2, self.qf2)
 
-        return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item()}
+        return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item(), 'alpha_loss': alpha_loss.detach().cpu().item()}
 
 
     def get_action_probs(self, x):
