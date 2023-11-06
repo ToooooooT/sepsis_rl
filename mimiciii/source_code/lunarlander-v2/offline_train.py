@@ -22,44 +22,46 @@ pd.options.mode.chained_assignment = None
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--batch_size", type=int, help="batch_size", default=128)
-    parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
+    parser.add_argument("--batch_size", type=int, help="batch_size", default=256)
+    parser.add_argument("--lr", type=float, help="learning rate", default=3e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
-    parser.add_argument("--episode", type=int, help="episode", default=3e7)
+    parser.add_argument("--episode", type=int, help="episode", default=3e6)
     parser.add_argument("--test_freq", type=int, help="test frequency", default=1000)
-    parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=50)
+    parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=2)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
     return args
+
+hidden_size = (256, 256)
 
 class D3QN_Agent(DQN):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
         super().__init__(static_policy, env, config, log_dir)
 
     def declare_networks(self):
-        self.model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
-        self.target_model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+        self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
 
 class WD3QN_Agent(WDQN):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
         super().__init__(static_policy, env, config, log_dir)
 
     def declare_networks(self):
-        self.model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
-        self.target_model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+        self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
 
 class SAC_Agent(SAC):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs') -> None:
         super().__init__(static_policy, env, config, log_dir)
 
     def declare_networks(self):
-        self.actor = PolicyMLP(self.num_feats, self.num_actions).to(self.device)
-        self.qf1 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
-        self.qf2 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
-        self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
-        self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.actor = PolicyMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+        self.qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+        self.qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+        self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+        self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
 
 def get_agent(args, log_path, env_spec, config):
     if args.agent == 'D3QN':
@@ -148,7 +150,7 @@ if __name__ == '__main__':
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 
-    path = f'{args.agent}/offline_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}'
+    path = f'{args.agent}/offline_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-episode={int(args.episode)}'
     log_path = os.path.join('./logs', path)
 
     model = get_agent(args, log_path, env_spec, config)

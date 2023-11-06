@@ -206,4 +206,4 @@ if __name__ == '__main__':
     env = gym.make('LunarLander-v2')
     env.seed(random_seed)  
     torch.manual_seed(random_seed)  
-    test('expert.pth')
+    test('expert.pth', n_episodes=5000)
