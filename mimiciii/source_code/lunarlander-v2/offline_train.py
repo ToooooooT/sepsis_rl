@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--episode", type=int, help="episode", default=2e6)
     parser.add_argument("--test_freq", type=int, help="test frequency", default=1000)
-    parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=2)
+    parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=2500)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
@@ -165,7 +165,7 @@ if __name__ == '__main__':
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 
-    path = f'{args.agent}/offline_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-episode={int(args.episode)}'
+    path = f'{args.agent}/offline_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-target_update_freq{config.TARGET_NET_UPDATE_FREQ}-episode={int(args.episode)}'
     log_path = os.path.join('./logs', path)
 
     model = get_agent(args, log_path, env_spec, config)
