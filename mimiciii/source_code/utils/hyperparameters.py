@@ -41,3 +41,6 @@ class Config(object):
 
         # update target network parameter
         self.TAU = 0.005
+
+        # coefficient of actor loss term in SAC + BC
+        self.ACTOR_LAMBDA = 2.5

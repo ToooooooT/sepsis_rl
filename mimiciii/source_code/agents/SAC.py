@@ -88,7 +88,7 @@ class SAC(BaseAgent):
         self.qf2: nn.Module = None
         self.target_qf1: nn.Module = None
         self.target_qf2: nn.Module = None
-        raise NotImplementedError # override thid function
+        raise NotImplementedError # override this function
 
 
     def declare_memory(self):
@@ -196,11 +196,15 @@ class SAC(BaseAgent):
         qf_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)
         self.q_optimizer.zero_grad()
         qf_loss.backward()
+        if self.is_gradient_clip:
+            self.gradient_clip_q()
         self.q_optimizer.step()
         # update actor 
         actor_loss, action_probs, log_pi = self.compute_actor_loss(states)
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
+        if self.is_gradient_clip:
+            self.gradient_clip_actor()
         self.actor_optimizer.step()
 
         if self.autotune:
@@ -249,3 +253,70 @@ class SAC(BaseAgent):
     def update_target_model(self, target, source):
         for target_param, param in zip(target.parameters(), source.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+    def gradient_clip_q(self):
+        for param in self.qf1.parameters():
+            param.grad.data.clamp_(-1, 1) 
+        for param in self.qf2.parameters():
+            param.grad.data.clamp_(-1, 1) 
+
+    def gradient_clip_actor(self):
+        for param in self.actor.parameters():
+            param.grad.data.clamp_(-1, 1) 
+
+
+class SAC_BC(SAC):
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs') -> None:
+        super().__init__(static_policy, env, config, log_dir)
+
+        self.actor_lambda = config.ACTOR_LAMBDA
+
+
+    def compute_actor_loss(self, states, actions):
+        _, _, log_pi, action_probs = self.get_action_probs(states)
+        with torch.no_grad():
+            qf1_values = self.qf1(states)
+            qf2_values = self.qf2(states)
+            min_qf_values = torch.min(qf1_values, qf2_values)
+        # no need for reparameterization, the expectation can be calculated for discrete actions
+        actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
+        bc_loss = F.cross_entropy(action_probs, actions.view(-1))
+        # TODO: use a suitable coefficient of normalization term
+        coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
+        total_loss = actor_loss * coef + bc_loss
+        return total_loss, actor_loss * coef, bc_loss, action_probs, log_pi
+
+    def update(self, t):
+        self.actor.train()
+        self.qf1.train()
+        self.qf2.train()
+        states, actions, rewards, next_states, dones, indices, weights = self.prep_minibatch()
+        # update critic 
+        qf_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)
+        self.q_optimizer.zero_grad()
+        qf_loss.backward()
+        if self.is_gradient_clip:
+            self.gradient_clip_q()
+        self.q_optimizer.step()
+        # update actor 
+        total_loss, actor_loss, bc_loss, action_probs, log_pi = self.compute_actor_loss(states, actions)
+        self.actor_optimizer.zero_grad()
+        total_loss.backward()
+        if self.is_gradient_clip:
+            self.gradient_clip_actor()
+        self.actor_optimizer.step()
+
+        if self.autotune:
+            # Entropy regularization coefficient training
+            # reuse action probabilities for temperature loss
+            alpha_loss = (action_probs.detach() * (-self.log_alpha.exp() * (log_pi + self.target_entropy).detach())).mean()
+            self.a_optimizer.zero_grad()
+            alpha_loss.backward()
+            self.a_optimizer.step()
+            self.alpha = self.log_alpha.exp().item()
+        # update the target network
+        if t % self.target_net_update_freq == 0:
+            self.update_target_model(self.target_qf1, self.qf1)
+            self.update_target_model(self.target_qf2, self.qf2)
+
+        return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item(), 'bc_loss': bc_loss.detach().cpu().item(), 'alpha_loss': alpha_loss.detach().cpu().item()}

@@ -13,7 +13,7 @@ import gym
 import pickle
 
 from utils import Config
-from agents import DQN, WDQN, SAC
+from agents import DQN, WDQN, SAC, SAC_BC
 from network import DuellingMLP, PolicyMLP
 
 from torch.utils.tensorboard import SummaryWriter
@@ -26,10 +26,11 @@ def parse_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=3e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
-    parser.add_argument("--episode", type=int, help="episode", default=3e6)
+    parser.add_argument("--episode", type=int, help="episode", default=2e6)
     parser.add_argument("--test_freq", type=int, help="test frequency", default=1000)
     parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=2)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
+    parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
     return args
@@ -63,6 +64,17 @@ class SAC_Agent(SAC):
         self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
         self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
 
+class SAC_BC_Agent(SAC_BC):
+    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs') -> None:
+        super().__init__(static_policy, env, config, log_dir)
+
+    def declare_networks(self):
+        self.actor = PolicyMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+        self.qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+        self.qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+        self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+        self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
+
 def get_agent(args, log_path, env_spec, config):
     if args.agent == 'D3QN':
         model = D3QN_Agent(log_dir=log_path, env=env_spec, config=config)
@@ -70,6 +82,8 @@ def get_agent(args, log_path, env_spec, config):
         model = WD3QN_Agent(log_dir=log_path, env=env_spec, config=config)
     elif args.agent == 'SAC':
         model = SAC_Agent(log_dir=log_path, env=env_spec, config=config)
+    elif args.agent == 'SAC_BC':
+        model = SAC_BC_Agent(log_dir=log_path, env=env_spec, config=config)
     else:
         raise NotImplementedError
     return model
@@ -147,6 +161,7 @@ if __name__ == '__main__':
     config.TARGET_NET_UPDATE_FREQ = args.target_update_freq
     config.USE_PRIORITY_REPLAY = args.use_pri
     config.EXP_REPLAY_SIZE = len(train_data['s'])
+    config.IS_GRADIENT_CLIP = args.gradient_clip
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 

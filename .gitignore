@@ -19,3 +19,8 @@ ID3QNE*/
 *.txt
 dataset/
 t.py
+*.numbers
+*.docx
+*.pdf
+*.xlsx
+*.DS_store
