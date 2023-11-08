@@ -47,18 +47,6 @@ class WDQNE(WDQN):
         self.memory.push((s, a, r, s_, a_, done, SOFA))
 
     def prep_minibatch(self):
-        '''
-        Returns:
-            batch_state: expected shape (B, S)
-            batch_action: expected shape (B, D)
-            batch_reward: expected shape (B, 1)
-            batch_next_state: expected shape (B, S)
-            batch_done: expected shape (B, 1)
-            batch_SOFA: expected shape (B, 1)
-            indices: a list of index
-            weights: expected shape (B,)
-        '''
-        # random transition batch is taken from replay memory
         transitions, indices, weights = self.memory.sample(self.batch_size)
         
         states, actions, rewards, next_states, next_actions, dones, SOFAs = zip(*transitions)
@@ -71,18 +59,8 @@ class WDQNE(WDQN):
         dones = torch.tensor(np.array(dones), device=self.device, dtype=torch.float).view(-1, 1)
         SOFAs = torch.tensor(np.array(SOFAs), device=self.device, dtype=torch.float).view(-1, 1)
 
-        # check shape
-        assert states.dim() == 2 and states.shape[1] == self.num_feats
-        assert actions.dim() == 2 and actions.shape[1] == 1
-        assert rewards.dim() == 2 and rewards.shape[1] == 1
-        assert next_states.dim() == 2 and next_states.shape[1] == self.num_feats
-        assert next_actions.dim() == 2 and next_actions.shape[1] == 1
-        assert dones.dim() == 2 and dones.shape[1] == 1
-        assert SOFAs.dim() == 2 and SOFAs.shape[1] == 1
-
         return states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights
 
-    # TODO: check this compute loss function is correct or not
     def compute_loss(self, batch_vars):
         states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights = batch_vars
         self.model.train()
@@ -114,91 +92,69 @@ class SAC_BC_E(SAC):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs') -> None:
         super().__init__(static_policy, env, config, log_dir) 
 
-    # TODO: override any function if neccesary, and fix update function
-    def update(self, t):
-        # ref: https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/sac_atari.py
-        self.actor.train()
-        self.qf1.train()
-        self.qf2.train()
+    def append_to_replay(self, s, a, r, s_, done, SOFA):
+        self.memory.push((s, a, r, s_, done, SOFA))
 
-        states, actions, rewards, next_states, dones, SOFAs, indices, weights = self.prep_minibatch()
+    def prep_minibatch(self):
+        transitions, indices, weights = self.memory.sample(self.batch_size)
+        
+        states, actions, rewards, next_states, dones, SOFAs = zip(*transitions)
 
-        # critic training
-        '''
-            loss function = E[Q_double-target - Q_estimate]^2 + lambda * max(|Q_estimate| - Q_threshold, 0)
-            Q_double-target = reward + gamma * Q_double-target(next_state, argmax_a(Q(next_state, a)))
-            Q_threshold = 20
-            when die reward -15 else +15
-        '''
-        with torch.no_grad():
-            _, _, next_state_log_pi, next_state_action_probs = self.actor.get_action(next_states)
-            qf1_next_target = self.target_qf1(next_states)
-            qf2_next_target = self.target_qf2(next_states)
-            # we can use the action probabilities instead of MC sampling to estimate the expectation
-            min_qf_next_target = next_state_action_probs * (
-                torch.min(qf1_next_target, qf2_next_target) - self.alpha * next_state_log_pi
-            )
-            # adapt Q-target for discrete Q-function
-            min_qf_next_target = min_qf_next_target.sum(dim=1, keepdim=True)
-            next_q_value = rewards + (1 - dones) * self.gamma * (min_qf_next_target)
+        states = torch.tensor(np.array(states), device=self.device, dtype=torch.float)
+        actions = torch.tensor(np.array(actions), device=self.device, dtype=torch.int64).view(-1, 1)
+        rewards = torch.tensor(np.array(rewards), device=self.device, dtype=torch.float).view(-1, 1)
+        next_states = torch.tensor(np.array(next_states), device=self.device, dtype=torch.float)
+        dones = torch.tensor(np.array(dones), device=self.device, dtype=torch.float).view(-1, 1)
+        SOFAs = torch.tensor(np.array(SOFAs), device=self.device, dtype=torch.float).view(-1, 1)
 
-        qf1_values = self.qf1(states)
-        qf2_values = self.qf2(states)
-        qf1_a_values = qf1_values.gather(1, actions)
-        qf2_a_values = qf2_values.gather(1, actions)
+        return states, actions, rewards, next_states, dones, SOFAs, indices, weights
 
-        td_error1 = (next_q_value - qf1_a_values).pow(2)
-        td_error2 = (next_q_value - qf2_a_values).pow(2)
-        td_error = td_error1 + td_error2
-
-        if self.priority_replay:
-            self.memory.update_priorities(indices, (td_error / 10).detach().squeeze().abs().cpu().numpy().tolist()) # ?
-            qf1_loss = 0.5 * (td_error1 * weights).mean()
-            qf2_loss = 0.5 * (td_error2 * weights).mean()
-            # qf1_loss = 0.5 * (td_error1 * weights).mean() + self.reg_lambda * max(qf1_a_values.abs().max() - self.reward_threshold, 0)
-            # qf2_loss = 0.5 * (td_error2 * weights).mean() + self.reg_lambda * max(qf2_a_values.abs().max() - self.reward_threshold, 0)
-        else:
-            qf1_loss = 0.5 * td_error1.mean()
-            qf2_loss = 0.5 * td_error2.mean()
-            # qf1_loss = 0.5 * td_error1.mean() + self.reg_lambda * max(qf1_a_values.abs().max() - self.reward_threshold, 0)
-            # qf2_loss = 0.5 * td_error2.mean() + self.reg_lambda * max(qf2_a_values.abs().max() - self.reward_threshold, 0)
-
-        qf_loss = qf1_loss + qf2_loss
-
-        self.q_optimizer.zero_grad()
-        qf_loss.backward()
-        self.q_optimizer.step()
-
-        # actor training
-        _, logits, log_pi, action_probs = self.actor.get_action(states)
+    def compute_actor_loss(self, states, actions, SOFAs):
+        # TODO: use the SOFAs to do expertise
+        _, _, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
             qf2_values = self.qf2(states)
             min_qf_values = torch.min(qf1_values, qf2_values)
         # no need for reparameterization, the expectation can be calculated for discrete actions
-        if self.behav_clone:
-            clone = (SOFAs < 5).view(-1)
-            actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean() + \
-                            F.cross_entropy(action_probs[clone, :], actions.view(-1)[clone])
-        else:
-            actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
+        actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
+        bc_loss = F.cross_entropy(action_probs, actions.view(-1))
+        # TODO: use a suitable coefficient of normalization term
+        coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
+        total_loss = actor_loss * coef + bc_loss
+        return total_loss, actor_loss * coef, bc_loss, action_probs, log_pi
 
+    def update(self, t):
+        self.actor.train()
+        self.qf1.train()
+        self.qf2.train()
+        states, actions, rewards, next_states, dones, SOFAs, indices, weights = self.prep_minibatch()
+        # update critic 
+        qf_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)
+        self.q_optimizer.zero_grad()
+        qf_loss.backward()
+        if self.is_gradient_clip:
+            self.gradient_clip_q()
+        self.q_optimizer.step()
+        # update actor 
+        total_loss, actor_loss, bc_loss, action_probs, log_pi = self.compute_actor_loss(states, actions, SOFAs)
         self.actor_optimizer.zero_grad()
-        actor_loss.backward()
+        total_loss.backward()
+        if self.is_gradient_clip:
+            self.gradient_clip_actor()
         self.actor_optimizer.step()
 
         if self.autotune:
             # Entropy regularization coefficient training
             # reuse action probabilities for temperature loss
-            alpha_loss = (action_probs.detach() * (-self.log_alpha * (log_pi + self.target_entropy).detach())).mean()
+            alpha_loss = (action_probs.detach() * (-self.log_alpha.exp() * (log_pi + self.target_entropy).detach())).mean()
             self.a_optimizer.zero_grad()
             alpha_loss.backward()
             self.a_optimizer.step()
             self.alpha = self.log_alpha.exp().item()
-
         # update the target network
         if t % self.target_net_update_freq == 0:
             self.update_target_model(self.target_qf1, self.qf1)
             self.update_target_model(self.target_qf2, self.qf2)
 
-        return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item()}
+        return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item(), 'bc_loss': bc_loss.detach().cpu().item(), 'alpha_loss': alpha_loss.detach().cpu().item()}
