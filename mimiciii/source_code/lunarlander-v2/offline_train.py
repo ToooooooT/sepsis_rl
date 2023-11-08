@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=3e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
-    parser.add_argument("--episode", type=int, help="episode", default=2e6)
+    parser.add_argument("--episode", type=int, help="episode", default=1e6)
     parser.add_argument("--test_freq", type=int, help="test frequency", default=1000)
     parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=2500)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
@@ -97,7 +97,7 @@ def add_dataset_to_replay(train_data, model: DQN):
 
 def training(model: DQN, config: Config, args):
     writer = SummaryWriter(model.log_dir)
-    step = 0
+    max_avg_reward = 0
     for i in range(int(config.EPISODE)):
         loss = model.update(i)
         writer.add_scalars('loss', loss, i)
@@ -105,9 +105,9 @@ def training(model: DQN, config: Config, args):
             avg_reward = testing(model, 20)
             writer.add_scalar('test average reward', avg_reward, i)
             print(f'[EPISODE {i}] | test average reward : {avg_reward}')
-            if avg_reward > 200:
-                break
-    model.save()
+            if avg_reward > max_avg_reward:
+                max_avg_reward = avg_reward
+                model.save()
 
 
 def testing(model: DQN, episode=10):

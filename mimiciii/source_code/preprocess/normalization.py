@@ -92,7 +92,7 @@ def plot_reward_action(dataset: pd.DataFrame, name):
     # plot data reward distribution
     ax.hist(data['r'], bins=np.arange(41)-0.5)
     ax.set_xticks(range(-15, 16, 2))
-    plt.savefig(f'../log/{name} reward distribution.png')
+    plt.savefig(f'../logs/{name} reward distribution.png')
 
     # plot data action distribution
     actions_low = data[data['SOFA'] <= 5]['a']
@@ -121,7 +121,7 @@ def plot_reward_action(dataset: pd.DataFrame, name):
     ax4.tick_params(axis='x', labelsize=6)
     ax4.set_title('all')
 
-    plt.savefig(f'../log/{name} action distribution.png')
+    plt.savefig(f'../logs/{name} action distribution.png')
 
 
 def normalization(period, dataset: pd.DataFrame):
@@ -173,7 +173,7 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
         if s['icustayid'] != s_['icustayid']:
             done = 1
             s_ = [0] * state_dim
-            a_ = -1
+            a_ = 0 # useless action
             terminal_index.add(index)
             bloc_num += 1
         else:
@@ -196,7 +196,7 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
     s = dataset.loc[index, :]
     s_ = [0] * state_dim
     a = s['action']
-    a_ = -1
+    a_ = 0 # useless action
     r = s['reward']
     SOFA = unnorm_dataset.loc[index, 'SOFA']
     id_index_map[s['icustayid']].append(index)
