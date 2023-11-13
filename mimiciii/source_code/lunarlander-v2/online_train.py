@@ -29,7 +29,6 @@ def parse_args():
     parser.add_argument("--eps_start", type=float, help="epsilon start value", default=1.)
     parser.add_argument("--eps_end", type=float, help="epsilon min value", default=0.01)
     parser.add_argument("--eps_decay", type=float, help="epsilon min value", default=0.995)
-    parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=50)
     parser.add_argument("--update_per_step", type=int, help="update parameters per step", default=1)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
@@ -93,7 +92,7 @@ def training(model: DQN, config: Config, args):
             step += 1
             t += 1
             if step % args.update_per_step == 0 and step > config.BATCH_SIZE:
-                loss = model.update(i)
+                loss = model.update(step)
                 writer.add_scalars('loss', loss, step)
         eps = max(args.eps_end, args.eps_decay * eps)
         writer.add_scalar('ep_reward', ep_reward, i)
@@ -145,12 +144,11 @@ if __name__ == '__main__':
     config.EPISODE = args.episode
     config.LR = args.lr
     config.BATCH_SIZE = args.batch_size
-    config.TARGET_NET_UPDATE_FREQ = args.target_update_freq
     config.USE_PRIORITY_REPLAY = args.use_pri
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 
-    path = f'{args.agent}/online_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-target_update_freq={config.TARGET_NET_UPDATE_FREQ}-hidden_size={(128, 128)}'
+    path = f'{args.agent}/online_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-hidden_size={(128, 128)}'
     log_path = os.path.join('./logs', path)
 
     model = get_agent(args, log_path, env_spec, config)

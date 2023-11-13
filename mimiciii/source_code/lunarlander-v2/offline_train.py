@@ -28,14 +28,13 @@ def parse_args():
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--episode", type=int, help="episode", default=1e6)
     parser.add_argument("--test_freq", type=int, help="test frequency", default=1000)
-    parser.add_argument("--target_update_freq", type=int, help="target Q update frequency", default=2500)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
     return args
 
-hidden_size = (256, 256)
+hidden_size = (128, 128)
 
 class D3QN_Agent(DQN):
     def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
@@ -87,12 +86,6 @@ def get_agent(args, log_path, env_spec, config):
     else:
         raise NotImplementedError
     return model
-
-def add_dataset_to_replay(train_data, model: DQN):
-    # put all transitions in replay buffer
-    s, a, r, s_, done = train_data['s'], train_data['a'], train_data['r'], train_data['s_'], train_data['done']
-    for i in range(len(s)):
-        model.append_to_replay(s[i], a[i], r[i], s_[i], done[i])
 
 
 def training(model: DQN, config: Config, args):
@@ -165,11 +158,11 @@ if __name__ == '__main__':
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 
-    path = f'{args.agent}/offline_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-target_update_freq{config.TARGET_NET_UPDATE_FREQ}-episode={int(args.episode)}-{hidden_size}'
+    path = f'{args.agent}/offline_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-hidden_size={hidden_size}'
     log_path = os.path.join('./logs', path)
 
     model = get_agent(args, log_path, env_spec, config)
 
     os.makedirs(log_path, exist_ok=True)
-    add_dataset_to_replay(train_data, model)
+    model.memory.read_file('./dataset/train_process.pkl')
     training(model, config, args)

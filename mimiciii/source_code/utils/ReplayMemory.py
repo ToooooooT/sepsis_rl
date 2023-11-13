@@ -1,6 +1,7 @@
 import random
 import torch
 import numpy as np
+import pickle
 
 from utils.data_structures import SegmentTree, SumSegmentTree
 
@@ -21,8 +22,19 @@ class ExperienceReplayMemory:
         self.next_idx = (self.next_idx + 1) % self.capacity
 
     def sample(self, batch_size):
-        sample_idx = random.sample(range(0, self.capacity if self.is_full else self.next_idx), batch_size)
+        high = self.capacity - 1 if self.is_full else self.next_idx
+        # sample_idx = random.sample(range(0, self.capacity if self.is_full else self.next_idx), batch_size)
+        sample_idx = [random.randint(0, high) for _ in range(batch_size)]
         return *[self.memory[i][sample_idx] for i in range(self.kind)], None, None
+
+    def read_file(self, file_path):
+        with open(file_path, "rb") as f:
+            data = pickle.load(f)
+        self.memory = data
+        self.capacity = self.memory[0].shape[0]
+        self.kind = len(data)
+        self.is_full = True
+
 
     def __len__(self):
         return len(self.memory)
@@ -64,6 +76,20 @@ class PrioritizedReplayMemory(object):
 
         self._it_sum = SumSegmentTree(it_capacity)
         self._max_priority = 100.0
+
+    def read_file(self, file_path):
+        with open(file_path, "rb") as f:
+            data = pickle.load(f)
+        self._storage = data
+        self._maxsize = self._storage[0].shape[0]
+        self.kind = len(data)
+        self.is_full = True
+        it_capacity = 1
+        while it_capacity < self._maxsize:
+            it_capacity *= 2
+        for i in range(self._maxsize):
+            self._it_sum[i] = self._max_priority ** self._alpha
+
 
     def beta_by_frame(self, frame_idx):
         return min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)
