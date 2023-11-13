@@ -213,14 +213,14 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
     data['bloc_num'].append(bloc_num)
 
     data['s'] = np.array(data['s'])
-    data['a'] = np.array(data['a'])
-    data['r'] = np.array(data['r'])
+    data['a'] = np.array(data['a']).reshape(-1, 1)
+    data['r'] = np.array(data['r']).reshape(-1, 1)
     data['s_'] = np.array(data['s_'])
-    data['a_'] = np.array(data['a_'])
-    data['done'] = np.array(data['done'])
-    data['SOFA'] = np.array(data['SOFA'])
-    data['is_alive'] = np.array(data['is_alive'])
-    data['bloc_num'] = np.array(data['bloc_num'])
+    data['a_'] = np.array(data['a_']).reshape(-1, 1)
+    data['done'] = np.array(data['done']).reshape(-1, 1)
+    data['SOFA'] = np.array(data['SOFA']).reshape(-1, 1)
+    data['is_alive'] = np.array(data['is_alive']).reshape(-1, 1)
+    data['bloc_num'] = np.array(data['bloc_num']).reshape(-1, 1)
     data['iv'] = data['a'] / 5
     data['vaso'] = data['a'] % 5
 

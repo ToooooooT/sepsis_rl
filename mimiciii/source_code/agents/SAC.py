@@ -138,11 +138,11 @@ class SAC(BaseAgent):
         # random transition batch is taken from replay memory
         states, actions, rewards, next_states, dones, indices, weights = self.memory.sample(self.batch_size)
 
-        states = torch.tensor(np.array(states), device=self.device, dtype=torch.float)
-        actions = torch.tensor(np.array(actions), device=self.device, dtype=torch.int64)
-        rewards = torch.tensor(np.array(rewards), device=self.device, dtype=torch.float)
-        next_states = torch.tensor(np.array(next_states), device=self.device, dtype=torch.float)
-        dones = torch.tensor(np.array(dones), device=self.device, dtype=torch.float)
+        states = torch.tensor(states, device=self.device, dtype=torch.float)
+        actions = torch.tensor(actions, device=self.device, dtype=torch.int64)
+        rewards = torch.tensor(rewards, device=self.device, dtype=torch.float)
+        next_states = torch.tensor(next_states, device=self.device, dtype=torch.float)
+        dones = torch.tensor(dones, device=self.device, dtype=torch.float)
 
         return states, actions, rewards, next_states, dones, indices, weights
 

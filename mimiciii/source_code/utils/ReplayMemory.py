@@ -35,6 +35,11 @@ class ExperienceReplayMemory:
         self.kind = len(data)
         self.is_full = True
 
+    def read_data(self, data):
+        self.memory = data
+        self.capacity = self.memory[0].shape[0]
+        self.kind = len(data)
+        self.is_full = True
 
     def __len__(self):
         return len(self.memory)
@@ -90,6 +95,16 @@ class PrioritizedReplayMemory(object):
         for i in range(self._maxsize):
             self._it_sum[i] = self._max_priority ** self._alpha
 
+    def read_data(self, data):
+        self._storage = data
+        self._maxsize = self._storage[0].shape[0]
+        self.kind = len(data)
+        self.is_full = True
+        it_capacity = 1
+        while it_capacity < self._maxsize:
+            it_capacity *= 2
+        for i in range(self._maxsize):
+            self._it_sum[i] = self._max_priority ** self._alpha
 
     def beta_by_frame(self, frame_idx):
         return min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)

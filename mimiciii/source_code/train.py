@@ -34,7 +34,6 @@ def parse_args():
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
     parser.add_argument("--valid_freq", type=int, help="validation frequency", default=500)
     parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
-    parser.add_argument("--target_net_freq", type=int, help="the frequency of updates for the target networks", default=200)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="./logs/Env/batch_size=32-lr=0.001-episode=200/model.pth")
     parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="./logs/Clf/LG_clf.sav")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
@@ -100,15 +99,17 @@ def add_dataset_to_replay(train_data, agent: DQN_regularization, clip_reward):
     if clip_reward:
         r[(r > 1) & (r != 15)] = 1
         r[(r < -1) & (r != -15)] = -1
-    if args.agent == 'D3QN':
-        for i in range(s.shape[0]):
-            agent.append_to_replay(s[i], a[i], r[i], s_[i], done[i])
-    elif args.agent == 'WD3QNE':
-        for i in range(s.shape[0]):
-            agent.append_to_replay(s[i], a[i], r[i], s_[i], a_[i], done[i], SOFA[i])
+    if isinstance(agent, D3QN_Agent):
+        data = [s, a, r, s_, done]
+        agent.memory.read_data(data)
+    elif isinstance(agent, WD3QNE_Agent):
+        data = [s, a, r, s_, a_, done, SOFA]
+        agent.memory.read_data(data)
+    elif isinstance(agent, SAC_BC_Agent):
+        data = [s, a, r, s_, done, SOFA]
+        agent.memory.read_data(data)
     else:
-        for i in range(s.shape[0]):
-            agent.append_to_replay(s[i], a[i], r[i], s_[i], done[i], SOFA[i])
+        raise NotImplementedError
 
 def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, config, args):
     '''
@@ -235,7 +236,6 @@ if __name__ == '__main__':
     config.USE_PRIORITY_REPLAY = args.use_pri
     config.LR = args.lr
     config.BATCH_SIZE = args.batch_size
-    config.TARGET_NET_UPDATE_FREQ = args.target_net_freq
     config.USE_PRIORITY_REPLAY = args.use_pri
     config.EXP_REPLAY_SIZE = len(train_data['s'])
     config.IS_GRADIENT_CLIP = args.gradient_clip
@@ -244,9 +244,9 @@ if __name__ == '__main__':
     env_spec = {'num_feats': 49, 'num_actions': 25}
 
     if args.agent == 'D3QN':
-        path = f'D3QN/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
+        path = f'D3QN/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-hidden_size={hidden_size}'
     else:
-        path = f'{args.agent}/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-target_net_freq={config.TARGET_NET_UPDATE_FREQ}'
+        path = f'{args.agent}/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-hidden_size={hidden_size}'
     log_path = os.path.join('./logs', path)
 
     agent = get_agent(args, log_path, env_spec, config)

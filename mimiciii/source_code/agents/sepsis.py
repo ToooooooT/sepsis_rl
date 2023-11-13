@@ -56,13 +56,13 @@ class WDQNE(WDQN):
         states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights = \
             self.memory.sample(self.batch_size)
 
-        states = torch.tensor(np.array(states), device=self.device, dtype=torch.float)
-        actions = torch.tensor(np.array(actions), device=self.device, dtype=torch.int64)
-        rewards = torch.tensor(np.array(rewards), device=self.device, dtype=torch.float)
-        next_states = torch.tensor(np.array(next_states), device=self.device, dtype=torch.float)
-        next_actions = torch.tensor(np.array(next_actions), device=self.device, dtype=torch.int64)
-        dones = torch.tensor(np.array(dones), device=self.device, dtype=torch.float)
-        SOFAs = torch.tensor(np.array(SOFAs), device=self.device, dtype=torch.float)
+        states = torch.tensor(states, device=self.device, dtype=torch.float)
+        actions = torch.tensor(actions, device=self.device, dtype=torch.int64)
+        rewards = torch.tensor(rewards, device=self.device, dtype=torch.float)
+        next_states = torch.tensor(next_states, device=self.device, dtype=torch.float)
+        next_actions = torch.tensor(next_actions, device=self.device, dtype=torch.int64)
+        dones = torch.tensor(dones, device=self.device, dtype=torch.float)
+        SOFAs = torch.tensor(SOFAs, device=self.device, dtype=torch.float)
 
         return states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights
 
@@ -109,12 +109,12 @@ class SAC_BC_E(SAC):
     def prep_minibatch(self):
         states, actions, rewards, next_states, dones, SOFAs, indices, weights = self.memory.sample(self.batch_size)
 
-        states = torch.tensor(np.array(states), device=self.device, dtype=torch.float)
-        actions = torch.tensor(np.array(actions), device=self.device, dtype=torch.int64)
-        rewards = torch.tensor(np.array(rewards), device=self.device, dtype=torch.float)
-        next_states = torch.tensor(np.array(next_states), device=self.device, dtype=torch.float)
-        dones = torch.tensor(np.array(dones), device=self.device, dtype=torch.float)
-        SOFAs = torch.tensor(np.array(SOFAs), device=self.device, dtype=torch.float)
+        states = torch.tensor(states, device=self.device, dtype=torch.float)
+        actions = torch.tensor(actions, device=self.device, dtype=torch.int64)
+        rewards = torch.tensor(rewards, device=self.device, dtype=torch.float)
+        next_states = torch.tensor(next_states, device=self.device, dtype=torch.float)
+        dones = torch.tensor(dones, device=self.device, dtype=torch.float)
+        SOFAs = torch.tensor(SOFAs, device=self.device, dtype=torch.float)
 
         return states, actions, rewards, next_states, dones, SOFAs, indices, weights
 
