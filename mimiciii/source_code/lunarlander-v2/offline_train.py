@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument("--test_freq", type=int, help="test frequency", default=1000)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
+    parser.add_argument("--dataset", type=str, help="dataset mode", default='train')
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
     return args
@@ -87,6 +88,18 @@ def get_agent(args, log_path, env_spec, config):
         raise NotImplementedError
     return model
 
+def get_dataset_path(mode):
+    pre = './dataset/'
+    if mode == "train":
+        f = 'train.pkl'
+    elif mode == "expert":
+        f = 'expert.pkl'
+    elif mode == "medium":
+        f = 'medium.pkl'
+    else:
+        raise NotImplementedError
+    return os.path.join(pre, f)
+
 
 def training(model: DQN, config: Config, args):
     writer = SummaryWriter(model.log_dir)
@@ -133,9 +146,6 @@ if __name__ == '__main__':
     env.reset(seed=args.seed)  
 
     dataset_path = './dataset'
-    # Load dataset
-    with open(os.path.join(dataset_path, 'expert.pkl'), 'rb') as file:
-        train_data = pickle.load(file)
 
     ######################################################################################
     # Hyperparameters
@@ -151,18 +161,18 @@ if __name__ == '__main__':
     config.EPISODE = args.episode
     config.LR = args.lr
     config.BATCH_SIZE = args.batch_size
-    config.TARGET_NET_UPDATE_FREQ = args.target_update_freq
     config.USE_PRIORITY_REPLAY = args.use_pri
-    config.EXP_REPLAY_SIZE = len(train_data['s'])
     config.IS_GRADIENT_CLIP = args.gradient_clip
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 
-    path = f'{args.agent}/offline_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-hidden_size={hidden_size}'
+    path = f'{args.agent}/offline-dataset={args.dataset}-batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-hidden_size={hidden_size}'
     log_path = os.path.join('./logs', path)
 
     model = get_agent(args, log_path, env_spec, config)
 
     os.makedirs(log_path, exist_ok=True)
-    model.memory.read_file('./dataset/train_process.pkl')
+    # load dataset
+    dataset_path = get_dataset_path(args.dataset)
+    model.memory.read_file(dataset_path)
     training(model, config, args)
