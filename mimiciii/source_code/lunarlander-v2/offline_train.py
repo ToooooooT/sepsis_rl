@@ -165,7 +165,7 @@ if __name__ == '__main__':
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 
-    path = f'{args.agent}/offline_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-target_update_freq{config.TARGET_NET_UPDATE_FREQ}-episode={int(args.episode)}'
+    path = f'{args.agent}/offline_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-target_update_freq{config.TARGET_NET_UPDATE_FREQ}-episode={int(args.episode)}-{hidden_size}'
     log_path = os.path.join('./logs', path)
 
     model = get_agent(args, log_path, env_spec, config)

@@ -92,7 +92,10 @@ class SAC(BaseAgent):
 
 
     def declare_memory(self):
-        self.memory = ExperienceReplayMemory(self.experience_replay_size) if not self.priority_replay else PrioritizedReplayMemory(self.experience_replay_size, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames)
+        dims = (self.num_feats, 1, 1, self.num_feats, 1)
+        self.memory = ExperienceReplayMemory(self.experience_replay_size, dims) \
+                        if not self.priority_replay else \
+                        PrioritizedReplayMemory(self.experience_replay_size, dims, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames, self.device)
 
 
     def save(self):
@@ -133,15 +136,13 @@ class SAC(BaseAgent):
             weights: expected shape (B,)
         '''
         # random transition batch is taken from replay memory
-        transitions, indices, weights = self.memory.sample(self.batch_size)
-        
-        states, actions, rewards, next_states, dones = zip(*transitions)
+        states, actions, rewards, next_states, dones, indices, weights = self.memory.sample(self.batch_size)
 
         states = torch.tensor(np.array(states), device=self.device, dtype=torch.float)
-        actions = torch.tensor(np.array(actions), device=self.device, dtype=torch.int64).view(-1, 1)
-        rewards = torch.tensor(np.array(rewards), device=self.device, dtype=torch.float).view(-1, 1)
+        actions = torch.tensor(np.array(actions), device=self.device, dtype=torch.int64)
+        rewards = torch.tensor(np.array(rewards), device=self.device, dtype=torch.float)
         next_states = torch.tensor(np.array(next_states), device=self.device, dtype=torch.float)
-        dones = torch.tensor(np.array(dones), device=self.device, dtype=torch.float).view(-1, 1)
+        dones = torch.tensor(np.array(dones), device=self.device, dtype=torch.float)
 
         return states, actions, rewards, next_states, dones, indices, weights
 

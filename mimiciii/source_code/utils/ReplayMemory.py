@@ -1,28 +1,35 @@
 import random
 import torch
+import numpy as np
 
 from utils.data_structures import SegmentTree, SumSegmentTree
 
 
 class ExperienceReplayMemory:
-    def __init__(self, capacity):
+    def __init__(self, capacity, dims: tuple):
         self.capacity = capacity
-        self.memory = []
+        self.memory = [np.zeros((capacity, dims[i])) for i in range(len(dims))]
+        self.next_idx = 0
+        self.kind = len(dims)
+        self.is_full = False
 
     def push(self, transition):
-        self.memory.append(transition)
-        if len(self.memory) > self.capacity:
-            del self.memory[0]
+        for i in range(len(transition)):
+            self.memory[i][self.next_idx] = transition[i]
+        if self.next_idx + 1 == self.capacity:
+            self.is_full = True
+        self.next_idx = (self.next_idx + 1) % self.capacity
 
     def sample(self, batch_size):
-        return random.sample(self.memory, batch_size), None, None
+        sample_idx = random.sample(range(0, self.capacity if self.is_full else self.next_idx), batch_size)
+        return *[self.memory[i][sample_idx] for i in range(self.kind)], None, None
 
     def __len__(self):
         return len(self.memory)
 
 
 class PrioritizedReplayMemory(object):
-    def __init__(self, size, alpha=0.6, beta_start=0.4, beta_frames=20000, device=None):
+    def __init__(self, size, dims: tuple, alpha=0.6, beta_start=0.4, beta_frames=20000, device=None):
         """Create Prioritized Replay buffer.
         Parameters
         ----------
@@ -37,10 +44,12 @@ class PrioritizedReplayMemory(object):
         ReplayBuffer.__init__
         """
         super(PrioritizedReplayMemory, self).__init__()
-        self._storage = []
+        self._storage = [np.zeros((size, dims[i])) for i in range(len(dims))]
         self._maxsize = size
         self._next_idx = 0
         self._device = device
+        self.kind = len(dims)
+        self.is_full = False
 
         assert alpha >= 0
         self._alpha = alpha
@@ -62,18 +71,17 @@ class PrioritizedReplayMemory(object):
     def push(self, data):
         """See ReplayBuffer.store_effect"""
         idx = self._next_idx
-
-        if self._next_idx >= len(self._storage):
-            self._storage.append(data)
-        else:
-            self._storage[self._next_idx] = data
+        for i in range(len(data)):
+            self._storage[i][self._next_idx] = data[i]
+        if self._next_idx + 1 == self._maxsize:
+            self.is_full = True
         self._next_idx = (self._next_idx + 1) % self._maxsize
 
         self._it_sum[idx] = self._max_priority ** self._alpha
 
 
     def _encode_sample(self, idxes):
-        return [self._storage[i] for i in idxes]
+        return [self._storage[i][idxes] for i in range(self.kind)]
 
     def _sample_proportional(self, batch_size):
         '''
@@ -140,7 +148,7 @@ class PrioritizedReplayMemory(object):
         weights = [weight / max_weights for weight in weights]
         weights = torch.tensor(weights, device=self._device, dtype=torch.float) 
         encoded_sample = self._encode_sample(idxes)
-        return encoded_sample, idxes, weights
+        return *encoded_sample, idxes, weights
 
     def update_priorities(self, idxes, priorities):
         """Update priorities of sampled transitions.
@@ -157,7 +165,7 @@ class PrioritizedReplayMemory(object):
         """
         assert len(idxes) == len(priorities)
         for idx, priority in zip(idxes, priorities):
-            assert 0 <= idx < len(self._storage)
+            # assert 0 <= idx < len(self._storage)
             # assert (priority + 1e-8) < self._max_priority
             self._it_sum[idx] = (priority + 1e-5) ** self._alpha
 

@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
-    parser.add_argument("--episode", type=int, help="episode", default=20000)
+    parser.add_argument("--episode", type=int, help="episode", default=50000)
     parser.add_argument("--eps_start", type=float, help="epsilon start value", default=1.)
     parser.add_argument("--eps_end", type=float, help="epsilon min value", default=0.01)
     parser.add_argument("--eps_decay", type=float, help="epsilon min value", default=0.995)
@@ -77,7 +77,6 @@ def get_agent(args, log_path, env_spec, config):
 
 def training(model: DQN, config: Config, args):
     writer = SummaryWriter(model.log_dir)
-    count = 0 # count how many consecutive episode that reward is above 200
     step = 0
     eps = args.eps_start
     for i in range(int(config.EPISODE)):
@@ -100,12 +99,8 @@ def training(model: DQN, config: Config, args):
         writer.add_scalar('ep_reward', ep_reward, i)
         writer.add_scalar('epsilon', eps, i)
         print(f'[EPISODE {i}] | episode reward : {ep_reward}')
-        if ep_reward > 200:
-            count += 1
-            if count > 50:
-                break
-        else:
-            count = 0
+        if testing(model, episode=20) > 270:
+            break
     model.save()
 
 
@@ -155,7 +150,7 @@ if __name__ == '__main__':
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 
-    path = f'{args.agent}/online_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}'
+    path = f'{args.agent}/online_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-target_update_freq={config.TARGET_NET_UPDATE_FREQ}-hidden_size={(128, 128)}'
     log_path = os.path.join('./logs', path)
 
     model = get_agent(args, log_path, env_spec, config)
