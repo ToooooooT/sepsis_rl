@@ -92,6 +92,8 @@ def get_dataset_path(mode):
     pre = './dataset/'
     if mode == "train":
         f = 'train.pkl'
+    elif mode == "other":
+        f = 'others_train.pkl'
     elif mode == "expert":
         f = 'expert.pkl'
     elif mode == "medium":

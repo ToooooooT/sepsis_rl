@@ -92,6 +92,7 @@ class PrioritizedReplayMemory(object):
         it_capacity = 1
         while it_capacity < self._maxsize:
             it_capacity *= 2
+        self._it_sum = SumSegmentTree(it_capacity)
         for i in range(self._maxsize):
             self._it_sum[i] = self._max_priority ** self._alpha
 

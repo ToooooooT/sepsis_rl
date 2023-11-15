@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument("--eps_end", type=float, help="epsilon min value", default=0.01)
     parser.add_argument("--eps_decay", type=float, help="epsilon min value", default=0.995)
     parser.add_argument("--update_per_step", type=int, help="update parameters per step", default=1)
-    parser.add_argument("--save_path", type=str, help="save file path of dataset", default="./dataset/train.pkl")
+    parser.add_argument("--save_path", type=str, help="save file path of dataset", default="./dataset/my_train.pkl")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
@@ -77,6 +77,7 @@ def get_agent(args, log_path, env_spec, config):
 
 
 def training(model: DQN, config: Config, args):
+    writer = SummaryWriter(model.log_dir)
     step = 0
     eps = args.eps_start
     states = []
@@ -107,6 +108,7 @@ def training(model: DQN, config: Config, args):
             if step == args.step:
                 break
         eps = max(args.eps_end, args.eps_decay * eps)
+        writer.add_scalar('ep_reward', ep_reward, step)
         print(f'[STEP {step}] | episode reward : {ep_reward}')
 
     states = np.array(states)
@@ -143,6 +145,11 @@ if __name__ == '__main__':
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 
-    model = get_agent(args, None, env_spec, config)
+    path = f'{args.agent}/generator_batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-hidden_size={(128, 128)}'
+    log_path = os.path.join('./logs', path)
+
+    model = get_agent(args, log_path, env_spec, config)
+
+    os.makedirs(log_path, exist_ok=True)
 
     training(model, config, args)

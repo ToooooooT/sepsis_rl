@@ -95,8 +95,8 @@ def training(model: DQN, config: Config, args):
                 loss = model.update(step)
                 writer.add_scalars('loss', loss, step)
         eps = max(args.eps_end, args.eps_decay * eps)
-        writer.add_scalar('ep_reward', ep_reward, i)
-        writer.add_scalar('epsilon', eps, i)
+        writer.add_scalar('ep_reward', ep_reward, step)
+        writer.add_scalar('epsilon', eps, step)
         print(f'[EPISODE {i}] | episode reward : {ep_reward}')
         if testing(model, episode=20) > 270:
             break
