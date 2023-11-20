@@ -10,7 +10,7 @@ import pickle
 from argparse import ArgumentParser
 from tqdm import tqdm
 
-from agents import DQN_regularization, WDQNE, SAC_BC_E
+from agents import DQN_regularization, WDQNE, SAC_BC_E, BaseAgent
 from utils import Config, plot_action_dist, plot_estimate_value, \
                 animation_action_distribution, plot_pos_neg_action_dist, plot_diff_action_SOFA_dist, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
@@ -139,24 +139,22 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
     gif_freq = args.gif_freq
     max_expected_return = -np.inf
     valid_data = valid_dict['data']
-    dr = DoublyRobust(valid_dataset, valid_dict, config, args)
-    wis = WIS(valid_dataset, valid_dict, config, args)
+    dr = DoublyRobust(agent, valid_dataset, valid_dict, config, args)
+    wis = WIS(agent, valid_dataset, valid_dict, config, args)
 
-    for i in tqdm(range(1, int(config.EPISODE) + 1)):
+    for i in tqdm(range(1, config.EPISODE + 1)):
         loss = agent.update(i)
         writer.add_scalars('loss', loss, i)
 
         if i % valid_freq == 0:
-            actions, action_probs, est_q_values = testing(valid_data, agent)
+            actions, action_probs = testing(valid_data, agent)
             # store actions in histogram to show animation
             if i % gif_freq == 0:
                 hists.append(np.bincount(actions.reshape(-1), minlength=25))
             # estimate expected return
-            avg_wis_p_return, _ = wis.estimate(action_probs=action_probs)
+            avg_wis_p_return, _ = wis.estimate(policy_action_probs=action_probs)
             avg_wis_policy_returns.append(avg_wis_p_return)
-            avg_dr_p_return, _, _ = dr.estimate(est_q_values=est_q_values, 
-                                                 actions=actions, 
-                                                 action_probs=action_probs)
+            avg_dr_p_return, _, _ = dr.estimate(policy_actions=actions, policy_action_probs=action_probs)
             avg_dr_policy_returns.append(avg_dr_p_return)
             if isinstance(agent, D3QN_Agent) or isinstance(agent, WD3QNE_Agent):
                 if avg_dr_p_return > max_expected_return:
@@ -174,29 +172,20 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
     plot_estimate_value(np.vstack((avg_wis_policy_returns, avg_dr_policy_returns)), ['WIS', 'DR'], agent.log_dir, valid_freq)
 
 
-def testing(test_data, agent: D3QN_Agent):
+def testing(test_data, agent: BaseAgent):
     '''
     Returns:
         actions     : np.ndarray; expected shape (B, 1)
         action_probs: np.ndarray; expected shape (B, D)
-        est_q_values: np.ndarray; expected shape (B, 1)
     '''
-    batch_state = torch.tensor(test_data['s'], device=agent.device, dtype=torch.float).view(-1, agent.num_feats)
+    states = torch.tensor(test_data['s'], device=agent.device, dtype=torch.float).view(-1, agent.num_feats)
 
     with torch.no_grad():
-        if isinstance(agent, D3QN_Agent) or isinstance(agent, WD3QNE_Agent):
-            agent.model.eval()
-            est_q_values, actions = agent.model(batch_state).max(dim=1)
-            actions = actions.view(-1, 1).detach().cpu().numpy() # (B, 1)
-            est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy() # (B, 1)
-            # assume policy take the max action in probability of 0.99 and any other actions of 0.01 
-            action_probs = np.full((actions.shape[0], 25), 0.01)
-            action_probs[np.arange(actions.shape[0]), actions[:, 0]] = 0.99
-        # TODO: implement SAC+BC
-        else:
-            raise NotImplementedError
+        actions, _, _, action_probs = agent.get_action_probs(states)
+        actions = actions.numpy()
+        action_probs = action_probs.numpy()
 
-    return actions, action_probs, est_q_values
+    return actions, action_probs
 
 
 if __name__ == '__main__':
@@ -243,7 +232,7 @@ if __name__ == '__main__':
     else:
         config.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    config.EPISODE = args.episode
+    config.EPISODE = int(args.episode)
     config.USE_PRIORITY_REPLAY = args.use_pri
     config.LR = args.lr
     config.BATCH_SIZE = args.batch_size
@@ -255,9 +244,9 @@ if __name__ == '__main__':
     env_spec = {'num_feats': 49, 'num_actions': 25}
 
     if args.agent == 'D3QN':
-        path = f'D3QN/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-hidden_size={hidden_size}'
+        path = f'D3QN/test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-hidden_size={hidden_size}'
     else:
-        path = f'{args.agent}/episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-hidden_size={hidden_size}'
+        path = f'{args.agent}/test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-hidden_size={hidden_size}'
     log_path = os.path.join('./logs', path)
 
     agent = get_agent(args, log_path, env_spec, config)
@@ -279,19 +268,17 @@ if __name__ == '__main__':
     agent.load()
 
     print('Start testing...')
-    actions, action_probs, est_q_values = testing(test_data, agent)
+    policy_actions, policy_action_probs, _ = testing(test_data, agent)
 
-    test_dataset['policy action'] = actions
-    test_dataset['policy iv'] = actions / 5
-    test_dataset['policy vaso'] = actions % 5
+    test_dataset['policy action'] = policy_actions
+    test_dataset['policy iv'] = policy_actions / 5
+    test_dataset['policy vaso'] = policy_actions % 5
 
     # estimate expected return
-    wis = WIS(test_dataset, test_dict, config, args)
-    avg_wis_policy_return, wis_policy_return = wis.estimate(action_probs=action_probs)
-    dre = DoublyRobust(test_dataset, test_dict, config, args)
-    avg_dr_policy_return, dr_policy_return, est_alive = dre.estimate(est_q_values=est_q_values, 
-                                                                     actions=actions, 
-                                                                     action_probs=action_probs)
+    wis = WIS(agent, test_dataset, test_dict, config, args)
+    avg_wis_policy_return, wis_policy_return = wis.estimate(policy_action_probs=policy_action_probs)
+    dre = DoublyRobust(agent, test_dataset, test_dict, config, args)
+    avg_dr_policy_return, dr_policy_return, est_alive = dre.estimate(policy_action_probs=policy_action_probs, policy_actions=policy_actions)
     # plot expected return result
     policy_returns = np.vstack((wis_policy_return, dr_policy_return))
     plot_expected_return_distribution(policy_returns, ['WIS', 'DR'], log_path)
@@ -300,7 +287,7 @@ if __name__ == '__main__':
     # plot action distribution
     negative_traj = test_dataset.query('mortality_90d == 1.0')
     positive_traj = test_dataset.query('mortality_90d != 1.0')
-    plot_action_dist(actions, test_dataset, log_path)
+    plot_action_dist(policy_actions, test_dataset, log_path)
     plot_pos_neg_action_dist(positive_traj, negative_traj, log_path)
     plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_path)
     plot_diff_action(positive_traj, negative_traj, log_path)

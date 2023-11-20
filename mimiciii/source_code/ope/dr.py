@@ -7,9 +7,10 @@ import joblib
 
 from ope.base_estimator import BaseEstimator
 from utils import Config
+from agents import BaseAgent, DQN, SAC
 
 class SepsisDataset(Dataset):
-    def __init__(self, state: np.ndarray, action: np.ndarray, id_index_map, terminal_index) -> None:
+    def __init__(self, state: np.ndarray, action: np.ndarray) -> None:
         '''
         Args:
             state: expected shape (B, S)
@@ -28,29 +29,22 @@ class SepsisDataset(Dataset):
 
         self.data = np.concatenate([self.state, self.action], axis=1)
 
-        self.id_index_map = id_index_map
-        self.terminal_index = terminal_index
-
     def __len__(self):
         return len(self.action) - 1
 
     def __getitem__(self, index):
-        state = self.state[index]
-        next_state = self.state[index + 1]
         state_action_pair = self.data[index]
-        done = np.array([int(index in self.terminal_index)]) 
-        return torch.tensor(state_action_pair, dtype=torch.float), \
-            torch.tensor(next_state - state, dtype=torch.float), \
-            torch.tensor(done, dtype=torch.float)
+        return torch.tensor(state_action_pair, dtype=torch.float)
 
 
 class DoublyRobust(BaseEstimator):
     def __init__(self, 
+                 agent: BaseAgent,
                  dataset: pd.DataFrame, 
                  data_dict: dict, 
                  config: Config,
                  args) -> None:
-        super().__init__(dataset, data_dict, config, args)
+        super().__init__(agent, dataset, data_dict, config, args)
 
         self.device = config.DEVICE
         self.batch_size = config.BATCH_SIZE
@@ -77,56 +71,58 @@ class DoublyRobust(BaseEstimator):
         self.sofa_dicts = (sofa_std, sofa_mean, max_norm_sofa, min_norm_sofa)
         self.lact_dicts = (lact_std, lact_mean, max_norm_lact, min_norm_lact)
 
+    def estimate_q_values(self):
+        states = torch.tensor(self.states, dtype=torch.float, device=self.device)
+        with torch.no_grad():
+            if isinstance(self.agent, DQN):
+                self.agent.model.eval()
+                est_q_values, _ = self.agent.model(states).max(dim=1)
+                est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy() # (B, 1)
+            # TODO: implement SAC+BC
+            else:
+                raise NotImplementedError
+        return est_q_values
+
 
     def estimate(self, **kwargs):
         '''
         Args:
-            est_q_values    : estimate q value; np.ndarray expected shape: (B, 1) 
-            actions         : policy action; np.ndarray expected shape: (B, 1)
-            action_probs    : probability of policy action; np.ndarray expected shape: (B, 1)
+            policy_actions     : np.ndarray; expected shape (B, 1)
+            policy_action_probs: np.ndarray; expected shape (B, D)
         Returns:
             average policy return
             policy_return   : expected return of each patient; expected shape (1, B)
             est_alive       : estimate alive; expected shape (B,)
         '''
-        est_q_values = kwargs['est_q_values']
-        actions = kwargs['actions']
-        action_probs = kwargs['action_probs']
-        # compute all trajectory total reward and weight imporatance sampling
-        est_next_states = self.estimate_next_state(actions)
-        est_reward, est_alive = self.estimate_reward(est_next_states, actions)
-        num = len(self.id_index_map)
-        policy_return = np.zeros((num,), dtype=np.float64) 
-        expert_actions = self.dataset['action']
-        for i, id in enumerate(self.id_index_map.keys()):
-            start, end = self.id_index_map[id][0], self.id_index_map[id][-1]
-            assert(50 >= end - start + 1)
+        policy_actions = kwargs['policy_actions']
+        policy_action_probs = kwargs['policy_action_probs']
+        est_q_values = self.estimate_q_values()
 
-            rho = action_probs[end, int(expert_actions[end])]
-            reward = est_reward[end] + rho * (self.dataset.loc[end, 'reward'] - est_q_values[end])
+        est_next_states = self.estimate_next_state(policy_actions)
+        est_reward, est_alive = self.estimate_reward(est_next_states, policy_actions)
+
+        # \rho_t = \pi_1(a_t | s_t) / \pi_0(a_t | s_t), assume \pi_0(a_t | s_t) = 1
+        rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
+                                   self.actions.astype(np.int32).reshape(-1,)]
+
+        # done index
+        done_indexs = np.where(self.dones == 1)[0]
+
+        num = done_indexs.shape[0]
+        policy_return = np.zeros((num,), dtype=np.float64) 
+
+        start = 0
+        for i in range(done_indexs.shape[0]):
+            end = done_indexs[i]
+            total_reward = est_reward[end] + rhos[end] * (self.rewards[end] - est_q_values[end])
             for index in range(end - 1, start - 1, -1):
-                rho = action_probs[index, int(expert_actions[index])]
-                reward = est_reward[index] + rho * (self.dataset.loc[index, 'reward'] + \
-                                                    self.gamma * reward - est_q_values[index])
-            policy_return[i] = reward
+                total_reward = est_reward[index] + rhos[index] * (self.rewards[index] + \
+                                                    self.gamma * total_reward - est_q_values[index])
+            start = end + 1
+            policy_return[i] = total_reward
 
         policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
         return policy_return.mean(), policy_return.reshape(1, -1), est_alive
-
-
-    def testing(self, 
-                input: torch.Tensor, 
-                label: torch.Tensor, 
-                done: torch.Tensor):
-        input = input.to(self.device)
-        label = label.to(self.device)
-        done = done.to(self.device)
-
-        with torch.no_grad():
-            pred = self.env_model(input)
-            loss = F.mse_loss(pred * (1 - done), label * (1 - done))
-        return loss.detach().cpu().item(), \
-                pred.detach().cpu().numpy() + input[:, :-2].detach().cpu().numpy()
 
 
     def estimate_next_state(self, policy_actions: np.ndarray):
@@ -136,24 +132,20 @@ class DoublyRobust(BaseEstimator):
         Returns:
             np.ndarray, expected shape (B, S) 
         '''
-        sepsis_dataset = SepsisDataset(self.data['s'], 
-                                       policy_actions, 
-                                       self.id_index_map, 
-                                       self.terminal_index)
+        sepsis_dataset = SepsisDataset(self.states, policy_actions)
         test_loader = DataLoader(sepsis_dataset,
                                 batch_size=self.batch_size,
                                 shuffle=False,
                                 drop_last=False,
                                 pin_memory=True,
                                 num_workers=self.num_worker)
-
         self.env_model.eval()
-        test_loss = 0
         est_next_states = []
-        for input, label, done in test_loader:
-            loss, pred = self.testing(input, label, done)
-            test_loss += loss
-            est_next_states.append(pred)
+        for input in test_loader:
+            with torch.no_grad():
+                pred = self.env_model(input)
+            est_next_state = pred.detach().cpu().numpy() + input[:, :-2].detach().cpu().numpy()
+            est_next_states.append(est_next_state)
 
         return np.vstack(est_next_states)
 
@@ -172,7 +164,7 @@ class DoublyRobust(BaseEstimator):
         '''
         iv = policy_actions / 5
         vaso = policy_actions % 5
-        state = self.data['s']
+        state = self.states
         clf_feat = np.concatenate([state, iv, vaso], axis=1)
         c0 = -0.1 / 4
         c1 = -0.5 / 4
