@@ -14,8 +14,9 @@ from agents import DQN_regularization, WDQNE, SAC_BC_E
 from utils import Config, plot_action_dist, plot_estimate_value, \
                 animation_action_distribution, plot_pos_neg_action_dist, plot_diff_action_SOFA_dist, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
-                WIS_estimator, DR_estimator, plot_action_diff_survival_rate
+                plot_action_diff_survival_rate
 from network import DuellingMLP, PolicyMLP
+from ope import WIS_estimator, DR_estimator, q_value_estimator
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -43,7 +44,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-hidden_size = (256, 256)
+hidden_size = (128, 128)
 
 ######################################################################################
 # Agent
