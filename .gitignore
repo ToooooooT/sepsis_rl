@@ -24,3 +24,4 @@ t.py
 *.pdf
 *.xlsx
 *.DS_store
+script*.py
