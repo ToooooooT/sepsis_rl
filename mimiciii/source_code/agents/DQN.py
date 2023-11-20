@@ -1,48 +1,21 @@
 import numpy as np
-
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
 from agents.BaseAgent import BaseAgent
-from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
+from utils import ExperienceReplayMemory, PrioritizedReplayMemory, Config
 
 class DQN(BaseAgent):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
-        super().__init__(config=config, env=env, log_dir=log_dir)
-        self.device = config.device
+    def __init__(self, 
+                 env: dict, 
+                 config: Config, 
+                 log_dir='./logs',
+                 static_policy=False):
+        super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
 
-        # algorithm control
-        self.priority_replay = config.USE_PRIORITY_REPLAY
-
-        # misc agent variables
-        self.gamma = config.GAMMA
-        self.lr = config.LR
-
-        self.is_gradient_clip = config.IS_GRADIENT_CLIP
-
-        # memory
-        self.target_net_update_freq = config.TARGET_NET_UPDATE_FREQ
-        self.experience_replay_size = config.EXP_REPLAY_SIZE
-        self.batch_size = config.BATCH_SIZE
-        self.priority_alpha = config.PRIORITY_ALPHA
-        self.priority_beta_start = config.PRIORITY_BETA_START
-        self.priority_beta_frames = config.PRIORITY_BETA_FRAMES
-
-        # update target network parameter
-        self.tau = config.TAU
-
-        # environment
-        self.num_feats = env['num_feats']
-        self.num_actions = env['num_actions']
-
-        self.declare_memory()
-
-        # network
-        self.static_policy = static_policy
-
-        self.declare_networks()
         self.target_model.load_state_dict(self.model.state_dict())
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.target_model.eval()
@@ -56,12 +29,33 @@ class DQN(BaseAgent):
         else:
             self.model.train()
 
+    def save(self):
+        os.makedirs(self.log_dir, exist_ok=True)
+        torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'model.dump'))
+        torch.save(self.optimizer.state_dict(), os.path.join(self.log_dir, 'optim.dump'))
+    
+
+    def load(self):
+        fname_model = os.path.join(self.log_dir, "model.dump")
+        fname_optim = os.path.join(self.log_dir, "optim.dump")
+
+        if os.path.isfile(fname_model):
+            self.model.load_state_dict(torch.load(fname_model))
+            self.target_model.load_state_dict(self.model.state_dict())
+        else:
+            assert False
+
+        if os.path.isfile(fname_optim):
+            self.optimizer.load_state_dict(torch.load(fname_optim))
+        else:
+            assert False
+
 
     def declare_networks(self):
         # overload function
         self.model: nn.Module = None
         self.target_model: nn.Module = None
-        raise NotImplementedError # override thid function
+        raise NotImplementedError # override this function
 
 
     def declare_memory(self):
@@ -131,7 +125,7 @@ class DQN(BaseAgent):
 
         # update the target network
         if t % self.target_net_update_freq == 0:
-            self.update_target_model()
+            self.update_target_model(self.target_model, self.model)
         return {'td_error': loss.item()}
 
 
@@ -147,16 +141,16 @@ class DQN(BaseAgent):
 
         return np.random.randint(0, self.num_actions)
 
-    def update_target_model(self):
-        for target_param, param in zip(self.target_model.parameters(), self.model.parameters()):
-            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-
     def get_max_next_state_action(self, next_states):
         return self.model(next_states).max(dim=1)[1].view(-1, 1)
 
 
 class WDQN(DQN):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
+    def __init__(self, 
+                 env: dict, 
+                 config: Config, 
+                 log_dir='./logs',
+                 static_policy=False):
         super().__init__(static_policy, env, config, log_dir)
 
     def compute_loss(self, batch_vars):

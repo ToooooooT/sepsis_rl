@@ -8,43 +8,16 @@ from torch.distributions import Categorical
 import os
 
 from agents import BaseAgent
-from utils import ExperienceReplayMemory, PrioritizedReplayMemory
+from utils import ExperienceReplayMemory, PrioritizedReplayMemory, Config
 
 class SAC(BaseAgent):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs') -> None:
-        super().__init__(config=config, env=env, log_dir=log_dir)
-        self.device = config.device
-
-        # algorithm control
-        self.priority_replay = config.USE_PRIORITY_REPLAY
-
-        # misc agent variables
-        self.gamma = config.GAMMA
-        self.lr = config.LR
-
-        self.is_gradient_clip = config.IS_GRADIENT_CLIP
-
-        # memory
-        self.target_net_update_freq = config.TARGET_NET_UPDATE_FREQ
-        self.experience_replay_size = config.EXP_REPLAY_SIZE
-        self.batch_size = config.BATCH_SIZE
-        self.priority_alpha = config.PRIORITY_ALPHA
-        self.priority_beta_start = config.PRIORITY_BETA_START
-        self.priority_beta_frames = config.PRIORITY_BETA_FRAMES
-
-        # update target network parameter
-        self.tau = config.TAU
-
-        # environment
-        self.num_feats = env['num_feats']
-        self.num_actions = env['num_actions']
-
-        self.declare_memory()
-
-        # network
-        self.static_policy = static_policy
-
-        self.declare_networks()
+    def __init__(self, 
+                 env: dict, 
+                 config: Config, 
+                 log_dir='./logs',
+                 static_policy=False) -> None:
+        super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
+        
         self.target_qf1.load_state_dict(self.qf1.state_dict())
         self.target_qf2.load_state_dict(self.qf2.state_dict())
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.lr)
@@ -81,23 +54,6 @@ class SAC(BaseAgent):
             self.qf1.train()
             self.qf2.train()
 
-
-    def declare_networks(self):
-        self.actor: nn.Module = None
-        self.qf1: nn.Module = None
-        self.qf2: nn.Module = None
-        self.target_qf1: nn.Module = None
-        self.target_qf2: nn.Module = None
-        raise NotImplementedError # override this function
-
-
-    def declare_memory(self):
-        dims = (self.num_feats, 1, 1, self.num_feats, 1)
-        self.memory = ExperienceReplayMemory(self.experience_replay_size, dims) \
-                        if not self.priority_replay else \
-                        PrioritizedReplayMemory(self.experience_replay_size, dims, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames, self.device)
-
-
     def save(self):
         os.makedirs(self.log_dir, exist_ok=True)
         torch.save({
@@ -119,6 +75,21 @@ class SAC(BaseAgent):
 
         self.actor.load_state_dict(checkpoint['actor'])
 
+
+    def declare_networks(self):
+        self.actor: nn.Module = None
+        self.qf1: nn.Module = None
+        self.qf2: nn.Module = None
+        self.target_qf1: nn.Module = None
+        self.target_qf2: nn.Module = None
+        raise NotImplementedError # override this function
+
+
+    def declare_memory(self):
+        dims = (self.num_feats, 1, 1, self.num_feats, 1)
+        self.memory = ExperienceReplayMemory(self.experience_replay_size, dims) \
+                        if not self.priority_replay else \
+                        PrioritizedReplayMemory(self.experience_replay_size, dims, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames, self.device)
 
     def append_to_replay(self, s, a, r, s_, done):
         self.memory.push((s, a, r, s_, done))
@@ -251,9 +222,6 @@ class SAC(BaseAgent):
         return np.random.randint(0, self.num_actions)
 
 
-    def update_target_model(self, target, source):
-        for target_param, param in zip(target.parameters(), source.parameters()):
-            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
     def gradient_clip_q(self):
         for param in self.qf1.parameters():

@@ -50,24 +50,36 @@ hidden_size = (128, 128)
 # Agent
 ######################################################################################
 class D3QN_Agent(DQN_regularization):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log'):
-        super().__init__(static_policy, env, config, log_dir)
+    def __init__(self, 
+                 env: dict, 
+                 config: Config, 
+                 log_dir='./log',
+                 static_policy=False):
+        super().__init__(env, config, log_dir, static_policy)
 
     def declare_networks(self):
         self.model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
         self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
 
 class WD3QNE_Agent(WDQNE):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
-        super().__init__(static_policy, env, config, log_dir)
+    def __init__(self, 
+                 env: dict, 
+                 config: Config, 
+                 log_dir='./log',
+                 static_policy=False):
+        super().__init__(env, config, log_dir, static_policy)
 
     def declare_networks(self):
         self.model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
         self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
 
 class SAC_BC_Agent(SAC_BC_E):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./log'):
-        super().__init__(static_policy, env, config, log_dir)
+    def __init__(self, 
+                 env: dict, 
+                 config: Config, 
+                 log_dir='./log',
+                 static_policy=False):
+        super().__init__(env, config, log_dir, static_policy)
 
     def declare_networks(self):
         self.actor = PolicyMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)

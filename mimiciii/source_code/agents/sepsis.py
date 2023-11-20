@@ -1,11 +1,14 @@
 from agents.DQN import *
 from agents.SAC import *
 import torch
-import numpy as np
 import torch.nn.functional as F
 
 class DQN_regularization(DQN):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
+    def __init__(self, 
+                 env: dict, 
+                 config: Config, 
+                 log_dir='./logs',
+                 static_policy=False):
         super().__init__(static_policy, env, config, log_dir)
 
         # loss regularization term
@@ -40,7 +43,11 @@ class DQN_regularization(DQN):
 
 
 class WDQNE(WDQN):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
+    def __init__(self, 
+                 env: dict, 
+                 config: Config, 
+                 log_dir='./logs',
+                 static_policy=False):
         super().__init__(static_policy, env, config, log_dir)
 
     def declare_memory(self):
@@ -94,7 +101,11 @@ class WDQNE(WDQN):
 
 
 class SAC_BC_E(SAC):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs') -> None:
+    def __init__(self, 
+                 env: dict, 
+                 config: Config, 
+                 log_dir='./logs',
+                 static_policy=False) -> None:
         super().__init__(static_policy, env, config, log_dir) 
 
     def declare_memory(self):
