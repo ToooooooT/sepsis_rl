@@ -5,7 +5,10 @@ import torch
 import torch.nn.functional as F
 import joblib
 
-class sepsis_dataset(Dataset):
+from ope.base_estimator import BaseEstimator
+from utils import Config
+
+class SepsisDataset(Dataset):
     def __init__(self, state: np.ndarray, action: np.ndarray, id_index_map, terminal_index) -> None:
         '''
         Args:
@@ -41,34 +44,31 @@ class sepsis_dataset(Dataset):
             torch.tensor(done, dtype=torch.float)
 
 
-class DR_estimator():
-    def __init__(self, test_dataset: pd.DataFrame, test_data_dict: dict, args, device) -> None:
-        '''
-        Args:
-            train_data      : processed training dataset
-            valid_data      : processed training dataset
-            dataset         : unnormalization testing dataset, with action and reward 
-            data_dict       : processed testing dataset
-            args            : arguments from main file
-        '''
-        self.test_dataset = test_dataset
-        self.test_data = test_data_dict['data']
-        self.id_index_map = test_data_dict['id_index_map']
-        self.terminal_index = test_data_dict['terminal_index']
+class DoublyRobust(BaseEstimator):
+    def __init__(self, 
+                 dataset: pd.DataFrame, 
+                 data_dict: dict, 
+                 config: Config,
+                 args) -> None:
+        super().__init__(dataset, data_dict, config, args)
+
+        self.device = config.DEVICE
+        self.batch_size = config.BATCH_SIZE
+        self.num_worker = args.num_worker
+
+        # train an environment to predict next state
         self.env_model = torch.load(args.env_model_path)['env']
-        self.args = args
-        self.device = device
 
         # train logistic regression to predict alive or not
         self.clf = joblib.load(args.clf_model_path)
 
         # for estimate reward
-        sofa_mean = test_dataset['SOFA'].mean()
-        sofa_std = test_dataset['SOFA'].std()
-        lact_mean = test_dataset['Arterial_lactate'].mean()
-        lact_std = test_dataset['Arterial_lactate'].std()
-        norm_sofa = (test_dataset['SOFA'] - sofa_mean) / sofa_std
-        norm_lact = (test_dataset['Arterial_lactate'] - lact_mean) / lact_std
+        sofa_mean = dataset['SOFA'].mean()
+        sofa_std = dataset['SOFA'].std()
+        lact_mean = dataset['Arterial_lactate'].mean()
+        lact_std = dataset['Arterial_lactate'].std()
+        norm_sofa = (dataset['SOFA'] - sofa_mean) / sofa_std
+        norm_lact = (dataset['Arterial_lactate'] - lact_mean) / lact_std
         min_norm_sofa = norm_sofa.min()
         max_norm_sofa = norm_sofa.max()
         min_norm_lact = norm_lact.min()
@@ -78,48 +78,46 @@ class DR_estimator():
         self.lact_dicts = (lact_std, lact_mean, max_norm_lact, min_norm_lact)
 
 
-    def estimate_expected_return(self, 
-                                 est_q_values: np.ndarray, 
-                                 actions: np.ndarray, 
-                                 action_probs: np.ndarray, 
-                                 dataset: pd.DataFrame, 
-                                 id_index_map: dict):
+    def estimate(self, **kwargs):
         '''
         Args:
-            est_q_values    : estimate q value; expected shape: (B, 1) 
-            actions         : policy action; expected shape: (B, 1)
-            action_probs    : probability of policy action; expected shape: (B, 1)
-            expert_data     : original expert dataset
-            id_index_map    : indexes of each icustayid
+            est_q_values    : estimate q value; np.ndarray expected shape: (B, 1) 
+            actions         : policy action; np.ndarray expected shape: (B, 1)
+            action_probs    : probability of policy action; np.ndarray expected shape: (B, 1)
         Returns:
             average policy return
             policy_return   : expected return of each patient; expected shape (1, B)
             est_alive       : estimate alive; expected shape (B,)
         '''
+        est_q_values = kwargs['est_q_values']
+        actions = kwargs['actions']
+        action_probs = kwargs['action_probs']
         # compute all trajectory total reward and weight imporatance sampling
         est_next_states = self.estimate_next_state(actions)
         est_reward, est_alive = self.estimate_reward(est_next_states, actions)
-        gamma = 0.99
-        num = len(id_index_map)
+        num = len(self.id_index_map)
         policy_return = np.zeros((num,), dtype=np.float64) 
-        expert_actions = dataset['action']
-        for i, id in enumerate(id_index_map.keys()):
-            start, end = id_index_map[id][0], id_index_map[id][-1]
+        expert_actions = self.dataset['action']
+        for i, id in enumerate(self.id_index_map.keys()):
+            start, end = self.id_index_map[id][0], self.id_index_map[id][-1]
             assert(50 >= end - start + 1)
 
             rho = action_probs[end, int(expert_actions[end])]
-            reward = est_reward[end] + rho * (dataset.loc[end, 'reward'] - est_q_values[end])
+            reward = est_reward[end] + rho * (self.dataset.loc[end, 'reward'] - est_q_values[end])
             for index in range(end - 1, start - 1, -1):
                 rho = action_probs[index, int(expert_actions[index])]
-                reward = est_reward[index] + rho * (dataset.loc[index, 'reward'] + \
-                                                    gamma * reward - est_q_values[index])
+                reward = est_reward[index] + rho * (self.dataset.loc[index, 'reward'] + \
+                                                    self.gamma * reward - est_q_values[index])
             policy_return[i] = reward
 
-        policy_return = np.clip(policy_return, -self.args.clip_expected_return, self.args.clip_expected_return)
+        policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
         return policy_return.mean(), policy_return.reshape(1, -1), est_alive
 
 
-    def testing(self, input, label, done):
+    def testing(self, 
+                input: torch.Tensor, 
+                label: torch.Tensor, 
+                done: torch.Tensor):
         input = input.to(self.device)
         label = label.to(self.device)
         done = done.to(self.device)
@@ -127,7 +125,8 @@ class DR_estimator():
         with torch.no_grad():
             pred = self.env_model(input)
             loss = F.mse_loss(pred * (1 - done), label * (1 - done))
-        return loss.detach().cpu().item(), pred.detach().cpu().numpy() + input[:, :-2].detach().cpu().numpy()
+        return loss.detach().cpu().item(), \
+                pred.detach().cpu().numpy() + input[:, :-2].detach().cpu().numpy()
 
 
     def estimate_next_state(self, policy_actions: np.ndarray):
@@ -137,12 +136,16 @@ class DR_estimator():
         Returns:
             np.ndarray, expected shape (B, S) 
         '''
-        test_loader = DataLoader(sepsis_dataset(self.test_data['s'], policy_actions, self.id_index_map, self.terminal_index),
-                                batch_size=self.args.batch_size,
+        sepsis_dataset = SepsisDataset(self.data['s'], 
+                                       policy_actions, 
+                                       self.id_index_map, 
+                                       self.terminal_index)
+        test_loader = DataLoader(sepsis_dataset,
+                                batch_size=self.batch_size,
                                 shuffle=False,
                                 drop_last=False,
                                 pin_memory=True,
-                                num_workers=self.args.num_worker)
+                                num_workers=self.num_worker)
 
         self.env_model.eval()
         test_loss = 0
@@ -155,7 +158,9 @@ class DR_estimator():
         return np.vstack(est_next_states)
 
 
-    def estimate_reward(self, est_next_states: np.ndarray, policy_actions: np.ndarray):
+    def estimate_reward(self, 
+                        est_next_states: np.ndarray, 
+                        policy_actions: np.ndarray):
         '''
         Args:
             policy_actions: expected shape: (B, 1)
@@ -167,7 +172,7 @@ class DR_estimator():
         '''
         iv = policy_actions / 5
         vaso = policy_actions % 5
-        state = self.test_data['s']
+        state = self.data['s']
         clf_feat = np.concatenate([state, iv, vaso], axis=1)
         c0 = -0.1 / 4
         c1 = -0.5 / 4
@@ -183,11 +188,11 @@ class DR_estimator():
 
         est_rewards = []
         est_alives = []
-        icustayids = self.test_dataset['icustayid'].values
-        lacts = self.test_dataset['Arterial_lactate'].values
-        sofas = self.test_dataset['SOFA'].values
-        for index in self.test_dataset.index:
-            if index == len(self.test_dataset) - 1 or icustayids[index] != icustayids[index + 1]:
+        icustayids = self.dataset['icustayid'].values
+        lacts = self.dataset['Arterial_lactate'].values
+        sofas = self.dataset['SOFA'].values
+        for index in self.dataset.index:
+            if index == len(self.dataset) - 1 or icustayids[index] != icustayids[index + 1]:
                 terminal_feat = clf_feat[index, :].reshape(1, -1)
                 est_outcome = self.clf.predict(terminal_feat)[0]
                 est_alives.append(est_outcome)

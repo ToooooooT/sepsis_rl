@@ -16,7 +16,7 @@ from utils import Config, plot_action_dist, plot_estimate_value, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
                 plot_action_diff_survival_rate
 from network import DuellingMLP, PolicyMLP
-from ope import WIS_estimator, DR_estimator, q_value_estimator
+from ope import WIS, DoublyRobust, q_value_estimator
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -124,7 +124,7 @@ def add_dataset_to_replay(train_data, agent: DQN_regularization, clip_reward):
     else:
         raise NotImplementedError
 
-def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, config, args):
+def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, config: Config, args):
     '''
     Args:
         train_data      : processed training dataset
@@ -132,16 +132,15 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
         valud_dict      : processed validation dataset
     '''
     writer = SummaryWriter(agent.log_dir)
-    loss = 0
-    avg_wis_policy_returns = list()
-    avg_dr_policy_returns = list()
-    hists = list() # save model actions of validation in every episode 
+    avg_wis_policy_returns = []
+    avg_dr_policy_returns = []
+    hists = [] # save model actions of validation in every episode 
     valid_freq = args.valid_freq
     gif_freq = args.gif_freq
     max_expected_return = -np.inf
     valid_data = valid_dict['data']
-    valid_id_index_map = valid_dict['id_index_map']
-    dre = DR_estimator(valid_dataset, valid_dict, args, agent.device)
+    dr = DoublyRobust(valid_dataset, valid_dict, config, args)
+    wis = WIS(valid_dataset, valid_dict, config, args)
 
     for i in tqdm(range(1, int(config.EPISODE) + 1)):
         loss = agent.update(i)
@@ -149,15 +148,17 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
 
         if i % valid_freq == 0:
             actions, action_probs, est_q_values = testing(valid_data, agent)
-            # store actions
+            # store actions in histogram to show animation
             if i % gif_freq == 0:
                 hists.append(np.bincount(actions.reshape(-1), minlength=25))
             # estimate expected return
-            avg_wis_p_return, _ = WIS_estimator(action_probs, valid_dataset, valid_id_index_map, args.clip_expected_return)
+            avg_wis_p_return, _ = wis.estimate(action_probs=action_probs)
             avg_wis_policy_returns.append(avg_wis_p_return)
-            avg_dr_p_return, _, _ = dre.estimate_expected_return(est_q_values, actions, action_probs, valid_dataset, valid_id_index_map)
+            avg_dr_p_return, _, _ = dr.estimate(est_q_values=est_q_values, 
+                                                 actions=actions, 
+                                                 action_probs=action_probs)
             avg_dr_policy_returns.append(avg_dr_p_return)
-            if args.agent == 'D3QN' or args.agent == 'WD3QNE':
+            if isinstance(agent, D3QN_Agent) or isinstance(agent, WD3QNE_Agent):
                 if avg_dr_p_return > max_expected_return:
                     max_expected_return = avg_dr_p_return
                     agent.save()
@@ -238,9 +239,9 @@ if __name__ == '__main__':
     config = Config()
 
     if args.cpu:
-        config.device = torch.device("cpu")
+        config.DEVICE = torch.device("cpu")
     else:
-        config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        config.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     config.EPISODE = args.episode
     config.USE_PRIORITY_REPLAY = args.use_pri
@@ -283,15 +284,19 @@ if __name__ == '__main__':
     test_dataset['policy action'] = actions
     test_dataset['policy iv'] = actions / 5
     test_dataset['policy vaso'] = actions % 5
+
     # estimate expected return
-    avg_wis_policy_return, wis_policy_return = WIS_estimator(action_probs, test_dataset, test_id_index_map, args.clip_expected_return)
-    dre = DR_estimator(test_dataset, test_dict, args, config.device)
-    avg_dr_policy_return, dr_policy_return, est_alive = \
-        dre.estimate_expected_return(est_q_values, actions, action_probs, test_dataset, test_id_index_map)
+    wis = WIS(test_dataset, test_dict, config, args)
+    avg_wis_policy_return, wis_policy_return = wis.estimate(action_probs=action_probs)
+    dre = DoublyRobust(test_dataset, test_dict, config, args)
+    avg_dr_policy_return, dr_policy_return, est_alive = dre.estimate(est_q_values=est_q_values, 
+                                                                     actions=actions, 
+                                                                     action_probs=action_probs)
     # plot expected return result
     policy_returns = np.vstack((wis_policy_return, dr_policy_return))
     plot_expected_return_distribution(policy_returns, ['WIS', 'DR'], log_path)
     plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'DR'], log_path)
+
     # plot action distribution
     negative_traj = test_dataset.query('mortality_90d == 1.0')
     positive_traj = test_dataset.query('mortality_90d != 1.0')
@@ -300,6 +305,7 @@ if __name__ == '__main__':
     plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_path)
     plot_diff_action(positive_traj, negative_traj, log_path)
     plot_action_diff_survival_rate(train_dataset, test_dataset, log_path)
+
     # store result in text file
     with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
         f.write(f'policy WIS estimator: {avg_wis_policy_return:.5f}\n')

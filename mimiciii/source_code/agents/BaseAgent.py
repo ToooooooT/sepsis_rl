@@ -19,7 +19,7 @@ class BaseAgent(ABC):
         self.num_actions = env['num_actions']
 
         # self.action_selections = [0 for _ in range(env['num_actions'])] # the frequency of each action be selected
-        self.device = config.device
+        self.device = config.DEVICE
 
         # misc agent variables
         self.gamma = config.GAMMA
