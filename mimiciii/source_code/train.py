@@ -139,8 +139,8 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
     gif_freq = args.gif_freq
     max_expected_return = -np.inf
     valid_data = valid_dict['data']
-    dr = DoublyRobust(agent, valid_dataset, valid_dict, config, args)
-    wis = WIS(agent, valid_dataset, valid_dict, config, args)
+    dr = DoublyRobust(agent, valid_dict['data'], config, args, valid_dataset)
+    wis = WIS(agent, valid_dict['data'], config, args)
 
     for i in tqdm(range(1, config.EPISODE + 1)):
         loss = agent.update(i)
@@ -275,9 +275,9 @@ if __name__ == '__main__':
     test_dataset['policy vaso'] = policy_actions % 5
 
     # estimate expected return
-    wis = WIS(agent, test_dataset, test_dict, config, args)
+    wis = WIS(agent, test_dict['data'], config, args)
     avg_wis_policy_return, wis_policy_return = wis.estimate(policy_action_probs=policy_action_probs)
-    dre = DoublyRobust(agent, test_dataset, test_dict, config, args)
+    dre = DoublyRobust(agent, test_dict['data'], config, args, test_dataset)
     avg_dr_policy_return, dr_policy_return, est_alive = dre.estimate(policy_action_probs=policy_action_probs, policy_actions=policy_actions)
     # plot expected return result
     policy_returns = np.vstack((wis_policy_return, dr_policy_return))

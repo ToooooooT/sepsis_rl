@@ -7,7 +7,6 @@ from agents import BaseAgent
 class BaseEstimator(ABC):
     def __init__(self, 
                  agent: BaseAgent,
-                 dataset: pd.DataFrame, 
                  data_dict: dict, 
                  config: Config,
                  args) -> None:
@@ -19,14 +18,11 @@ class BaseEstimator(ABC):
             args       : arguments from main file
         '''
         self.agent = agent
-        self.dataset = dataset
-        self.states = data_dict['data']['s']
-        self.actions = data_dict['data']['a']
-        self.rewards = data_dict['data']['r']
-        self.next_states = data_dict['data']['s_']
-        self.dones = data_dict['data']['done']
-        self.id_index_map = data_dict['id_index_map']
-        self.terminal_index = data_dict['terminal_index']
+        self.states = data_dict['s']
+        self.actions = data_dict['a']
+        self.rewards = data_dict['r']
+        self.next_states = data_dict['s_']
+        self.dones = data_dict['done']
         self.clip_expected_return = args.clip_expected_return
         self.gamma = config.GAMMA
         self.device = config.DEVICE

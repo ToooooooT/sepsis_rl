@@ -40,12 +40,12 @@ class SepsisDataset(Dataset):
 class DoublyRobust(BaseEstimator):
     def __init__(self, 
                  agent: BaseAgent,
-                 dataset: pd.DataFrame, 
                  data_dict: dict, 
                  config: Config,
-                 args) -> None:
-        super().__init__(agent, dataset, data_dict, config, args)
-
+                 args,
+                 dataset: pd.DataFrame) -> None:
+        super().__init__(agent, data_dict, config, args)
+        self.dataset = dataset
         self.batch_size = config.BATCH_SIZE
         self.num_worker = args.num_worker
 

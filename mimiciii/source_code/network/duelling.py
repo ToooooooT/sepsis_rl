@@ -28,3 +28,13 @@ class DuellingMLP(nn.Module):
         # adv = streamA @ self.adv.T
         # val = streamV @ self.val.T
         return val + adv - adv.mean()
+
+    def initialize(self):
+
+        def init_weights(m):
+            if isinstance(m, nn.Linear):
+                m.reset_parameters()
+
+        self.main.apply(init_weights)
+        self.adv.reset_parameters()
+        self.val.reset_parameters()

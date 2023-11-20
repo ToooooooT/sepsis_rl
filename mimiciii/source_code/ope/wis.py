@@ -8,11 +8,10 @@ from agents import BaseAgent
 class WIS(BaseEstimator):
     def __init__(self, 
                  agent: BaseAgent,
-                 dataset: pd.DataFrame, 
                  data_dict: dict, 
                  config: Config,
                  args) -> None:
-        super().__init__(agent, dataset, data_dict, config, args)
+        super().__init__(agent, data_dict, config, args)
 
     def estimate(self, **kwargs):
         '''
