@@ -76,6 +76,11 @@ class BaseAgent(ABC):
         ''' To override '''
         pass
 
+    @abstractmethod
+    def get_action_probs(self, states: torch.Tensor):
+        ''' To override '''
+        pass
+
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1)
         self.memory = ExperienceReplayMemory(self.experience_replay_size, dims) \

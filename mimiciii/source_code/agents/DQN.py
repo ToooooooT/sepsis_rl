@@ -60,7 +60,6 @@ class DQN(BaseAgent):
 
     def compute_loss(self, batch_vars):
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
-        self.model.train()
         q_values = self.model(states).gather(1, actions)
         with torch.no_grad():
             max_next_action = self.get_max_next_state_action(next_states)
@@ -79,6 +78,7 @@ class DQN(BaseAgent):
         if self.static_policy:
             return None
 
+        self.model.train()
         batch_vars = self.prep_minibatch()
 
         loss = self.compute_loss(batch_vars)
@@ -109,6 +109,13 @@ class DQN(BaseAgent):
 
         return np.random.randint(0, self.num_actions)
 
+    def get_action_probs(self, states: torch.Tensor):
+        _, actions = self.model(states).max(dim=1)
+        actions = actions.view(-1, 1) # (B, 1)
+        action_probs = torch.full((actions.shape[0], 25), 0.01)
+        action_probs = action_probs.scatter_(1, actions, 0.99)
+        return actions, None, None, action_probs
+
     def get_max_next_state_action(self, next_states):
         return self.model(next_states).max(dim=1)[1].view(-1, 1)
 
@@ -123,7 +130,6 @@ class WDQN(DQN):
 
     def compute_loss(self, batch_vars):
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
-        self.model.train()
         q_values = self.model(states).gather(1, actions)
         next_q_values = self.model(next_states)
         max_next_actions = torch.argmax(next_q_values, dim=1, keepdim=True)

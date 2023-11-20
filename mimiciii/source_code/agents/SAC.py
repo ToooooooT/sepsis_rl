@@ -163,11 +163,8 @@ class SAC(BaseAgent):
         return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item(), 'alpha_loss': alpha_loss.detach().cpu().item()}
 
 
-    def get_action_probs(self, x):
-        '''
-        for training
-        '''
-        logits = self.actor(x)
+    def get_action_probs(self, states: torch.Tensor):
+        logits = self.actor(states)
         policy_dist = Categorical(logits=logits)
         action = policy_dist.sample()
         # Action probabilities for calculating the adapted soft-Q loss

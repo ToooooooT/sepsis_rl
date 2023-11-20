@@ -24,7 +24,6 @@ class DQN_regularization(DQN):
             Q_double-target = reward + gamma * Q_double-target(next_state, argmax_a(Q(next_state, a)))
         '''
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
-        self.model.train()
         q_values = self.model(states).gather(1, actions)
         with torch.no_grad():
             max_next_action = self.get_max_next_state_action(next_states)
@@ -77,7 +76,6 @@ class WDQNE(WDQN):
 
     def compute_loss(self, batch_vars):
         states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights = batch_vars
-        self.model.train()
         q_values = self.model(states).gather(1, actions)
         next_q_values = self.model(next_states)
         max_next_actions = torch.argmax(next_q_values, dim=1, keepdim=True)
