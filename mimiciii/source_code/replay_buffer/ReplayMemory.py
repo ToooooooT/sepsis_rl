@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import pickle
 
-from utils.data_structures import SegmentTree, SumSegmentTree
+from replay_buffer.data_structures import SegmentTree, SumSegmentTree
 
 
 class ExperienceReplayMemory:

@@ -194,9 +194,6 @@ def testing(test_data, agent: D3QN_Agent):
         # TODO: implement SAC+BC
         else:
             raise NotImplementedError
-        
-
-    agent.save_action(actions)
 
     return actions, action_probs, est_q_values
 

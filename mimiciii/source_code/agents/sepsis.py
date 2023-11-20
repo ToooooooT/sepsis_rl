@@ -1,7 +1,9 @@
-from agents.DQN import *
-from agents.SAC import *
 import torch
 import torch.nn.functional as F
+
+from agents.DQN import *
+from agents.SAC import *
+from replay_buffer import ExperienceReplayMemory, PrioritizedReplayMemory
 
 class DQN_regularization(DQN):
     def __init__(self, 
@@ -9,7 +11,7 @@ class DQN_regularization(DQN):
                  config: Config, 
                  log_dir='./logs',
                  static_policy=False):
-        super().__init__(static_policy, env, config, log_dir)
+        super().__init__(env, config, log_dir, static_policy)
 
         # loss regularization term
         self.reg_lambda = config.REG_LAMBDA
@@ -48,7 +50,7 @@ class WDQNE(WDQN):
                  config: Config, 
                  log_dir='./logs',
                  static_policy=False):
-        super().__init__(static_policy, env, config, log_dir)
+        super().__init__(env, config, log_dir, static_policy)
 
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1, 1, 1)
@@ -106,7 +108,7 @@ class SAC_BC_E(SAC):
                  config: Config, 
                  log_dir='./logs',
                  static_policy=False) -> None:
-        super().__init__(static_policy, env, config, log_dir) 
+        super().__init__(env, config, log_dir, static_policy)
 
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1, 1)

@@ -1,4 +1,3 @@
-import random
 import operator
 
 class SegmentTree(object):
