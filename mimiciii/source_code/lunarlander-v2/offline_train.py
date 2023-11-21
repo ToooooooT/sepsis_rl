@@ -13,8 +13,9 @@ import gym
 import pickle
 
 from utils import Config
-from agents import DQN, WDQN, SAC, SAC_BC
+from agents import DQN, WDQN, SAC, SAC_BC, BaseAgent
 from network import DuellingMLP, PolicyMLP
+from ope import FQE, WIS
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -29,9 +30,11 @@ def parse_args():
     parser.add_argument("--episode", type=int, help="episode", default=1e6)
     parser.add_argument("--test_freq", type=int, help="test frequency", default=1000)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
+    parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
     parser.add_argument("--dataset", type=str, help="dataset mode", default='train')
     parser.add_argument("--seed", type=int, help="random seed", default=10)
+    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=20)
     args = parser.parse_args()
     return args
 
@@ -103,19 +106,50 @@ def get_dataset_path(mode):
     return os.path.join(pre, f)
 
 
-def training(model: DQN, config: Config, args):
-    writer = SummaryWriter(model.log_dir)
+def training(agent: DQN, test_dict: dict, config: Config, args):
+    writer = SummaryWriter(agent.log_dir)
     max_avg_reward = 0
+    # TODO: test WIS, FQE estimator
+    fqe = FQE(agent, 
+              test_dict, 
+              config, 
+              args,
+              Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size),
+              target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size))
+    wis = WIS(agent, test_dict, config, args)
+
     for i in range(int(config.EPISODE)):
-        loss = model.update(i)
+        loss = agent.update(i)
         writer.add_scalars('loss', loss, i)
         if i % args.test_freq == 0:
-            avg_reward = testing(model, 20)
-            writer.add_scalar('test average reward', avg_reward, i)
-            print(f'[EPISODE {i}] | test average reward : {avg_reward}')
+            avg_reward = testing(agent, 20)
+
+            action_probs = get_actions_probs(test_dict, agent)
+
+            wis_return, _ = wis.estimate(policy_action_probs=action_probs)
+            fqe_return, _ = fqe.estimate()
+
+            writer.add_scalars('reward', dict(zip(['true', 'WIS', 'FQE'], 
+                                                  [avg_reward, wis_return, fqe_return])), i)
+            print(f'[EPISODE {i}] | true average reward : {avg_reward}, WIS average reward : {wis_return}, FQE average reward : {fqe_return}')
+
             if avg_reward > max_avg_reward:
                 max_avg_reward = avg_reward
-                model.save()
+                agent.save()
+
+def get_actions_probs(test_dict: dict, agent: BaseAgent):
+    '''
+    Returns:
+        action_probs: np.ndarray; expected shape (B, D)
+    '''
+    states = torch.tensor(test_dict['s'], device=agent.device, dtype=torch.float).view(-1, agent.num_feats)
+
+    with torch.no_grad():
+        actions, _, _, action_probs = agent.get_action_probs(states)
+        actions = actions.numpy()
+        action_probs = action_probs.numpy()
+
+    return action_probs
 
 
 def testing(model: DQN, episode=10):
@@ -136,6 +170,32 @@ def testing(model: DQN, episode=10):
                 break
         total_reward += running_reward
     return total_reward / episode
+
+def split_dataset(args):
+    file_path = get_dataset_path(args.dataset)
+    with open(file_path, "rb") as f:
+        data = pickle.load(f)
+    states = data[0]
+    actions = data[1]
+    rewards = data[2]
+    next_states = data[3]
+    dones = data[4]
+    train_step = int(1e6)
+    train_data = [states[:train_step], 
+                  actions[:train_step],
+                  rewards[:train_step],
+                  next_states[:train_step],
+                  dones[:train_step]]
+
+    done_indexs = np.where(dones == 1)[0]
+    start_index = done_indexs[np.where(done_indexs > train_step)[0][0]] + 1
+    end_index = done_indexs[-1]
+    test_dict = {'s': states[start_index:end_index + 1],
+                 'a': actions[start_index:end_index + 1],
+                 'r': rewards[start_index:end_index + 1],
+                 's_': next_states[start_index:end_index + 1],
+                 'done': dones[start_index:end_index + 1]}
+    return train_data, test_dict
 
 
 if __name__ == '__main__':
@@ -171,10 +231,10 @@ if __name__ == '__main__':
     path = f'{args.agent}/offline-dataset={args.dataset}-batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-hidden_size={hidden_size}'
     log_path = os.path.join('./logs', path)
 
-    model = get_agent(args, log_path, env_spec, config)
+    agent = get_agent(args, log_path, env_spec, config)
 
     os.makedirs(log_path, exist_ok=True)
     # load dataset
-    dataset_path = get_dataset_path(args.dataset)
-    model.memory.read_file(dataset_path)
-    training(model, config, args)
+    train_data, test_dict = split_dataset(args)
+    agent.memory.read_data(train_data)
+    training(agent, test_dict, config, args)

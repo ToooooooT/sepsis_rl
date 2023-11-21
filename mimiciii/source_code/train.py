@@ -172,13 +172,13 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
     plot_estimate_value(np.vstack((avg_wis_policy_returns, avg_dr_policy_returns)), ['WIS', 'DR'], agent.log_dir, valid_freq)
 
 
-def testing(test_data, agent: BaseAgent):
+def testing(test_dict: dict, agent: BaseAgent):
     '''
     Returns:
         actions     : np.ndarray; expected shape (B, 1)
         action_probs: np.ndarray; expected shape (B, D)
     '''
-    states = torch.tensor(test_data['s'], device=agent.device, dtype=torch.float).view(-1, agent.num_feats)
+    states = torch.tensor(test_dict['s'], device=agent.device, dtype=torch.float).view(-1, agent.num_feats)
 
     with torch.no_grad():
         actions, _, _, action_probs = agent.get_action_probs(states)

@@ -26,36 +26,36 @@ def parse_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
-    parser.add_argument("--step", type=int, help="episode", default=1000000)
+    parser.add_argument("--step", type=int, help="episode", default=1250000)
     parser.add_argument("--eps_start", type=float, help="epsilon start value", default=1.)
     parser.add_argument("--eps_end", type=float, help="epsilon min value", default=0.01)
     parser.add_argument("--eps_decay", type=float, help="epsilon min value", default=0.995)
     parser.add_argument("--update_per_step", type=int, help="update parameters per step", default=1)
-    parser.add_argument("--save_path", type=str, help="save file path of dataset", default="./dataset/my_train.pkl")
+    parser.add_argument("--save_path", type=str, help="save file path of dataset", default="./dataset/train.pkl")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     args = parser.parse_args()
     return args
 
 class D3QN_Agent(DQN):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
-        super().__init__(static_policy, env, config, log_dir)
+    def __init__(self, env=None, config=None, log_dir='./logs', static_policy=False):
+        super().__init__(env, config, log_dir, static_policy)
 
     def declare_networks(self):
         self.model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
         self.target_model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
 
 class WD3QN_Agent(WDQN):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs'):
-        super().__init__(static_policy, env, config, log_dir)
+    def __init__(self, env=None, config=None, log_dir='./logs', static_policy=False):
+        super().__init__(env, config, log_dir, static_policy)
 
     def declare_networks(self):
         self.model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
         self.target_model = DuellingMLP(self.num_feats, self.num_actions).to(self.device)
 
 class SAC_Agent(SAC):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs') -> None:
-        super().__init__(static_policy, env, config, log_dir)
+    def __init__(self, env=None, config=None, log_dir='./logs', static_policy=False):
+        super().__init__(env, config, log_dir, static_policy)
 
     def declare_networks(self):
         self.actor = PolicyMLP(self.num_feats, self.num_actions).to(self.device)

@@ -12,6 +12,9 @@ class WIS(BaseEstimator):
                  config: Config,
                  args) -> None:
         super().__init__(agent, data_dict, config, args)
+        done_indexs = np.where(self.dones == 1)[0]
+        start_indexs = np.append(0, done_indexs[:-1] + 1)
+        self.max_length = (done_indexs - start_indexs + 1).max()
 
     def estimate(self, **kwargs):
         '''
@@ -34,7 +37,7 @@ class WIS(BaseEstimator):
 
         num = done_indexs.shape[0]
         policy_return = np.zeros((num,), dtype=np.float64) 
-        weights = np.zeros((num, 20)) # the patient max length is 20 
+        weights = np.zeros((num, self.max_length)) # the patient max length is 20 
         length = np.zeros((num,), dtype=np.int32) # the horizon length of each patient
         
         start = 0
@@ -47,6 +50,7 @@ class WIS(BaseEstimator):
                 weights[i, end - start - j] = max(rhos[index], 0.01)
                 total_reward = self.gamma * total_reward + self.rewards[index]
             start = end + 1
+            # \rho1:H * (\sum_{t=1}^H \gamma^{t-1} r_t) 
             policy_return[i] = np.cumprod(weights[i])[length[i] - 1] * total_reward
 
         for i, l in enumerate(length):
