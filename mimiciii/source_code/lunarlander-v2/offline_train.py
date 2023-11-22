@@ -109,14 +109,12 @@ def get_dataset_path(mode):
 def training(agent: DQN, test_dict: dict, config: Config, args):
     writer = SummaryWriter(agent.log_dir)
     max_avg_reward = 0
-    # TODO: test WIS, FQE estimator
     fqe = FQE(agent, 
               test_dict, 
               config, 
               args,
               Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size),
               target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size))
-    wis = WIS(agent, test_dict, config, args)
 
     for i in range(int(config.EPISODE)):
         loss = agent.update(i)
@@ -124,14 +122,12 @@ def training(agent: DQN, test_dict: dict, config: Config, args):
         if i % args.test_freq == 0:
             avg_reward = testing(agent, 20)
 
-            action_probs = get_actions_probs(test_dict, agent)
-
-            wis_return, _ = wis.estimate(policy_action_probs=action_probs)
             fqe_return, _ = fqe.estimate()
 
-            writer.add_scalars('reward', dict(zip(['true', 'WIS', 'FQE'], 
-                                                  [avg_reward, wis_return, fqe_return])), i)
-            print(f'[EPISODE {i}] | true average reward : {avg_reward}, WIS average reward : {wis_return}, FQE average reward : {fqe_return}')
+            writer.add_scalars('reward', dict(zip(['true', 'FQE'], 
+                                                  [avg_reward, fqe_return])), i)
+            print(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return}')
+            fqe.records2csv()
 
             if avg_reward > max_avg_reward:
                 max_avg_reward = avg_reward

@@ -4,7 +4,7 @@ class Config(object):
     def __init__(self):
         self.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.EPISODE = 100000
+        self.EPISODE = 1e6
 
         # algorithm control
         self.USE_PRIORITY_REPLAY = False
