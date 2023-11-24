@@ -112,7 +112,7 @@ class DQN(BaseAgent):
     def get_action_probs(self, states: torch.Tensor):
         _, actions = self.model(states).max(dim=1)
         actions = actions.view(-1, 1) # (B, 1)
-        action_probs = torch.full((actions.shape[0], 25), 0.01)
+        action_probs = torch.full((actions.shape[0], 25), 0.01, device=self.device)
         action_probs = action_probs.scatter_(1, actions, 0.99)
         return actions, None, None, action_probs
 

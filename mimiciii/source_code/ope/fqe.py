@@ -54,15 +54,12 @@ class FQEDataset(Dataset):
             action: torch.tensor; expected shape (1,)
             target: torch.tensor; expected shape (1,)
         '''
-        state = torch.tensor(self.states[index], dtype=torch.float, device=self.device)
-        action = torch.tensor(self.actions[index], dtype=torch.int64, device=self.device)
-        reward = torch.tensor(self.rewards[index:index+1], dtype=torch.float, device=self.device)
-        next_state = torch.tensor(self.next_states[index:index+1], dtype=torch.float, device=self.device)
-        done = torch.tensor(self.dones[index:index+1], dtype=torch.float, device=self.device)
-        with torch.no_grad():
-            policy_action = self.eval_policy.get_action_probs(next_state)[0]
-            target = reward + self.gamma * self.Q(next_state).gather(1, policy_action) * (1 - done)
-        return state, action, target.detach().view(-1)
+        state = torch.tensor(self.states[index], dtype=torch.float)
+        action = torch.tensor(self.actions[index], dtype=torch.int64)
+        reward = torch.tensor(self.rewards[index], dtype=torch.float)
+        next_state = torch.tensor(self.next_states[index], dtype=torch.float)
+        done = torch.tensor(self.dones[index], dtype=torch.float)
+        return state, action, reward, next_state, done
 
 
 
@@ -96,6 +93,7 @@ class FQE(BaseEstimator):
         Returns:
             average policy return
         '''
+        self.agent = kwargs['agent']
         self.reset()
         self.train()
 
@@ -127,9 +125,17 @@ class FQE(BaseEstimator):
                                     pin_memory=True,
                                     num_workers=1)
             epoch_loss = 0
-            for state, action, label in dataloader:
+            for state, action, reward, next_state, done in dataloader:
+                state = state.to(self.device)
+                action = action.to(self.device)
+                reward = reward.to(self.device)
+                next_state = next_state.to(self.device)
+                done = done.to(self.device)
+                with torch.no_grad():
+                    policy_action = self.agent.get_action_probs(next_state)[0]
+                    target = reward + self.gamma * self.Q(next_state).gather(1, policy_action) * (1 - done)
                 pred = self.Q(state).gather(1, action)
-                loss = F.mse_loss(pred, label)
+                loss = F.mse_loss(pred, target)
                 self.optimizer.zero_grad()
                 loss.backward()
                 if self.is_gradient_clip:

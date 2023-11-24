@@ -170,7 +170,7 @@ class SAC(BaseAgent):
         # Action probabilities for calculating the adapted soft-Q loss
         action_probs = policy_dist.probs
         log_prob = F.log_softmax(logits, dim=1)
-        return action, logits, log_prob, action_probs
+        return action.view(-1, 1), logits, log_prob, action_probs
 
     def get_action(self, s, eps=0):
         '''

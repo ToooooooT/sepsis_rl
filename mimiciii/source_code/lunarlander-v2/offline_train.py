@@ -28,13 +28,13 @@ def parse_args():
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--episode", type=int, help="episode", default=1e6)
-    parser.add_argument("--test_freq", type=int, help="test frequency", default=1000)
+    parser.add_argument("--test_freq", type=int, help="test frequency", default=5000)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
     parser.add_argument("--dataset", type=str, help="dataset mode", default='train')
     parser.add_argument("--seed", type=int, help="random seed", default=10)
-    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=20)
+    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=1)
     args = parser.parse_args()
     return args
 
@@ -68,8 +68,8 @@ class SAC_Agent(SAC):
         self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
 
 class SAC_BC_Agent(SAC_BC):
-    def __init__(self, static_policy=False, env=None, config=None, log_dir='./logs') -> None:
-        super().__init__(static_policy, env, config, log_dir)
+    def __init__(self, env=None, config=None, log_dir='./logs', static_policy=False):
+        super().__init__(env, config, log_dir, static_policy)
 
     def declare_networks(self):
         self.actor = PolicyMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
@@ -122,7 +122,7 @@ def training(agent: DQN, test_dict: dict, config: Config, args):
         if i % args.test_freq == 0:
             avg_reward = testing(agent, 20)
 
-            fqe_return, _ = fqe.estimate()
+            fqe_return, _ = fqe.estimate(agent=agent)
 
             writer.add_scalars('reward', dict(zip(['true', 'FQE'], 
                                                   [avg_reward, fqe_return])), i)
@@ -211,11 +211,11 @@ if __name__ == '__main__':
     config = Config()
 
     if args.cpu:
-        config.device = torch.device("cpu")
+        config.DEVICE = torch.device("cpu")
     else:
-        config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        config.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"using device: {config.DEVICE}")
 
-    config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config.EPISODE = args.episode
     config.LR = args.lr
     config.BATCH_SIZE = args.batch_size
