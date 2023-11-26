@@ -106,10 +106,11 @@ def get_dataset_path(mode):
     return os.path.join(pre, f)
 
 
-def training(agent: DQN, test_dict: dict, config: Config, args):
+def training(agent: DQN, train_dict: dict, test_dict: dict, config: Config, args):
     writer = SummaryWriter(agent.log_dir)
     max_avg_reward = 0
     fqe = FQE(agent, 
+              train_dict, 
               test_dict, 
               config, 
               args,
@@ -176,12 +177,18 @@ def split_dataset(args):
     rewards = data[2]
     next_states = data[3]
     dones = data[4]
-    train_step = int(1e6)
+    train_step = 800000 # 4 : 1
     train_data = [states[:train_step], 
                   actions[:train_step],
                   rewards[:train_step],
                   next_states[:train_step],
                   dones[:train_step]]
+
+    train_dict = {'s': states[:train_step],
+                 'a': actions[:train_step],
+                 'r': rewards[:train_step],
+                 's_': next_states[:train_step],
+                 'done': dones[:train_step]}
 
     done_indexs = np.where(dones == 1)[0]
     start_index = done_indexs[np.where(done_indexs > train_step)[0][0]] + 1
@@ -191,7 +198,7 @@ def split_dataset(args):
                  'r': rewards[start_index:end_index + 1],
                  's_': next_states[start_index:end_index + 1],
                  'done': dones[start_index:end_index + 1]}
-    return train_data, test_dict
+    return train_data, train_dict, test_dict
 
 
 if __name__ == '__main__':
@@ -231,6 +238,6 @@ if __name__ == '__main__':
 
     os.makedirs(log_path, exist_ok=True)
     # load dataset
-    train_data, test_dict = split_dataset(args)
+    train_data, train_dict, test_dict = split_dataset(args)
     agent.memory.read_data(train_data)
-    training(agent, test_dict, config, args)
+    training(agent, train_dict, test_dict, config, args)

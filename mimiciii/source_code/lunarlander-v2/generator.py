@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
-    parser.add_argument("--step", type=int, help="episode", default=1010000)
+    parser.add_argument("--step", type=int, help="episode", default=1e6)
     parser.add_argument("--eps_start", type=float, help="epsilon start value", default=1.)
     parser.add_argument("--eps_end", type=float, help="epsilon min value", default=0.01)
     parser.add_argument("--eps_decay", type=float, help="epsilon min value", default=0.995)

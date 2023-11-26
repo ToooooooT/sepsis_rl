@@ -14,11 +14,7 @@ from ope.base_estimator import BaseEstimator
 
 class FQEDataset(Dataset):
     def __init__(self,
-                 states: np.ndarray,
-                 actions: np.ndarray,
-                 rewards: np.ndarray,
-                 next_states: np.ndarray,
-                 dones: np.ndarray,
+                 train_dict: dict,
                  Q: nn.Module,
                  eval_policy: BaseAgent,
                  device,
@@ -34,11 +30,11 @@ class FQEDataset(Dataset):
             eval_policy: 
         '''
         super().__init__()
-        self.states = states
-        self.actions = actions
-        self.rewards = rewards
-        self.next_states = next_states
-        self.dones = dones
+        self.states = train_dict['s']
+        self.actions = train_dict['a']
+        self.rewards = train_dict['r']
+        self.next_states = train_dict['s_']
+        self.dones = train_dict['done']
         self.Q = Q.to(device)
         self.eval_policy = eval_policy
         self.device = device
@@ -66,17 +62,18 @@ class FQEDataset(Dataset):
 class FQE(BaseEstimator):
     def __init__(self, 
                  agent: BaseAgent, 
-                 data_dict: dict, 
+                 train_dict: dict, 
+                 test_dict: dict, 
                  config: Config, 
                  args,
                  Q: nn.Module,
                  target_Q: nn.Module,
                  lr=1e-4,
                  batch_size=256,
-                 episode=2e3) -> None:
+                 episode=500) -> None:
         # ref: Batch Policy Learning under Constraints
-        super().__init__(agent, data_dict, config, args)
-
+        super().__init__(agent, test_dict, config, args)
+        self.train_dict = train_dict
         self.Q = Q.to(config.DEVICE)
         self.target_Q = target_Q.to(config.DEVICE)
         self.target_Q.eval()
@@ -88,6 +85,10 @@ class FQE(BaseEstimator):
         self.num_worker = args.num_worker
         self.records = pd.DataFrame({'episode': [], 'epoch_loss': []})
 
+        done_indexs = np.where(self.dones == 1)[0]
+        start_indexs = [0] + (done_indexs + 1).tolist()[:-1]
+        self.initial_states = torch.tensor(self.states[start_indexs], dtype=torch.float)
+
     def estimate(self, **kwargs):
         '''
         Returns:
@@ -97,23 +98,23 @@ class FQE(BaseEstimator):
         self.reset()
         self.train()
 
-        done_indexs = np.where(self.dones == 1)[0]
-        start_indexs = [0] + (done_indexs + 1).tolist()[:-1]
-        states = torch.tensor(self.states[start_indexs], dtype=torch.float, device=self.device)
+        return self.predict()
+
+
+    def predict(self):
+        initial_states = self.initial_states.to(self.device)
         with torch.no_grad():
-            actions = self.agent.get_action_probs(states)[0]
-            expected_return = self.Q(states).gather(1, actions)
+            actions = self.agent.get_action_probs(initial_states)[0]
+            expected_return = self.Q(initial_states).gather(1, actions)
         return expected_return.mean().item(), expected_return.reshape(1, -1).cpu().numpy()
 
 
     def train(self):
         self.Q.train()
+        M = 5
+        estimate_values = []
         for i in tqdm(range(self.episode)):
-            fqe_dataset = FQEDataset(self.states,
-                                     self.actions,
-                                     self.rewards,
-                                     self.next_states,
-                                     self.dones,
+            fqe_dataset = FQEDataset(self.train_dict,
                                      self.target_Q,
                                      self.agent,
                                      self.device,
@@ -143,7 +144,17 @@ class FQE(BaseEstimator):
                         param.grad.data.clamp_(-1, 1) # gradient clipping, let gradient be in interval (-1, 1)
                 self.optimizer.step()
                 epoch_loss += loss.item()
-            self.records.loc[self.records.shape[0]] = {'episode': i, 'epoch_loss': epoch_loss}
+
+            estimate_values.append(self.predict()[0])
+            if i > M and                                                                        \
+                np.abs(np.mean(estimate_values[-M:]) - np.mean(estimate_values[-(M + 1):-1]))   \
+                    < 1e-4 * np.abs(np.mean(estimate_values[-(M+1):-1])):
+                break
+
+            self.records.loc[self.records.shape[0]] = {'episode': i, 
+                                                       'epoch_loss': epoch_loss,
+                                                       'estimate_value': estimate_values[-1]}
+
             self.update_target_model(self.target_Q, self.Q)
 
     def reset(self):
