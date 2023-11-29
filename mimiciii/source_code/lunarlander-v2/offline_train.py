@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
     parser.add_argument("--dataset", type=str, help="dataset mode", default='train')
     parser.add_argument("--seed", type=int, help="random seed", default=10)
-    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=1)
+    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=2)
     args = parser.parse_args()
     return args
 

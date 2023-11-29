@@ -13,12 +13,7 @@ from agents import BaseAgent
 from ope.base_estimator import BaseEstimator
 
 class FQEDataset(Dataset):
-    def __init__(self,
-                 train_dict: dict,
-                 Q: nn.Module,
-                 eval_policy: BaseAgent,
-                 device,
-                 gamma) -> None:
+    def __init__(self, train_dict: dict) -> None:
         '''
         Args:
             states: expected shape (B, S)
@@ -26,8 +21,6 @@ class FQEDataset(Dataset):
             next_states: expected shape (B, S)
             reward: expected shape (B, 1)
             dones: expected shape (B, 1)
-            Q: last step Q function
-            eval_policy: 
         '''
         super().__init__()
         self.states = train_dict['s']
@@ -35,10 +28,6 @@ class FQEDataset(Dataset):
         self.rewards = train_dict['r']
         self.next_states = train_dict['s_']
         self.dones = train_dict['done']
-        self.Q = Q.to(device)
-        self.eval_policy = eval_policy
-        self.device = device
-        self.gamma = gamma
 
     def __len__(self):
         return self.states.shape[0]
@@ -48,7 +37,9 @@ class FQEDataset(Dataset):
         Returns: 
             state: torch.tensor; expected shape (S,)
             action: torch.tensor; expected shape (1,)
-            target: torch.tensor; expected shape (1,)
+            reward: torch.tensor; expected shape (1,)
+            next_state: torch.tensor; expected shape (S,)
+            done: torch.tensor; expected shape (1,)
         '''
         state = torch.tensor(self.states[index], dtype=torch.float)
         action = torch.tensor(self.actions[index], dtype=torch.int64)
@@ -70,7 +61,7 @@ class FQE(BaseEstimator):
                  target_Q: nn.Module,
                  lr=1e-4,
                  batch_size=256,
-                 episode=500) -> None:
+                 episode=200) -> None:
         # ref: Batch Policy Learning under Constraints
         super().__init__(agent, test_dict, config, args)
         self.train_dict = train_dict
@@ -88,6 +79,14 @@ class FQE(BaseEstimator):
         done_indexs = np.where(self.dones == 1)[0]
         start_indexs = [0] + (done_indexs + 1).tolist()[:-1]
         self.initial_states = torch.tensor(self.states[start_indexs], dtype=torch.float)
+
+        # train dataset
+        self.dataloader = DataLoader(FQEDataset(self.train_dict),
+                                    batch_size=self.batch_size,
+                                    shuffle=True,
+                                    drop_last=False,
+                                    pin_memory=True,
+                                    num_workers=self.num_worker)
 
     def estimate(self, **kwargs):
         '''
@@ -114,19 +113,8 @@ class FQE(BaseEstimator):
         M = 5
         estimate_values = []
         for i in tqdm(range(self.episode)):
-            fqe_dataset = FQEDataset(self.train_dict,
-                                     self.target_Q,
-                                     self.agent,
-                                     self.device,
-                                     self.gamma)
-            dataloader = DataLoader(fqe_dataset,
-                                    batch_size=self.batch_size,
-                                    shuffle=True,
-                                    drop_last=False,
-                                    pin_memory=True,
-                                    num_workers=1)
             epoch_loss = 0
-            for state, action, reward, next_state, done in dataloader:
+            for state, action, reward, next_state, done in self.dataloader:
                 state = state.to(self.device)
                 action = action.to(self.device)
                 reward = reward.to(self.device)
@@ -134,7 +122,7 @@ class FQE(BaseEstimator):
                 done = done.to(self.device)
                 with torch.no_grad():
                     policy_action = self.agent.get_action_probs(next_state)[0]
-                    target = reward + self.gamma * self.Q(next_state).gather(1, policy_action) * (1 - done)
+                    target = reward + self.gamma * self.target_Q(next_state).gather(1, policy_action) * (1 - done)
                 pred = self.Q(state).gather(1, action)
                 loss = F.mse_loss(pred, target)
                 self.optimizer.zero_grad()
