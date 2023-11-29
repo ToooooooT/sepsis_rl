@@ -124,7 +124,7 @@ class FQE(BaseEstimator):
                     policy_action = self.agent.get_action_probs(next_state)[0]
                     target = reward + self.gamma * self.target_Q(next_state).gather(1, policy_action) * (1 - done)
                 pred = self.Q(state).gather(1, action)
-                loss = F.mse_loss(pred, target)
+                loss = F.mse_loss(pred, target.detach())
                 self.optimizer.zero_grad()
                 loss.backward()
                 if self.is_gradient_clip:

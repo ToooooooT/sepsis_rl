@@ -15,9 +15,7 @@ import pickle
 from utils import Config
 from agents import DQN, WDQN, SAC, SAC_BC, BaseAgent
 from network import DuellingMLP, PolicyMLP
-from ope import FQE, WIS
-
-from torch.utils.tensorboard import SummaryWriter
+from ope import FQE
 
 pd.options.mode.chained_assignment = None
 
@@ -107,7 +105,6 @@ def get_dataset_path(mode):
 
 
 def training(agent: DQN, train_dict: dict, test_dict: dict, config: Config, args):
-    writer = SummaryWriter(agent.log_dir)
     max_avg_reward = 0
     fqe = FQE(agent, 
               train_dict, 
@@ -119,14 +116,13 @@ def training(agent: DQN, train_dict: dict, test_dict: dict, config: Config, args
 
     for i in range(int(config.EPISODE)):
         loss = agent.update(i)
-        writer.add_scalars('loss', loss, i)
         if i % args.test_freq == 0:
             avg_reward = testing(agent, 20)
 
             fqe_return, _ = fqe.estimate(agent=agent)
 
-            writer.add_scalars('reward', dict(zip(['true', 'FQE'], 
-                                                  [avg_reward, fqe_return])), i)
+            with open(os.path.join(agent.log_dir, "expected_return.txt"), "a") as f:
+                f.write(print(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return} | loss : {loss}\n'))
             print(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return}')
             fqe.records2csv()
 
