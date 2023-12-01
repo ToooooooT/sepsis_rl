@@ -122,7 +122,7 @@ def training(agent: DQN, train_dict: dict, test_dict: dict, config: Config, args
             fqe_return, _ = fqe.estimate(agent=agent)
 
             with open(os.path.join(agent.log_dir, "expected_return.txt"), "a") as f:
-                f.write(print(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return} | loss : {loss}\n'))
+                f.write(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return} | loss : {loss}\n')
             print(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return}')
             fqe.records2csv()
 
