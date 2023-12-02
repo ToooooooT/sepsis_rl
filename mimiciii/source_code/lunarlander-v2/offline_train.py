@@ -33,6 +33,7 @@ def parse_args():
     parser.add_argument("--dataset", type=str, help="dataset mode", default='train')
     parser.add_argument("--seed", type=int, help="random seed", default=10)
     parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=2)
+    parser.add_argument("--load_checkpoint", action="store_true", help="load checkpoint")
     args = parser.parse_args()
     return args
 
@@ -114,7 +115,12 @@ def training(agent: DQN, train_dict: dict, test_dict: dict, config: Config, args
               Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size),
               target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size))
 
-    for i in range(int(config.EPISODE)):
+    if args.load_checkpoint:
+        start = agent.load_checkpoint()
+    else:
+        start = -1
+
+    for i in range(start + 1, int(config.EPISODE)):
         loss = agent.update(i)
         if i % args.test_freq == 0:
             avg_reward = testing(agent, 20)
@@ -122,13 +128,16 @@ def training(agent: DQN, train_dict: dict, test_dict: dict, config: Config, args
             fqe_return, _ = fqe.estimate(agent=agent)
 
             with open(os.path.join(agent.log_dir, "expected_return.txt"), "a") as f:
-                f.write(print(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return} | loss : {loss}\n'))
+                f.write(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return} | loss : {loss}\n')
             print(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return}')
             fqe.records2csv()
 
             if avg_reward > max_avg_reward:
                 max_avg_reward = avg_reward
                 agent.save()
+
+        agent.save_checkpoint(i)
+
 
 def get_actions_probs(test_dict: dict, agent: BaseAgent):
     '''
