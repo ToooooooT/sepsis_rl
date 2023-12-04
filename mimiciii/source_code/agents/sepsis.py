@@ -50,6 +50,7 @@ class WDQNE(WDQN):
                  log_dir='./logs',
                  static_policy=False):
         super().__init__(env, config, log_dir, static_policy)
+        self.sofa_threshold = config.SOFA_THRESHOLD
 
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1, 1, 1)
@@ -89,7 +90,7 @@ class WDQNE(WDQN):
         target_q_values = p * target_next_q_values.max(dim=1)[0].view(-1, 1) + (1 - p) * target_next_q_values.gather(1, max_next_actions)
         # expertise
         expert_q_values = target_next_q_values.gather(1, next_actions)
-        target_q_values = torch.where(SOFAs < 4, expert_q_values, target_q_values)
+        target_q_values = torch.where(SOFAs < self.sofa_threshold, expert_q_values, target_q_values)
 
         if self.priority_replay:
             diff = (q_values - (rewards + self.gamma * target_q_values * (1 - dones)))
@@ -107,6 +108,8 @@ class SAC_BC_E(SAC):
                  log_dir='./logs',
                  static_policy=False) -> None:
         super().__init__(env, config, log_dir, static_policy)
+        self.actor_lambda = config.ACTOR_LAMBDA
+        self.sofa_threshold = config.SOFA_THRESHOLD
 
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1, 1)
@@ -130,7 +133,6 @@ class SAC_BC_E(SAC):
         return states, actions, rewards, next_states, dones, SOFAs, indices, weights
 
     def compute_actor_loss(self, states, actions, SOFAs):
-        # TODO: use the SOFAs to do expertise
         _, _, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -138,8 +140,8 @@ class SAC_BC_E(SAC):
             min_qf_values = torch.min(qf1_values, qf2_values)
         # no need for reparameterization, the expectation can be calculated for discrete actions
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
-        bc_loss = F.cross_entropy(action_probs, actions.view(-1))
-        # TODO: use a suitable coefficient of normalization term
+        bc_loss = F.cross_entropy(action_probs, actions.view(-1), reduction='none') 
+        bc_loss = (bc_loss * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
         total_loss = actor_loss * coef + bc_loss
         return total_loss, actor_loss * coef, bc_loss, action_probs, log_pi

@@ -44,3 +44,5 @@ class Config(object):
 
         # coefficient of actor loss term in SAC + BC
         self.ACTOR_LAMBDA = 2.5
+
+        self.SOFA_THRESHOLD = 4

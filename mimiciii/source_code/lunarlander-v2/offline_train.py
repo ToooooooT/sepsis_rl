@@ -22,10 +22,13 @@ pd.options.mode.chained_assignment = None
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--batch_size", type=int, help="batch_size", default=256)
+    parser.add_argument("--fqe_batch_size", type=int, help="batch_size", default=256)
     parser.add_argument("--lr", type=float, help="learning rate", default=3e-4)
+    parser.add_argument("--fqe_lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--episode", type=int, help="episode", default=1e6)
+    parser.add_argument("--fqe_episode", type=int, help="episode", default=150)
     parser.add_argument("--test_freq", type=int, help="test frequency", default=10000)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)

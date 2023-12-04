@@ -58,19 +58,16 @@ class FQE(BaseEstimator):
                  config: Config, 
                  args,
                  Q: nn.Module,
-                 target_Q: nn.Module,
-                 lr=1e-4,
-                 batch_size=256,
-                 episode=150) -> None:
+                 target_Q: nn.Module) -> None:
         # ref: Batch Policy Learning under Constraints
         super().__init__(agent, test_dict, config, args)
         self.train_dict = train_dict
         self.Q = Q.to(config.DEVICE)
         self.target_Q = target_Q.to(config.DEVICE)
         self.target_Q.eval()
-        self.lr = lr
-        self.batch_size = batch_size
-        self.episode = int(episode)
+        self.lr = args.fqe_lr
+        self.batch_size = args.fqe_batch_size
+        self.episode = int(args.fqe_episode)
         self.optimizer = optim.Adam(self.Q.parameters(), lr=self.lr)
         self.is_gradient_clip = config.IS_GRADIENT_CLIP
         self.num_worker = args.num_worker
