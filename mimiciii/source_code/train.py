@@ -16,9 +16,7 @@ from utils import Config, plot_action_dist, plot_estimate_value, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
                 plot_action_diff_survival_rate
 from network import DuellingMLP, PolicyMLP
-from ope import WIS, DoublyRobust, q_value_estimator
-
-from torch.utils.tensorboard import SummaryWriter
+from ope import WIS, DoublyRobust, FQE, QEstimator
 
 pd.options.mode.chained_assignment = None
 
@@ -26,21 +24,22 @@ def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--hour", type=int, help="hours of one state", default=4)
     parser.add_argument("--batch_size", type=int, help="batch_size", default=128)
-    parser.add_argument("--episode", type=int, help="episode", default=1e6)
+    parser.add_argument("--episode", type=int, help="episode", default=5e5)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
     parser.add_argument("--lr", type=float, help="learning rate", default=3e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
-    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=500)
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=1000)
     parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
-    parser.add_argument("--env_model_path", type=str, help="path of environment model", default="./logs/Env/batch_size=32-lr=0.001-episode=200/model.pth")
-    parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="./logs/Clf/LG_clf.sav")
+    parser.add_argument("--env_model_path", type=str, help="path of environment model", default="env_model.pth")
+    parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="LG_clf.sav")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
-    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=20)
+    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=4)
+    parser.add_argument("--load_checkpoint", action="store_true", help="load checkpoint")
     args = parser.parse_args()
     return args
 
@@ -131,9 +130,10 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
         valid_dataset   : original valid dataset (DataFrame)
         valud_dict      : processed validation dataset
     '''
-    writer = SummaryWriter(agent.log_dir)
-    avg_wis_policy_returns = []
-    avg_dr_policy_returns = []
+    wis_returns = []
+    dr_returns = []
+    fqe_returns = []
+    qe_returns = []
     hists = [] # save model actions of validation in every episode 
     valid_freq = args.valid_freq
     gif_freq = args.gif_freq
@@ -141,10 +141,22 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
     valid_data = valid_dict['data']
     dr = DoublyRobust(agent, valid_dict['data'], config, args, valid_dataset)
     wis = WIS(agent, valid_dict['data'], config, args)
+    fqe = FQE(agent, 
+              train_dict['data'], 
+              valid_dict['data'], 
+              config, 
+              args,
+              Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size),
+              target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size))
+    qe = QEstimator(agent, valid_dict['data'], config, args)
 
-    for i in tqdm(range(1, config.EPISODE + 1)):
+    if args.load_checkpoint:
+        start = agent.load_checkpoint()
+    else:
+        start = 0
+
+    for i in range(start + 1, config.EPISODE + 1):
         loss = agent.update(i)
-        writer.add_scalars('loss', loss, i)
 
         if i % valid_freq == 0:
             actions, action_probs = testing(valid_data, agent)
@@ -152,24 +164,31 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
             if i % gif_freq == 0:
                 hists.append(np.bincount(actions.reshape(-1), minlength=25))
             # estimate expected return
-            avg_wis_p_return, _ = wis.estimate(policy_action_probs=action_probs)
-            avg_wis_policy_returns.append(avg_wis_p_return)
-            avg_dr_p_return, _, _ = dr.estimate(policy_actions=actions, policy_action_probs=action_probs)
-            avg_dr_policy_returns.append(avg_dr_p_return)
-            if isinstance(agent, D3QN_Agent) or isinstance(agent, WD3QNE_Agent):
-                if avg_dr_p_return > max_expected_return:
-                    max_expected_return = avg_dr_p_return
-                    agent.save()
-            # TODO: implement SAC+BC
-            else:
-                raise NotImplementedError
-            writer.add_scalars('expected return validation', \
-                               dict(zip(['WIS', 'DR'], [avg_wis_p_return, avg_dr_p_return])), i)
+            wis_return, _ = wis.estimate(policy_action_probs=action_probs)
+            wis_returns.append(wis_return)
+            dr_return, _, _ = dr.estimate(policy_actions=actions, policy_action_probs=action_probs, agent=agent)
+            dr_returns.append(dr_return)
+            fqe_return, _  = fqe.estimate(agent=agent)
+            fqe_returns.append(fqe_return)
+            qe_return, _ = qe.estimate(agent=agent)
+            qe_returns.append(qe_return)
+            # currently use fqe to choose model
+            if fqe_return > max_expected_return:
+                max_expected_return = fqe_return
+                agent.save()
+
+            with open(os.path.join(agent.log_dir, "expected_return.txt"), "a") as f:
+                f.write(f'[EPISODE {i}] | WIS: {wis_return:.5f}, DR: {dr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f} | loss : {loss}\n')
+            print(f'[EPISODE {i}] | WIS: {wis_return:.5f}, DR: {dr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f}')
+
+        agent.save_checkpoint(i)
 
     animation_action_distribution(hists, agent.log_dir)
-    avg_wis_policy_returns = np.array(avg_wis_policy_returns)
-    avg_dr_policy_returns = np.array(avg_dr_policy_returns)
-    plot_estimate_value(np.vstack((avg_wis_policy_returns, avg_dr_policy_returns)), ['WIS', 'DR'], agent.log_dir, valid_freq)
+    wis_returns = np.array(wis_returns)
+    dr_returns = np.array(dr_returns)
+    fqe_returns = np.array(fqe_returns)
+    qe_returns = np.array(qe_returns)
+    plot_estimate_value(np.vstack((wis_returns, dr_returns, fqe_returns, qe_returns)), ['WIS', 'DR', 'FQE', 'QE'], agent.log_dir, valid_freq)
 
 
 def testing(test_dict: dict, agent: BaseAgent):
@@ -182,8 +201,8 @@ def testing(test_dict: dict, agent: BaseAgent):
 
     with torch.no_grad():
         actions, _, _, action_probs = agent.get_action_probs(states)
-        actions = actions.numpy()
-        action_probs = action_probs.numpy()
+        actions = actions.cpu().numpy()
+        action_probs = action_probs.cpu().numpy()
 
     return actions, action_probs
 
@@ -276,13 +295,24 @@ if __name__ == '__main__':
 
     # estimate expected return
     wis = WIS(agent, test_dict['data'], config, args)
-    avg_wis_policy_return, wis_policy_return = wis.estimate(policy_action_probs=policy_action_probs)
-    dre = DoublyRobust(agent, test_dict['data'], config, args, test_dataset)
-    avg_dr_policy_return, dr_policy_return, est_alive = dre.estimate(policy_action_probs=policy_action_probs, policy_actions=policy_actions)
+    avg_wis_return, wis_returns = wis.estimate(policy_action_probs=policy_action_probs)
+    dr = DoublyRobust(agent, test_dict['data'], config, args, test_dataset)
+    avg_dr_return, dr_returns, est_alive = dr.estimate(policy_action_probs=policy_action_probs, policy_actions=policy_actions, agent=agent)
+    fqe = FQE(agent, 
+              train_dict['data'], 
+              test_dict['data'], 
+              config, 
+              args,
+              Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size),
+              target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size))
+    avg_fqe_return, fqe_returns = fqe.estimate(agent=agent)
+    qe = QEstimator(agent, test_dict['data'], config, args)
+    avg_qe_return, qe_returns = qe.estimate(agent=agent)
+
     # plot expected return result
-    policy_returns = np.vstack((wis_policy_return, dr_policy_return))
-    plot_expected_return_distribution(policy_returns, ['WIS', 'DR'], log_path)
-    plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'DR'], log_path)
+    policy_returns = np.vstack((wis_returns, dr_returns, fqe_returns, qe_returns))
+    plot_expected_return_distribution(policy_returns, ['WIS', 'DR', 'FQE, QE'], log_path)
+    plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'DR', 'FQE', 'QE'], log_path)
 
     # plot action distribution
     negative_traj = test_dataset.query('mortality_90d == 1.0')
@@ -294,13 +324,18 @@ if __name__ == '__main__':
     plot_action_diff_survival_rate(train_dataset, test_dataset, log_path)
 
     # store result in text file
-    with open(os.path.join(log_path, 'evaluation.txt'), 'w') as f:
-        f.write(f'policy WIS estimator: {avg_wis_policy_return:.5f}\n')
-        f.write(f'policy DR estimator: {avg_dr_policy_return:.5f}\n')
+    with open(os.path.join(log_path, 'expected_return.txt'), 'a') as f:
+        f.write('----------------------------------------------------------------------------------\n')
+        f.write(f'WIS : {avg_wis_return:.5f}\n')
+        f.write(f'DR : {avg_dr_return:.5f}\n')
+        f.write(f'FQE : {avg_fqe_return:.5f}\n')
+        f.write(f'QE : {avg_qe_return:.5f}\n')
         f.write(f'Logistic regression survival rate: {est_alive.mean():.5f}\n')
     # print result
-    print(f'policy WIS estimator: {avg_wis_policy_return:.5f}')
-    print(f'policy DR estimator: {avg_dr_policy_return:.5f}')
+    print(f'WIS estimator: {avg_wis_return:.5f}')
+    print(f'DR estimator: {avg_dr_return:.5f}')
+    print(f'FQE estimator: {avg_fqe_return:.5f}')
+    print(f'QE estimator: {avg_qe_return:.5f}')
     print(f'Logistic regression survival rate: {est_alive.mean():.5f}')
 
     test_dataset.to_csv(os.path.join(agent.log_dir, 'test_data_predict.csv'), index=False)

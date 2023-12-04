@@ -25,3 +25,5 @@ t.py
 *.xlsx
 *.DS_store
 script*.py
+*.pth
+*.sav

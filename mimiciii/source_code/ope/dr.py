@@ -77,9 +77,12 @@ class DoublyRobust(BaseEstimator):
                 self.agent.model.eval()
                 est_q_values, _ = self.agent.model(states).max(dim=1)
                 est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy() # (B, 1)
-            # TODO: implement SAC+BC
-            else:
-                raise NotImplementedError
+            elif isinstance(self.agent, SAC):
+                # weird because SAC's Q function contain entropy term
+                actions = self.agent.get_action_probs(states)[0]
+                qf1 = self.agent.qf1(states).gather(1, actions)
+                qf2 = self.agent.qf2(states).gather(1, actions)
+                est_q_values = torch.min(qf1, qf2).view(-1, 1).detach().cpu().numpy()
         return est_q_values
 
 
@@ -93,6 +96,7 @@ class DoublyRobust(BaseEstimator):
             policy_return   : expected return of each patient; expected shape (1, B)
             est_alive       : estimate alive; expected shape (B,)
         '''
+        self.agent = kwargs['agent']
         policy_actions = kwargs['policy_actions']
         policy_action_probs = kwargs['policy_action_probs']
         est_q_values = self.estimate_q_values()
