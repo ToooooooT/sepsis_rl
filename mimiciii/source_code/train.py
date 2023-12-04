@@ -8,7 +8,6 @@ import os
 import random
 import pickle
 from argparse import ArgumentParser
-from tqdm import tqdm
 
 from agents import DQN_regularization, WDQNE, SAC_BC_E, BaseAgent
 from utils import Config, plot_action_dist, plot_estimate_value, \
@@ -24,14 +23,14 @@ def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--hour", type=int, help="hours of one state", default=4)
     parser.add_argument("--batch_size", type=int, help="batch_size", default=128)
-    parser.add_argument("--episode", type=int, help="episode", default=5e5)
+    parser.add_argument("--episode", type=int, help="episode", default=3e5)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
     parser.add_argument("--lr", type=float, help="learning rate", default=3e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
-    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=1000)
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=5000)
     parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="env_model.pth")
     parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="LG_clf.sav")
@@ -287,7 +286,7 @@ if __name__ == '__main__':
     agent.load()
 
     print('Start testing...')
-    policy_actions, policy_action_probs, _ = testing(test_data, agent)
+    policy_actions, policy_action_probs = testing(test_data, agent)
 
     test_dataset['policy action'] = policy_actions
     test_dataset['policy iv'] = policy_actions / 5
@@ -311,7 +310,7 @@ if __name__ == '__main__':
 
     # plot expected return result
     policy_returns = np.vstack((wis_returns, dr_returns, fqe_returns, qe_returns))
-    plot_expected_return_distribution(policy_returns, ['WIS', 'DR', 'FQE, QE'], log_path)
+    plot_expected_return_distribution(policy_returns, ['WIS', 'DR', 'FQE', 'QE'], log_path)
     plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'DR', 'FQE', 'QE'], log_path)
 
     # plot action distribution

@@ -19,7 +19,7 @@ class QEstimator(BaseEstimator):
             if isinstance(self.agent, DQN):
                 self.agent.model.eval()
                 est_q_values, _ = self.agent.model(states).max(dim=1)
-                est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy() # (B, 1)
+                est_q_values = est_q_values.view(1, -1).detach().cpu().numpy() # (B, 1)
             elif isinstance(self.agent, SAC):
                 # weird because SAC's Q function contain entropy term
                 actions = self.agent.get_action_probs(states)[0]
