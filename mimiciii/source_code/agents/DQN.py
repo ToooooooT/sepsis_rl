@@ -29,24 +29,36 @@ class DQN(BaseAgent):
         else:
             self.model.train()
 
+    def save_checkpoint(self, epoch):
+        checkpoint = {
+            'epoch': epoch,
+            'model': self.model.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+        }
+        torch.save(checkpoint, os.path.join(self.log_dir, 'checkpoint.pth'))
+
+    def load_checkpoint(self):
+        path = os.path.join(self.log_dir, 'checkpoint.pth')
+        if os.path.exists(path):
+            checkpoint = torch.load(path)
+        else:
+            raise FileExistsError
+        self.model.load_state_dict(checkpoint['model'])
+        self.target_model.load_state_dict(checkpoint['model'])
+        self.optimizer.load_state_dict(checkpoint['optimizer'])
+        return checkpoint['epoch']
+
     def save(self):
         os.makedirs(self.log_dir, exist_ok=True)
         torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'model.dump'))
-        torch.save(self.optimizer.state_dict(), os.path.join(self.log_dir, 'optim.dump'))
     
 
     def load(self):
         fname_model = os.path.join(self.log_dir, "model.dump")
-        fname_optim = os.path.join(self.log_dir, "optim.dump")
 
         if os.path.isfile(fname_model):
             self.model.load_state_dict(torch.load(fname_model))
             self.target_model.load_state_dict(self.model.state_dict())
-        else:
-            assert False
-
-        if os.path.isfile(fname_optim):
-            self.optimizer.load_state_dict(torch.load(fname_optim))
         else:
             assert False
 

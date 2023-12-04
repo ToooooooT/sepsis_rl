@@ -75,6 +75,39 @@ class SAC(BaseAgent):
 
         self.actor.load_state_dict(checkpoint['actor'])
 
+    def save_checkpoint(self, epoch):
+        checkpoint = {
+            'epoch': epoch,
+            'actor': self.actor.state_dict(),
+            'qf1': self.qf1.state_dict(),
+            'qf2': self.qf2.state_dict(),
+            'actor_optimizer': self.actor_optimizer.state_dict(),
+            'q_optimizer': self.q_optimizer.state_dict(),
+        }
+        if self.autotune:
+            checkpoint['log_alpha'] = self.log_alpha.item()
+            checkpoint['a_optimizer'] = self.a_optimizer.state_dict()
+        torch.save(checkpoint, os.path.join(self.log_dir, 'checkpoint.pth'))
+
+    def load_checkpoint(self):
+        path = os.path.join(self.log_dir, 'checkpoint.pth')
+        if os.path.exists(path):
+            checkpoint = torch.load(path)
+        else:
+            raise FileExistsError
+        self.actor.load_state_dict(checkpoint['actor'])
+        self.qf1.load_state_dict(checkpoint['qf1'])
+        self.qf2.load_state_dict(checkpoint['qf2'])
+        self.target_qf1.load_state_dict(checkpoint['qf1'])
+        self.target_qf2.load_state_dict(checkpoint['qf2'])
+        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+        self.q_optimizer.load_state_dict(checkpoint['q_optimizer'])
+        if self.autotune:
+            self.log_alpha = torch.tensor(np.array([checkpoint['log_alpha']]), dtype=torch.float, requires_grad=True, device=self.device)
+            self.a_optimizer.load_state_dict = checkpoint['a_optimizer']
+            self.alpha = self.log_alpha.exp().item()
+        return checkpoint['epoch']
+
 
     def declare_networks(self):
         self.actor: nn.Module = None

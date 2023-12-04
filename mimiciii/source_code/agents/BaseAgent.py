@@ -62,6 +62,17 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
+    def save_checkpoint(self, epoch):
+        ''' To override '''
+        pass
+    
+
+    @abstractmethod
+    def load_checkpoint(self):
+        ''' To override '''
+        pass
+
+    @abstractmethod
     def declare_networks(self, t):
         ''' To override '''
         pass

@@ -61,7 +61,7 @@ class FQE(BaseEstimator):
                  target_Q: nn.Module,
                  lr=1e-4,
                  batch_size=256,
-                 episode=200) -> None:
+                 episode=150) -> None:
         # ref: Batch Policy Learning under Constraints
         super().__init__(agent, test_dict, config, args)
         self.train_dict = train_dict
