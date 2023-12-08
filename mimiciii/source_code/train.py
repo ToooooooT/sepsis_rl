@@ -17,11 +17,14 @@ from utils import Config, plot_action_dist, plot_estimate_value, \
 from network import DuellingMLP, PolicyMLP
 from ope import WIS, DoublyRobust, FQE, QEstimator
 
+# import mlflow
+
 pd.options.mode.chained_assignment = None
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--hour", type=int, help="hours of one state", default=4)
+    parser.add_argument("--reward_type", type=int, help="reward function type", default=0)
+    parser.add_argument("--clip_reward", action="store_true", help="clip reward in range -1 ~ 1")
     parser.add_argument("--batch_size", type=int, help="batch_size", default=128)
     parser.add_argument("--fqe_batch_size", type=int, help="batch_size", default=256)
     parser.add_argument("--episode", type=int, help="episode", default=3e5)
@@ -33,14 +36,14 @@ def parse_args():
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
-    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=5000)
-    parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=2000)
+    parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=2000)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="env_model.pth")
     parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="LG_clf.sav")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
-    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=4)
+    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=10)
     parser.add_argument("--load_checkpoint", action="store_true", help="load checkpoint")
     args = parser.parse_args()
     return args
@@ -183,7 +186,15 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
                 f.write(f'[EPISODE {i}] | WIS: {wis_return:.5f}, DR: {dr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f} | loss : {loss}\n')
             print(f'[EPISODE {i}] | WIS: {wis_return:.5f}, DR: {dr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f}')
 
+            # log_data = loss
+            # log_data["WIS"] = wis_return
+            # log_data["DR"] = dr_return
+            # log_data["FQE"] = fqe_return
+            # log_data["QE"] = qe_return
+            # mlflow.log_metrics(log_data, i)
+
         agent.save_checkpoint(i)
+        fqe.records2csv()
 
     animation_action_distribution(hists, agent.log_dir)
     wis_returns = np.array(wis_returns)
@@ -226,20 +237,20 @@ if __name__ == '__main__':
     dataset_path = "../data/final_dataset/"
 
     # train
-    train_dataset = pd.read_csv(os.path.join(dataset_path, f'train_{args.hour}.csv'))
+    train_dataset = pd.read_csv(os.path.join(dataset_path, f'train_{args.reward_type}.csv'))
     icustayids = train_dataset['icustayid'].unique()
-    with open(os.path.join(dataset_path, 'train.pkl'), 'rb') as file:
+    with open(os.path.join(dataset_path, f'train_{args.reward_type}.pkl'), 'rb') as file:
         train_dict = pickle.load(file)
     train_data = train_dict['data']
 
     # validation
-    valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{args.hour}.csv'))
-    with open(os.path.join(dataset_path, 'valid.pkl'), 'rb') as file:
+    valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{args.reward_type}.csv'))
+    with open(os.path.join(dataset_path, f'valid_{args.reward_type}.pkl'), 'rb') as file:
         valid_dict = pickle.load(file)
 
     # test
-    test_dataset = pd.read_csv(os.path.join(dataset_path, f'test_{args.hour}.csv'))
-    with open(os.path.join(dataset_path, 'test.pkl'), 'rb') as file:
+    test_dataset = pd.read_csv(os.path.join(dataset_path, f'test_{args.reward_type}.csv'))
+    with open(os.path.join(dataset_path, f'test_{args.reward_type}.pkl'), 'rb') as file:
         test_dict = pickle.load(file)
     test_data, test_id_index_map = test_dict['data'], test_dict['id_index_map']
 
@@ -265,9 +276,9 @@ if __name__ == '__main__':
     env_spec = {'num_feats': 49, 'num_actions': 25}
 
     if args.agent == 'D3QN':
-        path = f'D3QN/test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-hidden_size={hidden_size}'
+        path = f'D3QN/reward_type={args.reward_type}-clip_reward={int(args.clip_reward)}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-hidden_size={hidden_size}'
     else:
-        path = f'{args.agent}/test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-hidden_size={hidden_size}'
+        path = f'{args.agent}/reward_type={args.reward_type}-clip_reward={int(args.clip_reward)}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-hidden_size={hidden_size}'
     log_path = os.path.join('./logs', path)
 
     agent = get_agent(args, log_path, env_spec, config)
@@ -277,11 +288,26 @@ if __name__ == '__main__':
     ######################################################################################
     # Training
     ######################################################################################
+
+    # mlflow.set_tracking_uri("http://127.0.0.1:8787")
+    # experiment = mlflow.set_experiment(f"{args.agent}-reward_type={args.reward_type}-clip_reward={args.clip_reward}")
+
     print('Adding dataset to replay buffer...')
-    add_dataset_to_replay(train_data, agent, clip_reward=True)
+    add_dataset_to_replay(train_data, agent, clip_reward=args.clip_reward)
 
     print('Start training...')
+    # with mlflow.start_run(experiment_id=experiment.experiment_id, run_name="test00000") as run:
+    #     print(run.info.run_id)
+    #     mlflow.log_params({
+    #         "episode": config.EPISODE,
+    #         "batch_size": config.BATCH_SIZE,
+    #         "use_pri": config.USE_PRIORITY_REPLAY,
+    #         "lr": config.LR,
+    #         "hidden_size": hidden_size,
+    #     })
+        # mlflow.pytorch.log_model()
     training(agent, valid_dataset, valid_dict, config, args)
+
 
     ######################################################################################
     # Testing

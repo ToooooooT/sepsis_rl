@@ -12,21 +12,39 @@ import matplotlib
 import matplotlib.pyplot as plt
 from collections import defaultdict
 import pickle
+from argparse import ArgumentParser
 
 matplotlib.use('Agg')  # Set the backend to Agg
 
 pd.options.mode.chained_assignment = None
 
-def get_reward(s, s_):
-    c0, c1, c2 = -0.025, -0.125, -2
-    s_sofa = s['SOFA']
-    s_lactate = s['Arterial_lactate']
-    s_sofa_ = s_['SOFA']
-    s_lactate_ = s_['Arterial_lactate']
+def parse_args():
+    parser = ArgumentParser()
+    parser.add_argument("--reward", type=int, help="reward function type", default=0)
+    parser.add_argument("--beta", type=float, help="reward function coefficient for type 1", default=0.6)
+    args = parser.parse_args()
+    return args
 
-    r = c0 * int(s_sofa_ == s_sofa and s_sofa_ > 0) + \
-            c1 * (s_sofa_ - s_sofa) + c2 * tanh(s_lactate_ - s_lactate)
+def get_reward(s, s_, args):
+    if args.reward == 0:
+        if s_ is None or s['icustayid'] != s_['icustayid']:
+            r = -15 if int(s['mortality_90d']) else 15
+        else:
+            c0, c1, c2 = -0.025, -0.125, -2
+            s_sofa = s['SOFA']
+            s_lactate = s['Arterial_lactate']
+            s_sofa_ = s_['SOFA']
+            s_lactate_ = s_['Arterial_lactate']
 
+            r = c0 * int(s_sofa_ == s_sofa and s_sofa_ > 0) + \
+                    c1 * (s_sofa_ - s_sofa) + c2 * tanh(s_lactate_ - s_lactate)
+    elif args.reward == 1:
+        if s_ is None or s['icustayid'] != s_['icustayid']:
+            r = -24 if int(s['mortality_90d']) else 24
+        else:
+            s_sofa = s['SOFA']
+            s_sofa_ = s_['SOFA']
+            r = args.beta * (s_sofa - s_sofa_)
     return r
 
 
@@ -55,24 +73,22 @@ def map_action(s, hour):
     return a
 
 
-def add_reward_action(dataset: pd.DataFrame, hour):
+def add_reward_action(dataset: pd.DataFrame, hour, args):
     dataset['reward'] = [0] * dataset.shape[0]
     dataset['action'] = [0] * dataset.shape[0]
     for index in tqdm(dataset.index[:-1]):
         s = dataset.loc[index, :]
         s_ = dataset.loc[index + 1, :]
         if s['icustayid'] != s_['icustayid']:
-            s_ = None
-            r = -15 if int(s['mortality_90d']) else 15
-        else:
-            r = get_reward(s, s_)
+            s_ = None 
+        r = get_reward(s, s_, args)
         a = map_action(s, hour)
         dataset.loc[index, 'reward'] = r
         dataset.loc[index, 'action'] = a
 
     # handle last state
     s = dataset.loc[dataset.index[-1], :]
-    r = -15 if int(s['mortality_90d']) else 15
+    r = get_reward(s, None, args)
     a = map_action(s, hour)
     dataset.loc[dataset.index[-1], 'reward'] = r
     dataset.loc[dataset.index[-1], 'action'] = a
@@ -85,13 +101,13 @@ def plot_reward_action(dataset: pd.DataFrame, name):
         rewards.append(s['reward'])
         actions.append(s['action'])
 
-    data = pd.DataFrame({'a':actions, 'SOFA':sofa, 'r':rewards})
+    data = pd.DataFrame({'a':actions, 'SOFA':sofa, 'r': rewards})
 
     fig, ax = plt.subplots()
 
     # plot data reward distribution
-    ax.hist(data['r'], bins=np.arange(41)-0.5)
-    ax.set_xticks(range(-15, 16, 2))
+    ax.hist(data['r'], bins=np.arange(53)-0.5)
+    ax.set_xticks(range(-26, 26, 2))
     plt.savefig(f'../logs/{name} reward distribution.png')
 
     # plot data action distribution
@@ -230,13 +246,15 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
 
 
 if __name__ == '__main__':
+    args = parse_args()
+
     source_path = '../../data/final_dataset/'
 
     hour = 4
 
     dataset = pd.read_csv(os.path.join(source_path, f'dataset_{hour}.csv'))
 
-    add_reward_action(dataset, hour)
+    add_reward_action(dataset, hour, args)
 
     ################################################################
     # split dataset 8:1:1 (train:valid:test)
@@ -259,17 +277,17 @@ if __name__ == '__main__':
     unnorm_valid_dataset = valid_dataset.copy(deep=True).reset_index(drop=True)
     unnorm_test_dataset = test_dataset.copy(deep=True).reset_index(drop=True)
 
-    unnorm_train_dataset.to_csv(os.path.join(source_path, 'train_4.csv'), index=False)
-    unnorm_valid_dataset.to_csv(os.path.join(source_path, 'valid_4.csv'), index=False)
-    unnorm_test_dataset.to_csv(os.path.join(source_path, 'test_4.csv'), index=False)
+    unnorm_train_dataset.to_csv(os.path.join(source_path, f'train_{args.reward}.csv'), index=False)
+    unnorm_valid_dataset.to_csv(os.path.join(source_path, f'valid_{args.reward}.csv'), index=False)
+    unnorm_test_dataset.to_csv(os.path.join(source_path, f'test_{args.reward}.csv'), index=False)
 
-    plot_reward_action(train_dataset, 'train')
-    plot_reward_action(valid_dataset, 'valid')
-    plot_reward_action(test_dataset, 'test')
+    plot_reward_action(train_dataset, f'train_{args.reward}')
+    plot_reward_action(valid_dataset, f'valid_{args.reward}')
+    plot_reward_action(test_dataset, f'test_{args.reward}')
     normalization(hour, train_dataset)
     normalization(hour, valid_dataset)
     normalization(hour, test_dataset)
 
-    process_dataset(train_dataset, unnorm_train_dataset, os.path.join(source_path, 'train.pkl'))
-    process_dataset(valid_dataset, unnorm_valid_dataset, os.path.join(source_path, 'valid.pkl'))
-    process_dataset(test_dataset, unnorm_test_dataset, os.path.join(source_path, 'test.pkl'))
+    process_dataset(train_dataset, unnorm_train_dataset, os.path.join(source_path, f'train_{args.reward}.pkl'))
+    process_dataset(valid_dataset, unnorm_valid_dataset, os.path.join(source_path, f'valid_{args.reward}.pkl'))
+    process_dataset(test_dataset, unnorm_test_dataset, os.path.join(source_path, f'test_{args.reward}.pkl'))
