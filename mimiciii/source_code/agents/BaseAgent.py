@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 from utils import Config
 from replay_buffer import ExperienceReplayMemory, PrioritizedReplayMemory
+from network import DuellingMLP
 
 class BaseAgent(ABC):
     def __init__(self, 
@@ -46,7 +47,7 @@ class BaseAgent(ABC):
 
         # network
         self.static_policy = static_policy
-
+        self.hidden_size = config.HIDDEN_SIZE
         self.declare_networks()
 
 
@@ -72,10 +73,9 @@ class BaseAgent(ABC):
         ''' To override '''
         pass
 
-    @abstractmethod
-    def declare_networks(self, t):
-        ''' To override '''
-        pass
+    def declare_networks(self):
+        self.model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
+        self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
 
     @abstractmethod
     def update(self, t):

@@ -45,6 +45,17 @@ def get_reward(s, s_, args):
             s_sofa = s['SOFA']
             s_sofa_ = s_['SOFA']
             r = args.beta * (s_sofa - s_sofa_)
+    elif args.reward == 2:
+        if s_ is None or s['icustayid'] != s_['icustayid']:
+            r = -24 if int(s['mortality_90d']) else 24
+        else:
+            c2 = -2
+            s_sofa = s['SOFA']
+            s_lactate = s['Arterial_lactate']
+            s_sofa_ = s_['SOFA']
+            s_lactate_ = s_['Arterial_lactate']
+            r = args.beta * (s_sofa - s_sofa_) + c2 * tanh(s_lactate_ - s_lactate)
+            pass
     return r
 
 

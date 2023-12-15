@@ -46,3 +46,5 @@ class Config(object):
         self.ACTOR_LAMBDA = 2.5
 
         self.SOFA_THRESHOLD = 4
+
+        self.HIDDEN_SIZE = (128, 128)

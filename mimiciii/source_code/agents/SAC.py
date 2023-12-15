@@ -9,6 +9,7 @@ import os
 
 from agents import BaseAgent
 from utils import Config
+from network import DuellingMLP, PolicyMLP
 
 class SAC(BaseAgent):
     def __init__(self, 
@@ -110,12 +111,11 @@ class SAC(BaseAgent):
 
 
     def declare_networks(self):
-        self.actor: nn.Module = None
-        self.qf1: nn.Module = None
-        self.qf2: nn.Module = None
-        self.target_qf1: nn.Module = None
-        self.target_qf2: nn.Module = None
-        raise NotImplementedError # override this function
+        self.actor = PolicyMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
+        self.qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
+        self.qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
+        self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
+        self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
 
 
     def compute_critic_loss(self, states, actions, rewards, next_states, dones, indices, weights):

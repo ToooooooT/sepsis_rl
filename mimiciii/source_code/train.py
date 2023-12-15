@@ -9,12 +9,12 @@ import random
 import pickle
 from argparse import ArgumentParser
 
-from agents import DQN_regularization, WDQNE, SAC_BC_E, BaseAgent
+from agents import DQN_regularization, WDQNE, SAC_BC_E, SAC_BC, SAC, BaseAgent
 from utils import Config, plot_action_dist, plot_estimate_value, \
                 animation_action_distribution, plot_pos_neg_action_dist, plot_diff_action_SOFA_dist, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
                 plot_action_diff_survival_rate
-from network import DuellingMLP, PolicyMLP
+from network import DuellingMLP
 from ope import WIS, DoublyRobust, FQE, QEstimator
 
 # import mlflow
@@ -43,62 +43,22 @@ def parse_args():
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
     parser.add_argument("--seed", type=int, help="random seed", default=10)
-    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=10)
+    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=8)
     parser.add_argument("--load_checkpoint", action="store_true", help="load checkpoint")
     args = parser.parse_args()
     return args
 
-hidden_size = (128, 128)
-
-######################################################################################
-# Agent
-######################################################################################
-class D3QN_Agent(DQN_regularization):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir='./log',
-                 static_policy=False):
-        super().__init__(env, config, log_dir, static_policy)
-
-    def declare_networks(self):
-        self.model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-
-class WD3QNE_Agent(WDQNE):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir='./log',
-                 static_policy=False):
-        super().__init__(env, config, log_dir, static_policy)
-
-    def declare_networks(self):
-        self.model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-
-class SAC_BC_Agent(SAC_BC_E):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir='./log',
-                 static_policy=False):
-        super().__init__(env, config, log_dir, static_policy)
-
-    def declare_networks(self):
-        self.actor = PolicyMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-
 def get_agent(args, log_path, env_spec, config):
     if args.agent == 'D3QN':
-        agent = D3QN_Agent(log_dir=log_path, env=env_spec, config=config)
+        agent = DQN_regularization(log_dir=log_path, env=env_spec, config=config)
     elif args.agent == 'WD3QNE':
-        agent = WD3QNE_Agent(log_dir=log_path, env=env_spec, config=config)
+        agent = WDQNE(log_dir=log_path, env=env_spec, config=config)
+    elif args.agent == 'SAC':
+        agent = SAC(log_dir=log_path, env=env_spec, config=config)
     elif args.agent == 'SAC_BC':
-        agent = SAC_BC_Agent(log_dir=log_path, env=env_spec, config=config)
+        agent = SAC_BC(log_dir=log_path, env=env_spec, config=config)
+    elif args.agent == 'SAC_BC_E':
+        agent = SAC_BC_E(log_dir=log_path, env=env_spec, config=config)
     else:
         raise NotImplementedError
     return agent
@@ -116,19 +76,19 @@ def add_dataset_to_replay(train_data, agent: DQN_regularization, clip_reward):
     if clip_reward:
         r[(r > 1) & (r != 15)] = 1
         r[(r < -1) & (r != -15)] = -1
-    if isinstance(agent, D3QN_Agent):
-        data = [s, a, r, s_, done]
+    if isinstance(agent, SAC_BC_E):
+        data = [s, a, r, s_, done, SOFA]
         agent.memory.read_data(data)
-    elif isinstance(agent, WD3QNE_Agent):
+    elif isinstance(agent, WDQNE):
         data = [s, a, r, s_, a_, done, SOFA]
         agent.memory.read_data(data)
-    elif isinstance(agent, SAC_BC_Agent):
-        data = [s, a, r, s_, done, SOFA]
+    elif isinstance(agent, DQN_regularization) or isinstance(agent, SAC_BC) or isinstance(agent, SAC) :
+        data = [s, a, r, s_, done]
         agent.memory.read_data(data)
     else:
         raise NotImplementedError
 
-def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, config: Config, args):
+def training(agent: DQN_regularization, valid_dataset: pd.DataFrame, valid_dict: dict, config: Config, args):
     '''
     Args:
         train_data      : processed training dataset
@@ -151,8 +111,8 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
               valid_dict['data'], 
               config, 
               args,
-              Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size),
-              target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size))
+              Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size),
+              target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size))
     qe = QEstimator(agent, valid_dict['data'], config, args)
 
     if args.load_checkpoint:
@@ -186,11 +146,11 @@ def training(agent: D3QN_Agent, valid_dataset: pd.DataFrame, valid_dict: dict, c
                 f.write(f'[EPISODE {i}] | WIS: {wis_return:.5f}, DR: {dr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f} | loss : {loss}\n')
             print(f'[EPISODE {i}] | WIS: {wis_return:.5f}, DR: {dr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f}')
 
-            # log_data = loss
-            # log_data["WIS"] = wis_return
-            # log_data["DR"] = dr_return
-            # log_data["FQE"] = fqe_return
-            # log_data["QE"] = qe_return
+            log_data = loss
+            log_data["WIS"] = wis_return
+            log_data["DR"] = dr_return
+            log_data["FQE"] = fqe_return
+            log_data["QE"] = qe_return
             # mlflow.log_metrics(log_data, i)
 
         agent.save_checkpoint(i)
@@ -276,9 +236,9 @@ if __name__ == '__main__':
     env_spec = {'num_feats': 49, 'num_actions': 25}
 
     if args.agent == 'D3QN':
-        path = f'D3QN/reward_type={args.reward_type}-clip_reward={int(args.clip_reward)}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-hidden_size={hidden_size}'
+        path = f'D3QN/reward_type={args.reward_type}-clip_reward={int(args.clip_reward)}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-hidden_size={config.HIDDEN_SIZE}'
     else:
-        path = f'{args.agent}/reward_type={args.reward_type}-clip_reward={int(args.clip_reward)}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-hidden_size={hidden_size}'
+        path = f'{args.agent}/reward_type={args.reward_type}-clip_reward={int(args.clip_reward)}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-hidden_size={config.HIDDEN_SIZE}'
     log_path = os.path.join('./logs', path)
 
     agent = get_agent(args, log_path, env_spec, config)
@@ -322,6 +282,9 @@ if __name__ == '__main__':
     test_dataset['policy vaso'] = policy_actions % 5
 
     # estimate expected return
+    ######################################################################################
+    # Off-policy Evaluation
+    ######################################################################################
     wis = WIS(agent, test_dict['data'], config, args)
     avg_wis_return, wis_returns = wis.estimate(policy_action_probs=policy_action_probs)
     dr = DoublyRobust(agent, test_dict['data'], config, args, test_dataset)
@@ -331,8 +294,8 @@ if __name__ == '__main__':
               test_dict['data'], 
               config, 
               args,
-              Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size),
-              target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size))
+              Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size),
+              target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size))
     avg_fqe_return, fqe_returns = fqe.estimate(agent=agent)
     qe = QEstimator(agent, test_dict['data'], config, args)
     avg_qe_return, qe_returns = qe.estimate(agent=agent)

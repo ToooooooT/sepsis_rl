@@ -62,14 +62,6 @@ class DQN(BaseAgent):
         else:
             assert False
 
-
-    def declare_networks(self):
-        # overload function
-        self.model: nn.Module = None
-        self.target_model: nn.Module = None
-        raise NotImplementedError # override this function
-
-
     def compute_loss(self, batch_vars):
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
         q_values = self.model(states).gather(1, actions)
