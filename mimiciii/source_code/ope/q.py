@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from typing import Tuple
 
 from utils import Config
 from ope.base_estimator import BaseEstimator
@@ -12,7 +13,7 @@ class QEstimator(BaseEstimator):
         start_indexs = [0] + (done_indexs + 1).tolist()[:-1]
         self.initial_states = torch.tensor(self.states[start_indexs], dtype=torch.float)
 
-    def estimate(self, **kwargs):
+    def estimate(self, **kwargs) -> Tuple[float, np.ndarray]:
         self.agent = kwargs['agent']
         states = self.initial_states.to(self.device)
         with torch.no_grad():

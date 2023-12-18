@@ -2,6 +2,7 @@ import random
 import torch
 import numpy as np
 import pickle
+from typing import Tuple, List
 
 from replay_buffer.data_structures import SegmentTree, SumSegmentTree
 
@@ -14,20 +15,20 @@ class ExperienceReplayMemory:
         self.kind = len(dims)
         self.is_full = False
 
-    def push(self, transition):
+    def push(self, transition: Tuple):
         for i in range(len(transition)):
             self.memory[i][self.next_idx] = transition[i]
         if self.next_idx + 1 == self.capacity:
             self.is_full = True
         self.next_idx = (self.next_idx + 1) % self.capacity
 
-    def sample(self, batch_size):
+    def sample(self, batch_size: int):
         high = self.capacity - 1 if self.is_full else self.next_idx
         # sample_idx = random.sample(range(0, self.capacity if self.is_full else self.next_idx), batch_size)
         sample_idx = [random.randint(0, high) for _ in range(batch_size)]
         return *[self.memory[i][sample_idx] for i in range(self.kind)], None, None
 
-    def read_file(self, file_path):
+    def read_file(self, file_path: str):
         with open(file_path, "rb") as f:
             data = pickle.load(f)
         self.memory = data
@@ -35,7 +36,10 @@ class ExperienceReplayMemory:
         self.kind = len(data)
         self.is_full = True
 
-    def read_data(self, data):
+    def read_data(self, data: List[np.ndarray]):
+        '''
+        each np.ndarray is a element of transition, e.g. state, action...
+        '''
         self.memory = data
         self.capacity = self.memory[0].shape[0]
         self.kind = len(data)
@@ -82,7 +86,7 @@ class PrioritizedReplayMemory(object):
         self._it_sum = SumSegmentTree(it_capacity)
         self._max_priority = 100.0
 
-    def read_file(self, file_path):
+    def read_file(self, file_path: str):
         with open(file_path, "rb") as f:
             data = pickle.load(f)
         self._storage = data
@@ -96,7 +100,10 @@ class PrioritizedReplayMemory(object):
         for i in range(self._maxsize):
             self._it_sum[i] = self._max_priority ** self._alpha
 
-    def read_data(self, data):
+    def read_data(self, data: List[np.ndarray]):
+        '''
+        each np.ndarray is a element of transition, e.g. state, action...
+        '''
         self._storage = data
         self._maxsize = self._storage[0].shape[0]
         self.kind = len(data)
@@ -108,7 +115,7 @@ class PrioritizedReplayMemory(object):
         for i in range(self._maxsize):
             self._it_sum[i] = self._max_priority ** self._alpha
 
-    def beta_by_frame(self, frame_idx):
+    def beta_by_frame(self, frame_idx: int) -> float:
         return min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)
 
     def push(self, data):
@@ -123,10 +130,10 @@ class PrioritizedReplayMemory(object):
         self._it_sum[idx] = self._max_priority ** self._alpha
 
 
-    def _encode_sample(self, idxes):
+    def _encode_sample(self, idxes: List[int]):
         return [self._storage[i][idxes] for i in range(self.kind)]
 
-    def _sample_proportional(self, batch_size):
+    def _sample_proportional(self, batch_size: int) -> List[int]:
         '''
             split to interval which has number of batch_size and get index in each of the interval,
             may have repeat sample
@@ -139,7 +146,7 @@ class PrioritizedReplayMemory(object):
             res.append(idx)
         return res
 
-    def sample(self, batch_size):
+    def sample(self, batch_size: int):
         """Sample a batch of experiences.
         compared to ReplayBuffer.sample
         it also returns importance weights and idxes
@@ -193,7 +200,7 @@ class PrioritizedReplayMemory(object):
         encoded_sample = self._encode_sample(idxes)
         return *encoded_sample, idxes, weights
 
-    def update_priorities(self, idxes, priorities):
+    def update_priorities(self, idxes: List[int], priorities):
         """Update priorities of sampled transitions.
         sets priority of transition at index idxes[i] in buffer
         to priorities[i].

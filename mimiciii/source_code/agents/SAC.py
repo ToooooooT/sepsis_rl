@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
-
+from typing import List, Dict, Tuple
 import os
 
 from agents import BaseAgent
@@ -15,8 +15,8 @@ class SAC(BaseAgent):
     def __init__(self, 
                  env: dict, 
                  config: Config, 
-                 log_dir='./logs',
-                 static_policy=False) -> None:
+                 log_dir: str='./logs',
+                 static_policy: bool=False) -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
         
         self.target_qf1.load_state_dict(self.qf1.state_dict())
@@ -90,7 +90,7 @@ class SAC(BaseAgent):
             checkpoint['a_optimizer'] = self.a_optimizer.state_dict()
         torch.save(checkpoint, os.path.join(self.log_dir, 'checkpoint.pth'))
 
-    def load_checkpoint(self):
+    def load_checkpoint(self) -> int:
         path = os.path.join(self.log_dir, 'checkpoint.pth')
         if os.path.exists(path):
             checkpoint = torch.load(path)
@@ -118,7 +118,14 @@ class SAC(BaseAgent):
         self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
 
 
-    def compute_critic_loss(self, states, actions, rewards, next_states, dones, indices, weights):
+    def compute_critic_loss(self, 
+                            states: torch.Tensor, 
+                            actions: torch.Tensor, 
+                            rewards: torch.Tensor, 
+                            next_states: torch.Tensor, 
+                            dones: torch.Tensor, 
+                            indices: List, 
+                            weights: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
             _, _, next_state_log_pi, next_state_action_probs = self.get_action_probs(next_states)
             qf1_next_target = self.target_qf1(next_states)
@@ -149,7 +156,7 @@ class SAC(BaseAgent):
         qf_loss = qf1_loss + qf2_loss
         return qf_loss
 
-    def compute_actor_loss(self, states):
+    def compute_actor_loss(self, states) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         _, _, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -159,7 +166,7 @@ class SAC(BaseAgent):
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
         return actor_loss, action_probs, log_pi
 
-    def update(self, t):
+    def update(self, t) -> Dict:
         # ref: https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/sac_atari.py
         self.actor.train()
         self.qf1.train()
@@ -193,10 +200,12 @@ class SAC(BaseAgent):
             self.update_target_model(self.target_qf1, self.qf1)
             self.update_target_model(self.target_qf2, self.qf2)
 
-        return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item(), 'alpha_loss': alpha_loss.detach().cpu().item()}
+        return {'qf_loss': qf_loss.detach().cpu().item(), 
+                'actor_loss': actor_loss.detach().cpu().item(), 
+                'alpha_loss': alpha_loss.detach().cpu().item()}
 
 
-    def get_action_probs(self, states: torch.Tensor):
+    def get_action_probs(self, states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         logits = self.actor(states)
         policy_dist = Categorical(logits=logits)
         action = policy_dist.sample()
@@ -205,7 +214,7 @@ class SAC(BaseAgent):
         log_prob = F.log_softmax(logits, dim=1)
         return action.view(-1, 1), logits, log_prob, action_probs
 
-    def get_action(self, s, eps=0):
+    def get_action(self, s, eps=0) -> int:
         '''
         for interacting with environment
         '''
@@ -233,7 +242,7 @@ class SAC(BaseAgent):
                                    states: np.ndarray, 
                                    next_states: np.ndarray, 
                                    rewards: np.ndarray,
-                                   dones: np.ndarray):
+                                   dones: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         '''
         for data augmentation
         '''
@@ -265,14 +274,18 @@ class SAC_BC(SAC):
     def __init__(self, 
                  env: dict, 
                  config: Config, 
-                 log_dir='./logs',
-                 static_policy=False) -> None:
+                 log_dir: str='./logs',
+                 static_policy: bool=False) -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
 
         self.actor_lambda = config.ACTOR_LAMBDA
 
 
-    def compute_actor_loss(self, states, actions):
+    def compute_actor_loss(self, states: torch.Tensor, actions: torch.Tensor) -> Tuple[torch.Tensor,
+                                                                                       torch.Tensor,
+                                                                                       torch.Tensor,
+                                                                                       torch.Tensor,
+                                                                                       torch.Tensor]:
         _, _, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -319,4 +332,7 @@ class SAC_BC(SAC):
             self.update_target_model(self.target_qf1, self.qf1)
             self.update_target_model(self.target_qf2, self.qf2)
 
-        return {'qf_loss': qf_loss.detach().cpu().item(), 'actor_loss': actor_loss.detach().cpu().item(), 'bc_loss': bc_loss.detach().cpu().item(), 'alpha_loss': alpha_loss.detach().cpu().item()}
+        return {'qf_loss': qf_loss.detach().cpu().item(), 
+                'actor_loss': actor_loss.detach().cpu().item(), 
+                'bc_loss': bc_loss.detach().cpu().item(), 
+                'alpha_loss': alpha_loss.detach().cpu().item()}

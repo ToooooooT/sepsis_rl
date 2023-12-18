@@ -4,6 +4,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 import torch.nn.functional as F
 import joblib
+from typing import Tuple
 
 from ope.base_estimator import BaseEstimator
 from utils import Config
@@ -70,7 +71,7 @@ class DoublyRobust(BaseEstimator):
         self.sofa_dicts = (sofa_std, sofa_mean, max_norm_sofa, min_norm_sofa)
         self.lact_dicts = (lact_std, lact_mean, max_norm_lact, min_norm_lact)
 
-    def estimate_q_values(self):
+    def estimate_q_values(self) -> np.ndarray:
         states = torch.tensor(self.states, dtype=torch.float, device=self.device)
         with torch.no_grad():
             if isinstance(self.agent, DQN):
@@ -86,7 +87,7 @@ class DoublyRobust(BaseEstimator):
         return est_q_values
 
 
-    def estimate(self, **kwargs):
+    def estimate(self, **kwargs) -> Tuple[float, np.ndarray, np.ndarray]:
         '''
         Args:
             policy_actions     : np.ndarray; expected shape (B, 1)
@@ -128,7 +129,7 @@ class DoublyRobust(BaseEstimator):
         return policy_return.mean(), policy_return.reshape(1, -1), est_alive
 
 
-    def estimate_next_state(self, policy_actions: np.ndarray):
+    def estimate_next_state(self, policy_actions: np.ndarray) -> np.ndarray:
         '''
         Args:
             policy_actions: expected shape (B, 1)
@@ -155,7 +156,7 @@ class DoublyRobust(BaseEstimator):
 
     def estimate_reward(self, 
                         est_next_states: np.ndarray, 
-                        policy_actions: np.ndarray):
+                        policy_actions: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         '''
         Args:
             policy_actions: expected shape: (B, 1)

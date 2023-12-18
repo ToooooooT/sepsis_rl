@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from typing import Dict, Tuple
 
 from agents.BaseAgent import BaseAgent
 from utils import Config
@@ -29,7 +30,7 @@ class DQN(BaseAgent):
         else:
             self.model.train()
 
-    def save_checkpoint(self, epoch):
+    def save_checkpoint(self, epoch: int):
         checkpoint = {
             'epoch': epoch,
             'model': self.model.state_dict(),
@@ -37,7 +38,7 @@ class DQN(BaseAgent):
         }
         torch.save(checkpoint, os.path.join(self.log_dir, 'checkpoint.pth'))
 
-    def load_checkpoint(self):
+    def load_checkpoint(self) -> int:
         path = os.path.join(self.log_dir, 'checkpoint.pth')
         if os.path.exists(path):
             checkpoint = torch.load(path)
@@ -62,7 +63,7 @@ class DQN(BaseAgent):
         else:
             assert False
 
-    def compute_loss(self, batch_vars):
+    def compute_loss(self, batch_vars: Tuple) -> torch.Tensor:
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
         q_values = self.model(states).gather(1, actions)
         with torch.no_grad():
@@ -78,7 +79,7 @@ class DQN(BaseAgent):
         return loss
 
 
-    def update(self, t):
+    def update(self, t: int) -> Dict:
         if self.static_policy:
             return None
 
@@ -101,7 +102,7 @@ class DQN(BaseAgent):
         return {'td_error': loss.item()}
 
 
-    def get_action(self, s, eps=0):
+    def get_action(self, s, eps=0) -> int:
         '''
         for interacting with environment
         '''
@@ -113,21 +114,21 @@ class DQN(BaseAgent):
 
         return np.random.randint(0, self.num_actions)
 
-    def get_action_probs(self, states: torch.Tensor):
+    def get_action_probs(self, states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         _, actions = self.model(states).max(dim=1)
         actions = actions.view(-1, 1) # (B, 1)
         action_probs = torch.full((actions.shape[0], 25), 0.01, device=self.device)
         action_probs = action_probs.scatter_(1, actions, 0.99)
         return actions, None, None, action_probs
 
-    def get_max_next_state_action(self, next_states):
+    def get_max_next_state_action(self, next_states) -> torch.Tensor:
         return self.model(next_states).max(dim=1)[1].view(-1, 1)
 
     def adversarial_state_training(self, 
                                    states: np.ndarray, 
                                    next_states: np.ndarray, 
                                    rewards: np.ndarray,
-                                   dones: np.ndarray):
+                                   dones: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         '''
         for data augmentation
         '''
@@ -155,7 +156,7 @@ class WDQN(DQN):
                  static_policy=False):
         super().__init__(env, config, log_dir, static_policy)
 
-    def compute_loss(self, batch_vars):
+    def compute_loss(self, batch_vars: Tuple) -> torch.Tensor:
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
         q_values = self.model(states).gather(1, actions)
         next_q_values = self.model(next_states)

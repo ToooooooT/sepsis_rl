@@ -7,6 +7,7 @@ import torch.optim as optim
 import numpy as np
 import os
 from tqdm import tqdm
+from typing import Tuple
 
 from utils import Config
 from agents import BaseAgent
@@ -97,7 +98,7 @@ class FQE(BaseEstimator):
         return self.predict()
 
 
-    def predict(self):
+    def predict(self) -> Tuple[float, np.ndarray]:
         initial_states = self.initial_states.to(self.device)
         with torch.no_grad():
             actions = self.agent.get_action_probs(initial_states)[0]

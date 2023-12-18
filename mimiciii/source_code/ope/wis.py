@@ -1,5 +1,5 @@
 import numpy as np
-import pandas as pd
+from typing import Tuple
 
 from ope.base_estimator import BaseEstimator
 from utils import Config
@@ -16,7 +16,7 @@ class WIS(BaseEstimator):
         start_indexs = np.append(0, done_indexs[:-1] + 1)
         self.max_length = (done_indexs - start_indexs + 1).max()
 
-    def estimate(self, **kwargs):
+    def estimate(self, **kwargs) -> Tuple[float, np.ndarray]:
         '''
         Description:
             compute all trajectory total reward and weight imporatance sampling.

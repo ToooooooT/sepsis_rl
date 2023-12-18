@@ -1,8 +1,8 @@
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-
 from scipy.stats import sem
+from typing import List, Tuple
 
 matplotlib.use('Agg')  # Set the backend to Agg
 
@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 
-def animation_action_distribution(hists, log_dir):
+def animation_action_distribution(hists, log_dir: str):
     '''
     Args:
         hists: a list of each validation of the frequency of each action be selected
@@ -31,7 +31,7 @@ def animation_action_distribution(hists, log_dir):
     plt.close()
 
 
-def plot_estimate_value(policy_val: np.ndarray, names: list, log_dir, freq):
+def plot_estimate_value(policy_val: np.ndarray, names: list, log_dir: str, freq: int):
     '''
     Args:
         policy_val: estimate return value of learned policy during training process; expected shape (k, T)
@@ -54,7 +54,7 @@ def plot_estimate_value(policy_val: np.ndarray, names: list, log_dir, freq):
     plt.close()
 
 
-def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir):
+def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str):
     '''
     Args:
         actions : policy action; expected shape (B, 1)
@@ -96,7 +96,7 @@ def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir):
     plt.close()
 
 
-def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir):
+def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(8, 8))
     height = np.bincount(negative_traj['policy action'], minlength=25)[:25]
     ax1.bar(range(25), height=height)
@@ -127,7 +127,7 @@ def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, negative_traj: pd.Data
     plt.close()
 
 
-def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir):
+def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12,12))
 
     height = np.bincount(positive_traj[positive_traj['action'] != positive_traj['policy action']]['SOFA'], minlength=25)[:25]
@@ -159,7 +159,7 @@ def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, negative_traj: pd.Da
     plt.close()
 
 
-def plot_diff_action(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir):
+def plot_diff_action(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str):
     f, ax = plt.subplots(5, 5, figsize=(32,32))
 
     for i in range(5):
@@ -191,7 +191,7 @@ def plot_diff_action(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, l
     plt.close()
 
 
-def sliding_mean(data_array: list, window=1):
+def sliding_mean(data_array: list, window: int=1):
     new_list = []
     for i in range(len(data_array)):
         indices = range(max(i - window, 0),
@@ -204,7 +204,11 @@ def sliding_mean(data_array: list, window=1):
     return np.array(new_list)
 
 
-def plot_survival_rate(expected_return: np.ndarray, id_index_map: dict, dataset: pd.DataFrame, name: list, log_dir):
+def plot_survival_rate(expected_return: np.ndarray, 
+                       id_index_map: dict, 
+                       dataset: pd.DataFrame, 
+                       name: list, 
+                       log_dir: str):
     '''
     Args:
         expected_return : expected shape (k, N); k is number of estimators
@@ -274,7 +278,7 @@ def plot_survival_rate(expected_return: np.ndarray, id_index_map: dict, dataset:
     plt.close()
 
 
-def plot_expected_return_distribution(expected_return: np.ndarray, name: list, log_dir):
+def plot_expected_return_distribution(expected_return: np.ndarray, name: list, log_dir: str):
     '''
     Args:
         expected_return : expected shape (k, N); k is number of estimators
@@ -315,7 +319,7 @@ def plot_expected_return_distribution(expected_return: np.ndarray, name: list, l
     plt.close()
 
 
-def make_df_diff(test_dataset: pd.DataFrame, vaso_vals, iv_vals):
+def make_df_diff(test_dataset: pd.DataFrame, vaso_vals: List, iv_vals) -> pd.DataFrame:
     iv_diff = test_dataset['input_4hourly'].values - test_dataset['policy iv'].replace({i: iv_vals[i] for i in range(5)}).values
     vaso_diff = test_dataset['max_dose_vaso'].values - test_dataset['policy vaso'].replace({i: vaso_vals[i] for i in range(5)}).values
     df_diff = pd.DataFrame()
@@ -325,7 +329,7 @@ def make_df_diff(test_dataset: pd.DataFrame, vaso_vals, iv_vals):
     return df_diff
 
 
-def make_iv_plot_data(df_diff: pd.DataFrame):
+def make_iv_plot_data(df_diff: pd.DataFrame) -> Tuple[List, List, List]:
     bin_medians_iv = []
     mort_iv = []
     mort_std_iv= []
@@ -344,7 +348,7 @@ def make_iv_plot_data(df_diff: pd.DataFrame):
     return bin_medians_iv, mort_iv, mort_std_iv
 
 
-def make_vaso_plot_data(df_diff):
+def make_vaso_plot_data(df_diff) -> Tuple[List, List, List]:
     bin_medians_vaso = []
     mort_vaso= []
     mort_std_vaso= []
@@ -363,7 +367,9 @@ def make_vaso_plot_data(df_diff):
     return bin_medians_vaso, mort_vaso, mort_std_vaso
 
 
-def plot_action_diff_survival_rate(train_dataset: pd.DataFrame, test_dataset: pd.DataFrame, log_dir):
+def plot_action_diff_survival_rate(train_dataset: pd.DataFrame, 
+                                   test_dataset: pd.DataFrame, 
+                                   log_dir: str):
     vaso_vals = [0]
     vaso_vals.extend(train_dataset['max_dose_vaso'][train_dataset['max_dose_vaso'] > 0].quantile([0.125, 0.375, 0.625, 0.875]))
     iv_vals = [0]

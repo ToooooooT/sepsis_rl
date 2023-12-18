@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 from abc import ABC, abstractmethod
 import numpy as np
+from typing import Tuple, List
 
 from utils import Config
 from replay_buffer import ExperienceReplayMemory, PrioritizedReplayMemory
@@ -11,8 +12,8 @@ class BaseAgent(ABC):
     def __init__(self, 
                  env: dict, 
                  config: Config, 
-                 log_dir='./logs',
-                 static_policy=False):
+                 log_dir: str='./logs',
+                 static_policy: bool=False):
         # log directory
         self.log_dir = log_dir
 
@@ -70,7 +71,7 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    def save_checkpoint(self, epoch):
+    def save_checkpoint(self, epoch: int):
         ''' To override '''
         pass
     
@@ -85,12 +86,12 @@ class BaseAgent(ABC):
         self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
 
     @abstractmethod
-    def update(self, t):
+    def update(self, t: int):
         ''' To override '''
         pass
 
     @abstractmethod
-    def get_action(self, s, eps=0):
+    def get_action(self, s: np.ndarray, eps=0):
         ''' To override '''
         pass
 
@@ -110,7 +111,13 @@ class BaseAgent(ABC):
         self.memory.push((s, a, r, s_, done))
 
 
-    def prep_minibatch(self):
+    def prep_minibatch(self) -> Tuple[torch.Tensor, 
+                                      torch.Tensor,
+                                      torch.Tensor,
+                                      torch.Tensor,
+                                      torch.Tensor,
+                                      List,
+                                      torch.Tensor]:
         '''
         Returns:
             states: expected shape (B, S)
@@ -141,7 +148,7 @@ class BaseAgent(ABC):
                      next_states: np.ndarray, 
                      rewards: np.ndarray, 
                      dones: np.ndarray, 
-                     transformation_type: str):
+                     transformation_type: str) -> Tuple[np.ndarray, np.ndarray]:
         if transformation_type == "Gaussian":
             states = states + np.random.normal(0, self.gaussian_noise_std, size=states.shape)
             next_states = next_states + np.random.normal(0, self.gaussian_noise_std, size=next_states.shape)
@@ -158,7 +165,11 @@ class BaseAgent(ABC):
         return states, next_states
 
     @abstractmethod
-    def adversarial_state_training(self, states: np.ndarray, next_states: np.ndarray, rewards: np.ndarray):
+    def adversarial_state_training(self, 
+                                   states: np.ndarray, 
+                                   next_states: np.ndarray, 
+                                   rewards: np.ndarray,
+                                   dones: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         '''
         To override
         for data augmentation

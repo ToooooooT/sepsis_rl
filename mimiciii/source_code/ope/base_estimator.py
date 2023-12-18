@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import pandas as pd
+from typing import Dict
 
 from utils import Config
 from agents import BaseAgent
@@ -7,7 +7,7 @@ from agents import BaseAgent
 class BaseEstimator(ABC):
     def __init__(self, 
                  agent: BaseAgent,
-                 data_dict: dict, 
+                 data_dict: Dict, 
                  config: Config,
                  args) -> None:
         super().__init__()
