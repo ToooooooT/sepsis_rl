@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 from abc import ABC, abstractmethod
+import numpy as np
 
 from utils import Config
 from replay_buffer import ExperienceReplayMemory, PrioritizedReplayMemory
@@ -39,6 +40,12 @@ class BaseAgent(ABC):
         self.priority_alpha = config.PRIORITY_ALPHA
         self.priority_beta_start = config.PRIORITY_BETA_START
         self.priority_beta_frames = config.PRIORITY_BETA_FRAMES
+
+        # data augmentation
+        self.gaussian_noise_std = config.GAUSSIAN_NOISE_STD
+        self.uniform_noise = config.UNIFORM_NOISE
+        self.mixup_alpha = config.MIXUP_ALPHA
+        self.adversarial_step = config.ADVERSARIAL_STEP
 
         # update target network parameter
         self.tau = config.TAU
@@ -111,8 +118,8 @@ class BaseAgent(ABC):
             rewards: expected shape (B, 1)
             next_states: expected shape (B, S)
             dones: expected shape (B, 1)
-            indices: a list of index
-            weights: expected shape (B,)
+            indices: a list of index of replay buffer only for PER 
+            weights: expected shape (B,); weight for each transition, only for PER
         '''
         # random transition batch is taken from replay memory
         states, actions, rewards, next_states, dones, indices, weights = self.memory.sample(self.batch_size)
@@ -128,3 +135,32 @@ class BaseAgent(ABC):
     def update_target_model(self, target: nn.Module, source: nn.Module):
         for target_param, param in zip(target.parameters(), source.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+    def augmentation(self, 
+                     states: np.ndarray, 
+                     next_states: np.ndarray, 
+                     rewards: np.ndarray, 
+                     dones: np.ndarray, 
+                     transformation_type: str):
+        if transformation_type == "Gaussian":
+            states = states + np.random.normal(0, self.gaussian_noise_std, size=states.shape)
+            next_states = next_states + np.random.normal(0, self.gaussian_noise_std, size=next_states.shape)
+        elif transformation_type == "Uniform":
+            states = states + np.random.uniform(-self.uniform_noise, self.uniform_noise, size=states.shape)
+            next_states = next_states + np.random.uniform(-self.uniform_noise, self.uniform_noise, size=next_states.shape)
+        elif transformation_type == "Mixup":
+            lmbda = np.random.beta(self.mixup_alpha, self.mixup_alpha)
+            states = lmbda * states + (1 - lmbda) * next_states
+        elif transformation_type == "adversarial":
+            states, next_states = self.adversarial_state_training(states, next_states, rewards, dones)
+        else:
+            raise NotImplementedError
+        return states, next_states
+
+    @abstractmethod
+    def adversarial_state_training(self, states: np.ndarray, next_states: np.ndarray, rewards: np.ndarray):
+        '''
+        To override
+        for data augmentation
+        '''
+        pass

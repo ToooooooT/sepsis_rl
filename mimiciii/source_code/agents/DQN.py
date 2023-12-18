@@ -123,7 +123,30 @@ class DQN(BaseAgent):
     def get_max_next_state_action(self, next_states):
         return self.model(next_states).max(dim=1)[1].view(-1, 1)
 
+    def adversarial_state_training(self, 
+                                   states: np.ndarray, 
+                                   next_states: np.ndarray, 
+                                   rewards: np.ndarray,
+                                   dones: np.ndarray):
+        '''
+        for data augmentation
+        '''
+        # TODO: check this function, currently only augment on states
+        states = torch.tensor(states, device=self.device, dtype=torch.float, requires_grad=True)
+        next_states = torch.tensor(next_states, device=self.device, dtype=torch.float)
+        rewards = torch.tensor(rewards, device=self.device, dtype=torch.float)
+        dones = torch.tensor(dones, device=self.device, dtype=torch.float)
 
+        q_values = self.model(states).max(1, keepdim=True)[0]
+        next_q_values = self.model(next_states).max(1, keepdim=True)[0]
+        loss = (rewards + next_q_values * (1 - dones) - q_values).mean()
+        states.grad.zero_()
+        loss.backward()
+        with torch.no_grad():
+            states = states + states.grad * self.adversarial_step
+        return states.detach().cpu().numpy(), next_states.cpu().numpy()
+
+        
 class WDQN(DQN):
     def __init__(self, 
                  env: dict, 

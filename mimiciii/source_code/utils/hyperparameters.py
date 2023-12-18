@@ -48,3 +48,9 @@ class Config(object):
         self.SOFA_THRESHOLD = 4
 
         self.HIDDEN_SIZE = (128, 128)
+
+        # data augmentation
+        self.GAUSSIAN_NOISE_STD = 3e-4
+        self.UNIFORM_NOISE = 3e-4
+        self.MIXUP_ALPHA = 0.4
+        self.ADVERSARIAL_STEP = 1e-4
