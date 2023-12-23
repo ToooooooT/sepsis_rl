@@ -83,8 +83,8 @@ class BaseAgent(ABC):
         pass
 
     def declare_networks(self):
-        self.model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
-        self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
+        self.q = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
+        self.target_q = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
 
     @abstractmethod
     def update(self, t: int):

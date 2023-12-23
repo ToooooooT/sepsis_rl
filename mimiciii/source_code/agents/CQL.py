@@ -31,6 +31,7 @@ class CQL(SAC):
             'actor': self.actor.state_dict(),
             'qf1': self.qf1.state_dict(),
             'qf2': self.qf2.state_dict(),
+            'q_dre': self.q_dre.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'q_optimizer': self.q_optimizer.state_dict(),
         }
@@ -51,8 +52,10 @@ class CQL(SAC):
         self.actor.load_state_dict(checkpoint['actor'])
         self.qf1.load_state_dict(checkpoint['qf1'])
         self.qf2.load_state_dict(checkpoint['qf2'])
+        self.q_dre.load_state_dict(checkpoint['q_dre'])
         self.target_qf1.load_state_dict(checkpoint['qf1'])
         self.target_qf2.load_state_dict(checkpoint['qf2'])
+        self.target_q_dre.load_state_dict(checkpoint['q_dre'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
         self.q_optimizer.load_state_dict(checkpoint['q_optimizer'])
         if self.autotune:
@@ -115,7 +118,14 @@ class CQL(SAC):
             qf1_loss = qf1_loss + min_qf1_loss_
             qf2_loss = qf2_loss + min_qf2_loss_
 
-        qf_loss = qf1_loss + qf2_loss
+        # update q function for doubly robust estimator
+        q_dre_values = self.q_dre(states).gather(1, actions)
+        with torch.no_grad():
+            max_next_action = self.q_dre(next_states).max(dim=1)[1].view(-1, 1)
+            target_q_dre_values = self.target_q_dre(next_states).gather(1, max_next_action)
+        q_dre_loss = F.mse_loss(q_dre_values, rewards + self.gamma * target_q_dre_values * (1 - dones))
+
+        qf_loss = qf1_loss + qf2_loss + q_dre_loss
         return qf_loss, min_qf1_loss_, min_qf2_loss_
 
     def update(self, t) -> Dict:
@@ -123,6 +133,7 @@ class CQL(SAC):
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
+        self.q_dre.train()
         states, actions, rewards, next_states, dones, indices, weights = self.prep_minibatch()
         # update critic 
         qf_loss, min_qf1_loss, min_qf2_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)
@@ -219,6 +230,7 @@ class CQL_BC(CQL):
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
+        self.q_dre.train()
         states, actions, rewards, next_states, dones, indices, weights = self.prep_minibatch()
         # update critic 
         qf_loss, min_qf1_loss, min_qf2_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)

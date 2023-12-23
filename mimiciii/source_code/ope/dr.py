@@ -75,15 +75,13 @@ class DoublyRobust(BaseEstimator):
         states = torch.tensor(self.states, dtype=torch.float, device=self.device)
         with torch.no_grad():
             if isinstance(self.agent, DQN):
-                self.agent.model.eval()
-                est_q_values, _ = self.agent.model(states).max(dim=1)
+                self.agent.q.eval()
+                est_q_values, _ = self.agent.q(states).max(dim=1)
                 est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy() # (B, 1)
             elif isinstance(self.agent, SAC):
-                # weird because SAC's Q function contain entropy term
-                actions = self.agent.get_action_probs(states)[0]
-                qf1 = self.agent.qf1(states).gather(1, actions)
-                qf2 = self.agent.qf2(states).gather(1, actions)
-                est_q_values = torch.min(qf1, qf2).view(-1, 1).detach().cpu().numpy()
+                self.agent.q_dre.eval()
+                est_q_values, _ = self.agent.q_dre(states).max(dim=1)
+                est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy() # (B, 1)
         return est_q_values
 
 

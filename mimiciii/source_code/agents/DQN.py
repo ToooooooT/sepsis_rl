@@ -17,23 +17,23 @@ class DQN(BaseAgent):
                  static_policy=False):
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
 
-        self.target_model.load_state_dict(self.model.state_dict())
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.q_lr)
-        self.target_model.eval()
+        self.target_q.load_state_dict(self.q.state_dict())
+        self.optimizer = optim.Adam(self.q.parameters(), lr=self.q_lr)
+        self.target_q.eval()
 
         # move model to device
-        self.model = self.model.to(self.device)
-        self.target_model.to(self.device)
+        self.q = self.q.to(self.device)
+        self.target_q.to(self.device)
 
         if static_policy:
-            self.model.eval()
+            self.q.eval()
         else:
-            self.model.train()
+            self.q.train()
 
     def save_checkpoint(self, epoch: int):
         checkpoint = {
             'epoch': epoch,
-            'model': self.model.state_dict(),
+            'model': self.q.state_dict(),
             'optimizer': self.optimizer.state_dict(),
         }
         torch.save(checkpoint, os.path.join(self.log_dir, 'checkpoint.pth'))
@@ -44,31 +44,31 @@ class DQN(BaseAgent):
             checkpoint = torch.load(path)
         else:
             raise FileExistsError
-        self.model.load_state_dict(checkpoint['model'])
-        self.target_model.load_state_dict(checkpoint['model'])
+        self.q.load_state_dict(checkpoint['model'])
+        self.target_q.load_state_dict(checkpoint['model'])
         self.optimizer.load_state_dict(checkpoint['optimizer'])
         return checkpoint['epoch']
 
     def save(self):
         os.makedirs(self.log_dir, exist_ok=True)
-        torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'model.dump'))
+        torch.save(self.q.state_dict(), os.path.join(self.log_dir, 'model.dump'))
     
 
     def load(self):
         fname_model = os.path.join(self.log_dir, "model.dump")
 
         if os.path.isfile(fname_model):
-            self.model.load_state_dict(torch.load(fname_model))
-            self.target_model.load_state_dict(self.model.state_dict())
+            self.q.load_state_dict(torch.load(fname_model))
+            self.target_q.load_state_dict(self.q.state_dict())
         else:
             assert False
 
     def compute_loss(self, batch_vars: Tuple) -> torch.Tensor:
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
-        q_values = self.model(states).gather(1, actions)
+        q_values = self.q(states).gather(1, actions)
         with torch.no_grad():
             max_next_action = self.get_max_next_state_action(next_states)
-            target_q_values = self.target_model(next_states).gather(1, max_next_action)
+            target_q_values = self.target_q(next_states).gather(1, max_next_action)
 
         if self.priority_replay:
             diff = (q_values - (rewards + self.gamma * target_q_values * (1 - dones)))
@@ -83,7 +83,7 @@ class DQN(BaseAgent):
         if self.static_policy:
             return None
 
-        self.model.train()
+        self.q.train()
         batch_vars = self.prep_minibatch()
 
         loss = self.compute_loss(batch_vars)
@@ -92,13 +92,13 @@ class DQN(BaseAgent):
         self.optimizer.zero_grad()
         loss.backward()
         if self.is_gradient_clip:
-            for param in self.model.parameters():
+            for param in self.q.parameters():
                 param.grad.data.clamp_(-1, 1) # gradient clipping, let gradient be in interval (-1, 1)
         self.optimizer.step()
 
         # update the target network
         if t % self.target_net_update_freq == 0:
-            self.update_target_model(self.target_model, self.model)
+            self.update_target_model(self.target_q, self.q)
         return {'td_error': loss.item()}
 
 
@@ -109,20 +109,20 @@ class DQN(BaseAgent):
         with torch.no_grad():
             if np.random.random() >= eps or self.static_policy:
                 X = torch.tensor(np.array([s]), device=self.device, dtype=torch.float)
-                a = self.model(X).max(1)[1].view(1, 1)
+                a = self.q(X).max(1)[1].view(1, 1)
                 return a.item()
 
         return np.random.randint(0, self.num_actions)
 
     def get_action_probs(self, states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        _, actions = self.model(states).max(dim=1)
+        _, actions = self.q(states).max(dim=1)
         actions = actions.view(-1, 1) # (B, 1)
         action_probs = torch.full((actions.shape[0], 25), 0.01, device=self.device)
         action_probs = action_probs.scatter_(1, actions, 0.99)
         return actions, None, None, action_probs
 
     def get_max_next_state_action(self, next_states) -> torch.Tensor:
-        return self.model(next_states).max(dim=1)[1].view(-1, 1)
+        return self.q(next_states).max(dim=1)[1].view(-1, 1)
 
     def adversarial_state_training(self, 
                                    states: np.ndarray, 
@@ -138,8 +138,8 @@ class DQN(BaseAgent):
         rewards = torch.tensor(rewards, device=self.device, dtype=torch.float)
         dones = torch.tensor(dones, device=self.device, dtype=torch.float)
 
-        q_values = self.model(states).max(1, keepdim=True)[0]
-        next_q_values = self.model(next_states).max(1, keepdim=True)[0]
+        q_values = self.q(states).max(1, keepdim=True)[0]
+        next_q_values = self.q(next_states).max(1, keepdim=True)[0]
         loss = (rewards + next_q_values * (1 - dones) - q_values).mean()
         states.grad.zero_()
         loss.backward()
@@ -158,11 +158,11 @@ class WDQN(DQN):
 
     def compute_loss(self, batch_vars: Tuple) -> torch.Tensor:
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
-        q_values = self.model(states).gather(1, actions)
-        next_q_values = self.model(next_states)
+        q_values = self.q(states).gather(1, actions)
+        next_q_values = self.q(next_states)
         max_next_actions = torch.argmax(next_q_values, dim=1, keepdim=True)
         with torch.no_grad():
-            target_next_q_values = self.target_model(next_states)
+            target_next_q_values = self.target_q(next_states)
         max_target_next_actions = torch.argmax(target_next_q_values, dim=1, keepdim=True)
         target_next_q_values_softmax = F.softmax(target_next_q_values, dim=1)
         sigma = target_next_q_values_softmax.gather(1, max_next_actions)

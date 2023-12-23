@@ -21,15 +21,21 @@ class SAC(BaseAgent):
         
         self.target_qf1.load_state_dict(self.qf1.state_dict())
         self.target_qf2.load_state_dict(self.qf2.state_dict())
+        self.target_q_dre.load_state_dict(self.target_q_dre.state_dict())
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.pi_lr)
-        self.q_optimizer = optim.Adam(list(self.qf1.parameters()) + list(self.qf2.parameters()), lr=self.q_lr)
+        self.q_optimizer = optim.Adam(list(self.qf1.parameters()) + 
+                                      list(self.qf2.parameters()) + 
+                                      list(self.q_dre.parameters()), lr=self.q_lr)
         self.target_qf1.eval()
         self.target_qf2.eval()
+        self.target_q_dre.eval()
 
         # move model to device
         self.actor = self.actor.to(self.device)
         self.qf1 = self.qf1.to(self.device)
         self.qf2 = self.qf2.to(self.device)
+        self.q_dre = self.q_dre.to(self.device)
+        self.target_q_dre = self.target_q_dre.to(self.device)
         self.target_qf1 = self.target_qf1.to(self.device)
         self.target_qf2 = self.target_qf2.to(self.device)
 
@@ -82,6 +88,7 @@ class SAC(BaseAgent):
             'actor': self.actor.state_dict(),
             'qf1': self.qf1.state_dict(),
             'qf2': self.qf2.state_dict(),
+            'q_dre': self.q_dre.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'q_optimizer': self.q_optimizer.state_dict(),
         }
@@ -99,8 +106,10 @@ class SAC(BaseAgent):
         self.actor.load_state_dict(checkpoint['actor'])
         self.qf1.load_state_dict(checkpoint['qf1'])
         self.qf2.load_state_dict(checkpoint['qf2'])
+        self.q_dre.load_state_dict(checkpoint['q_dre'])
         self.target_qf1.load_state_dict(checkpoint['qf1'])
         self.target_qf2.load_state_dict(checkpoint['qf2'])
+        self.target_q_dre.load_state_dict(checkpoint['q_dre'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
         self.q_optimizer.load_state_dict(checkpoint['q_optimizer'])
         if self.autotune:
@@ -114,6 +123,8 @@ class SAC(BaseAgent):
         self.actor = PolicyMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
         self.qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
         self.qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
+        self.q_dre = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
+        self.target_q_dre = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
         self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
         self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=self.hidden_size).to(self.device)
 
@@ -153,7 +164,14 @@ class SAC(BaseAgent):
             qf1_loss = F.mse_loss(qf1_values, next_q_value)
             qf2_loss = F.mse_loss(qf2_values, next_q_value)
 
-        qf_loss = qf1_loss + qf2_loss
+        # update q function for doubly robust estimator
+        q_dre_values = self.q_dre(states).gather(1, actions)
+        with torch.no_grad():
+            max_next_action = self.q_dre(next_states).max(dim=1)[1].view(-1, 1)
+            target_q_dre_values = self.target_q_dre(next_states).gather(1, max_next_action)
+        q_dre_loss = F.mse_loss(q_dre_values, rewards + self.gamma * target_q_dre_values * (1 - dones))
+
+        qf_loss = qf1_loss + qf2_loss + q_dre_loss
         return qf_loss
 
     def compute_actor_loss(self, states) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -171,6 +189,7 @@ class SAC(BaseAgent):
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
+        self.q_dre.train()
         states, actions, rewards, next_states, dones, indices, weights = self.prep_minibatch()
         # update critic 
         qf_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)
@@ -321,6 +340,7 @@ class SAC_BC(SAC):
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
+        self.q_dre.train()
         states, actions, rewards, next_states, dones, indices, weights = self.prep_minibatch()
         # update critic 
         qf_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)

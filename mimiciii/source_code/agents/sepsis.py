@@ -24,10 +24,10 @@ class DQN_regularization(DQN):
             Q_double-target = reward + gamma * Q_double-target(next_state, argmax_a(Q(next_state, a)))
         '''
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
-        q_values = self.model(states).gather(1, actions)
+        q_values = self.q(states).gather(1, actions)
         with torch.no_grad():
             max_next_action = self.get_max_next_state_action(next_states)
-            target_q_values = self.target_model(next_states).gather(1, max_next_action)
+            target_q_values = self.target_q(next_states).gather(1, max_next_action)
             # empirical hack to make the Q values never exceed the threshold - helps learning
             if self.reg_lambda > 0:
                 target_q_values[target_q_values > self.reward_threshold] = self.reward_threshold
@@ -85,11 +85,11 @@ class WDQNE(WDQN):
 
     def compute_loss(self, batch_vars) -> torch.Tensor:
         states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights = batch_vars
-        q_values = self.model(states).gather(1, actions)
-        next_q_values = self.model(next_states)
+        q_values = self.q(states).gather(1, actions)
+        next_q_values = self.q(next_states)
         max_next_actions = torch.argmax(next_q_values, dim=1, keepdim=True)
         with torch.no_grad():
-            target_next_q_values = self.target_model(next_states)
+            target_next_q_values = self.target_q(next_states)
         max_target_next_actions = torch.argmax(target_next_q_values, dim=1, keepdim=True)
         target_next_q_values_softmax = F.softmax(target_next_q_values, dim=1)
         sigma = target_next_q_values_softmax.gather(1, max_next_actions)
@@ -190,6 +190,7 @@ class SAC_BC_E(SAC):
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
+        self.q_dre.train()
         states, actions, rewards, next_states, dones, SOFAs, indices, weights = self.prep_minibatch()
         # update critic 
         qf_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)
@@ -316,6 +317,7 @@ class CQL_BC_E(CQL):
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
+        self.q_dre.train()
         states, actions, rewards, next_states, dones, SOFAs, indices, weights = self.prep_minibatch()
         # update critic 
         qf_loss, min_qf1_loss, min_qf2_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)
