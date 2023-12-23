@@ -26,7 +26,8 @@ class BaseAgent(ABC):
 
         # misc agent variables
         self.gamma = config.GAMMA
-        self.lr = config.LR
+        self.q_lr = config.Q_LR
+        self.pi_lr = config.PI_LR
 
         # update gradient
         self.is_gradient_clip = config.IS_GRADIENT_CLIP

@@ -23,7 +23,7 @@ class CQL(SAC):
         if self.with_lagrange:
             self.target_action_gap = config.TARGET_ACTION_GAP
             self.log_alpha_prime = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
-            self.alpha_prime_optimizer = optim.Adam([self.log_alpha_prime], lr=self.lr, eps=1e-4)
+            self.alpha_prime_optimizer = optim.Adam([self.log_alpha_prime], lr=self.q_lr, eps=1e-4)
 
     def save_checkpoint(self, epoch):
         checkpoint = {
@@ -181,7 +181,7 @@ class CQL_BC(CQL):
         if self.bc_type == "KL":
             self.bc_kl_beta = config.BC_KL_BETA
             self.log_nu = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
-            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.lr, eps=1e-4)
+            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.q_lr, eps=1e-4)
 
     def compute_actor_loss(self, states: torch.Tensor, actions: torch.Tensor) -> Tuple[torch.Tensor,
                                                                                        torch.Tensor,

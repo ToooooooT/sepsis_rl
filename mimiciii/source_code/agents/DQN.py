@@ -18,7 +18,7 @@ class DQN(BaseAgent):
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
 
         self.target_model.load_state_dict(self.model.state_dict())
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.q_lr)
         self.target_model.eval()
 
         # move model to device

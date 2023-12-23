@@ -24,14 +24,14 @@ pd.options.mode.chained_assignment = None
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--reward_type", type=int, help="reward function type", default=0)
-    parser.add_argument("--clip_reward", action="store_true", help="clip reward in range -1 ~ 1")
     parser.add_argument("--batch_size", type=int, help="batch_size", default=128)
     parser.add_argument("--fqe_batch_size", type=int, help="batch_size", default=256)
     parser.add_argument("--episode", type=int, help="episode", default=3e5)
     parser.add_argument("--fqe_episode", type=int, help="episode", default=150)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
-    parser.add_argument("--lr", type=float, help="learning rate", default=3e-4)
-    parser.add_argument("--fqe_lr", type=float, help="learning rate", default=1e-4)
+    parser.add_argument("--q_lr", type=float, help="q function learning rate", default=3e-4)
+    parser.add_argument("--pi_lr", type=float, help="policy learning rate", default=3e-4)
+    parser.add_argument("--fqe_lr", type=float, help="fitted q function learning rate", default=1e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
@@ -70,7 +70,7 @@ def get_agent(args, log_path, env_spec, config):
         raise NotImplementedError
     return agent
 
-def add_dataset_to_replay(train_data, agent: DQN_regularization, clip_reward):
+def add_dataset_to_replay(train_data, agent: DQN_regularization):
     # put all transitions in replay buffer
     s = train_data['s']
     a = train_data['a']
@@ -80,9 +80,6 @@ def add_dataset_to_replay(train_data, agent: DQN_regularization, clip_reward):
     done = train_data['done']
     SOFA = train_data['SOFA']
 
-    if clip_reward:
-        r[(r > 1) & (r != 15)] = 1
-        r[(r < -1) & (r != -15)] = -1
     if isinstance(agent, SAC_BC_E) or isinstance(agent, CQL_BC_E):
         data = [s, a, r, s_, done, SOFA]
         agent.memory.read_data(data)
@@ -233,7 +230,8 @@ if __name__ == '__main__':
 
     config.EPISODE = int(args.episode)
     config.USE_PRIORITY_REPLAY = args.use_pri
-    config.LR = args.lr
+    config.Q_LR = args.q_lr
+    config.PI_LR = args.pi_lr
     config.BATCH_SIZE = args.batch_size
     config.USE_PRIORITY_REPLAY = args.use_pri
     config.EXP_REPLAY_SIZE = len(train_data['s'])
@@ -243,7 +241,7 @@ if __name__ == '__main__':
 
     env_spec = {'num_feats': 49, 'num_actions': 25}
 
-    path = f'{args.agent}/reward_type={args.reward_type}-clip_reward={int(args.clip_reward)}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-hidden_size={config.HIDDEN_SIZE}'
+    path = f'{args.agent}/reward_type={args.reward_type}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-q_lr={config.Q_LR}-pi_lr={config.PI_LR}-hidden_size={config.HIDDEN_SIZE}'
     if args.agent == 'D3QN':
         path += f'-reg_lambda={config.REG_LAMBDA}'
     if args.agent == 'SAC_BC_E' or args.agent == 'CQL_BC_E' or args.agent == 'SAC_BC' or args.agent == 'CQL_BC':
@@ -262,7 +260,7 @@ if __name__ == '__main__':
     # experiment = mlflow.set_experiment(f"{args.agent}-reward_type={args.reward_type}-clip_reward={args.clip_reward}")
 
     print('Adding dataset to replay buffer...')
-    add_dataset_to_replay(train_data, agent, clip_reward=args.clip_reward)
+    add_dataset_to_replay(train_data, agent)
 
     print('Start training...')
     # with mlflow.start_run(experiment_id=experiment.experiment_id, run_name="test00000") as run:

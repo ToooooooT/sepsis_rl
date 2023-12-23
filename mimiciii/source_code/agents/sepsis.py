@@ -18,7 +18,6 @@ class DQN_regularization(DQN):
         self.reg_lambda = config.REG_LAMBDA
         self.reward_threshold = config.REWARD_THRESHOLD
 
-    # TODO: check this compute loss function is correct or not
     def compute_loss(self, batch_vars) -> torch.Tensor:
         '''
             loss function = E[Q_double-target - Q_estimate]^2 + lambda * max(|Q_estimate| - Q_threshold, 0)
@@ -123,7 +122,7 @@ class SAC_BC_E(SAC):
         if self.bc_type == "KL":
             self.bc_kl_beta = config.BC_KL_BETA
             self.log_nu = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
-            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.lr, eps=1e-4)
+            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.q_lr, eps=1e-4)
 
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1, 1)
@@ -250,7 +249,7 @@ class CQL_BC_E(CQL):
         if self.bc_type == "KL":
             self.bc_kl_beta = config.BC_KL_BETA
             self.log_nu = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
-            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.lr, eps=1e-4)
+            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.q_lr, eps=1e-4)
 
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1, 1)

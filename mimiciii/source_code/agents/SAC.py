@@ -21,8 +21,8 @@ class SAC(BaseAgent):
         
         self.target_qf1.load_state_dict(self.qf1.state_dict())
         self.target_qf2.load_state_dict(self.qf2.state_dict())
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.lr)
-        self.q_optimizer = optim.Adam(list(self.qf1.parameters()) + list(self.qf2.parameters()), lr=self.lr)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.pi_lr)
+        self.q_optimizer = optim.Adam(list(self.qf1.parameters()) + list(self.qf2.parameters()), lr=self.q_lr)
         self.target_qf1.eval()
         self.target_qf2.eval()
 
@@ -40,7 +40,7 @@ class SAC(BaseAgent):
                 torch.log(1 / torch.tensor(np.array(self.num_actions), dtype=torch.float, device=self.device))
             self.log_alpha = torch.zeros(1, dtype=torch.float, requires_grad=True, device=self.device)
             self.alpha = self.log_alpha.exp().item()
-            self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.lr, eps=1e-4)
+            self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.q_lr, eps=1e-4)
         else:
             self.alpha = config.ALPHA
 
@@ -283,7 +283,7 @@ class SAC_BC(SAC):
         if self.bc_type == "KL":
             self.bc_kl_beta = config.BC_KL_BETA
             self.log_nu = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
-            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.lr, eps=1e-4)
+            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.q_lr, eps=1e-4)
 
 
     def compute_actor_loss(self, states: torch.Tensor, actions: torch.Tensor) -> Tuple[torch.Tensor,

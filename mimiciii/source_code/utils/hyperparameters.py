@@ -14,7 +14,8 @@ class Config(object):
 
         # misc agent variables
         self.GAMMA = 0.99
-        self.LR = 1e-4
+        self.Q_LR = 3e-4
+        self.PI_LR = 3e-4
 
         # memory
         self.TARGET_NET_UPDATE_FREQ = 1
