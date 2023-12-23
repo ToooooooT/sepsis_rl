@@ -9,7 +9,7 @@ import random
 import pickle
 from argparse import ArgumentParser
 
-from agents import DQN_regularization, WDQNE, SAC_BC_E, SAC_BC, SAC, BaseAgent
+from agents import DQN_regularization, WDQNE, SAC_BC_E, SAC_BC, SAC, BaseAgent, CQL, CQL_BC, CQL_BC_E
 from utils import Config, plot_action_dist, plot_estimate_value, \
                 animation_action_distribution, plot_pos_neg_action_dist, plot_diff_action_SOFA_dist, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
@@ -34,6 +34,7 @@ def parse_args():
     parser.add_argument("--fqe_lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
+    parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
     parser.add_argument("--valid_freq", type=int, help="validation frequency", default=2000)
@@ -59,6 +60,12 @@ def get_agent(args, log_path, env_spec, config):
         agent = SAC_BC(log_dir=log_path, env=env_spec, config=config)
     elif args.agent == 'SAC_BC_E':
         agent = SAC_BC_E(log_dir=log_path, env=env_spec, config=config)
+    elif args.agent == 'CQL':
+        agent = CQL(log_dir=log_path, env=env_spec, config=config)
+    elif args.agent == 'CQL_BC':
+        agent = CQL_BC(log_dir=log_path, env=env_spec, config=config)
+    elif args.agent == 'CQL_BC_E':
+        agent = CQL_BC_E(log_dir=log_path, env=env_spec, config=config)
     else:
         raise NotImplementedError
     return agent
@@ -76,13 +83,13 @@ def add_dataset_to_replay(train_data, agent: DQN_regularization, clip_reward):
     if clip_reward:
         r[(r > 1) & (r != 15)] = 1
         r[(r < -1) & (r != -15)] = -1
-    if isinstance(agent, SAC_BC_E):
+    if isinstance(agent, SAC_BC_E) or isinstance(agent, CQL_BC_E):
         data = [s, a, r, s_, done, SOFA]
         agent.memory.read_data(data)
     elif isinstance(agent, WDQNE):
         data = [s, a, r, s_, a_, done, SOFA]
         agent.memory.read_data(data)
-    elif isinstance(agent, DQN_regularization) or isinstance(agent, SAC_BC) or isinstance(agent, SAC) :
+    elif isinstance(agent, DQN_regularization) or isinstance(agent, SAC_BC) or isinstance(agent, SAC) or isinstance(agent, CQL_BC) or isinstance(agent, CQL):
         data = [s, a, r, s_, done]
         agent.memory.read_data(data)
     else:
@@ -232,13 +239,15 @@ if __name__ == '__main__':
     config.EXP_REPLAY_SIZE = len(train_data['s'])
     config.IS_GRADIENT_CLIP = args.gradient_clip
     config.REG_LAMBDA = args.reg_lambda
+    config.BC_TYPE = args.bc_type
 
     env_spec = {'num_feats': 49, 'num_actions': 25}
 
+    path = f'{args.agent}/reward_type={args.reward_type}-clip_reward={int(args.clip_reward)}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-hidden_size={config.HIDDEN_SIZE}'
     if args.agent == 'D3QN':
-        path = f'D3QN/reward_type={args.reward_type}-clip_reward={int(args.clip_reward)}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-reg_lambda={config.REG_LAMBDA}-hidden_size={config.HIDDEN_SIZE}'
-    else:
-        path = f'{args.agent}/reward_type={args.reward_type}-clip_reward={int(args.clip_reward)}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-lr={config.LR}-hidden_size={config.HIDDEN_SIZE}'
+        path += f'-reg_lambda={config.REG_LAMBDA}'
+    if args.agent == 'SAC_BC_E' or args.agent == 'CQL_BC_E' or args.agent == 'SAC_BC' or args.agent == 'CQL_BC':
+        path += f'-bc_type={config.BC_TYPE}'
     log_path = os.path.join('./logs', path)
 
     agent = get_agent(args, log_path, env_spec, config)
