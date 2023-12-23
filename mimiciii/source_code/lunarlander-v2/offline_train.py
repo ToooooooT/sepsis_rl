@@ -13,7 +13,7 @@ import gym
 import pickle
 
 from utils import Config
-from agents import DQN, WDQN, SAC, SAC_BC, BaseAgent
+from agents import DQN, WDQN, SAC, SAC_BC, CQL, CQL_BC, BaseAgent
 from network import DuellingMLP, PolicyMLP
 from ope import FQE
 
@@ -27,68 +27,36 @@ def parse_args():
     parser.add_argument("--fqe_lr", type=float, help="learning rate", default=1e-4)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
+    parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
     parser.add_argument("--episode", type=int, help="episode", default=1e6)
     parser.add_argument("--fqe_episode", type=int, help="episode", default=150)
-    parser.add_argument("--test_freq", type=int, help="test frequency", default=10000)
+    parser.add_argument("--test_freq", type=int, help="test frequency", default=5000)
     parser.add_argument("--cpu", action="store_true", help="use cpu")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--gradient_clip", action="store_true", help="gradient clipping in range (-1, 1)")
     parser.add_argument("--dataset", type=str, help="dataset mode", default='train')
     parser.add_argument("--seed", type=int, help="random seed", default=10)
-    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=4)
+    parser.add_argument("--num_worker", type=int, help="number of worker to handle data loader", default=8)
     parser.add_argument("--load_checkpoint", action="store_true", help="load checkpoint")
     args = parser.parse_args()
     return args
 
 hidden_size = (128, 128)
 
-class D3QN_Agent(DQN):
-    def __init__(self, env=None, config=None, log_dir='./logs', static_policy=False):
-        super().__init__(env, config, log_dir, static_policy)
-
-    def declare_networks(self):
-        self.model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-
-class WD3QN_Agent(WDQN):
-    def __init__(self, env=None, config=None, log_dir='./logs', static_policy=False):
-        super().__init__(env, config, log_dir, static_policy)
-
-    def declare_networks(self):
-        self.model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.target_model = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-
-class SAC_Agent(SAC):
-    def __init__(self, env=None, config=None, log_dir='./logs', static_policy=False):
-        super().__init__(env, config, log_dir, static_policy)
-
-    def declare_networks(self):
-        self.actor = PolicyMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-
-class SAC_BC_Agent(SAC_BC):
-    def __init__(self, env=None, config=None, log_dir='./logs', static_policy=False):
-        super().__init__(env, config, log_dir, static_policy)
-
-    def declare_networks(self):
-        self.actor = PolicyMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.target_qf1 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
-        self.target_qf2 = DuellingMLP(self.num_feats, self.num_actions, hidden_size=hidden_size).to(self.device)
 
 def get_agent(args, log_path, env_spec, config):
     if args.agent == 'D3QN':
-        model = D3QN_Agent(log_dir=log_path, env=env_spec, config=config)
+        model = DQN(log_dir=log_path, env=env_spec, config=config)
     elif args.agent == 'WD3QN':
-        model = WD3QN_Agent(log_dir=log_path, env=env_spec, config=config)
+        model = WDQN(log_dir=log_path, env=env_spec, config=config)
     elif args.agent == 'SAC':
-        model = SAC_Agent(log_dir=log_path, env=env_spec, config=config)
+        model = SAC(log_dir=log_path, env=env_spec, config=config)
     elif args.agent == 'SAC_BC':
-        model = SAC_BC_Agent(log_dir=log_path, env=env_spec, config=config)
+        model = SAC_BC(log_dir=log_path, env=env_spec, config=config)
+    elif args.agent == 'CQL':
+        model = CQL(log_dir=log_path, env=env_spec, config=config)
+    elif args.agent == 'CQL_BC':
+        model = CQL_BC(log_dir=log_path, env=env_spec, config=config)
     else:
         raise NotImplementedError
     return model
@@ -110,13 +78,13 @@ def get_dataset_path(mode):
 
 def training(agent: DQN, train_dict: dict, test_dict: dict, config: Config, args):
     max_avg_reward = 0
-    fqe = FQE(agent, 
-              train_dict, 
-              test_dict, 
-              config, 
-              args,
-              Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size),
-              target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size))
+    # fqe = FQE(agent, 
+    #           train_dict, 
+    #           test_dict, 
+    #           config, 
+    #           args,
+    #           Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size),
+    #           target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=hidden_size))
 
     if args.load_checkpoint:
         start = agent.load_checkpoint()
@@ -128,12 +96,16 @@ def training(agent: DQN, train_dict: dict, test_dict: dict, config: Config, args
         if i % args.test_freq == 0:
             avg_reward = testing(agent, 20)
 
-            fqe_return, _ = fqe.estimate(agent=agent)
+            # fqe_return, _ = fqe.estimate(agent=agent)
+
+            # with open(os.path.join(agent.log_dir, "expected_return.txt"), "a") as f:
+            #     f.write(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return} | loss : {loss}\n')
+            # print(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return}')
+            # fqe.records2csv()
 
             with open(os.path.join(agent.log_dir, "expected_return.txt"), "a") as f:
-                f.write(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return} | loss : {loss}\n')
-            print(f'[EPISODE {i}] | true average reward : {avg_reward}, FQE average reward : {fqe_return}')
-            fqe.records2csv()
+                f.write(f'[EPISODE {i}] | true average reward : {avg_reward} | loss : {loss}\n')
+            print(f'[EPISODE {i}] | true average reward : {avg_reward} | loss : {loss}')
 
             if avg_reward > max_avg_reward:
                 max_avg_reward = avg_reward
@@ -236,10 +208,13 @@ if __name__ == '__main__':
     config.BATCH_SIZE = args.batch_size
     config.USE_PRIORITY_REPLAY = args.use_pri
     config.IS_GRADIENT_CLIP = args.gradient_clip
+    config.BC_TYPE = args.bc_type
 
     env_spec = {'num_feats': 8, 'num_actions': 4}
 
-    path = f'{args.agent}/offline-dataset={args.dataset}-batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-hidden_size={hidden_size}'
+    path = f'{args.agent}/offline-dataset={args.dataset}-batch_size={config.BATCH_SIZE}-lr={config.LR}-use_pri={config.USE_PRIORITY_REPLAY}-hidden_size={config.HIDDEN_SIZE}'
+    if args.agent == 'SAC_BC' or args.agent == 'CQL_BC':
+        path += f'-bc_type={config.BC_TYPE}'
     log_path = os.path.join('./logs', path)
 
     agent = get_agent(args, log_path, env_spec, config)

@@ -42,10 +42,11 @@ class Config(object):
         # update target network parameter
         self.TAU = 0.005
 
-        # coefficient of actor loss term in SAC + BC
+        # coefficient of actor loss term in BC
         self.ACTOR_LAMBDA = 2.5
-
         self.SOFA_THRESHOLD = 4
+        self.BC_KL_BETA = 2e-3
+        self.BC_TYPE = "cross_entropy"
 
         self.HIDDEN_SIZE = (128, 128)
 
@@ -54,3 +55,8 @@ class Config(object):
         self.UNIFORM_NOISE = 3e-4
         self.MIXUP_ALPHA = 0.4
         self.ADVERSARIAL_STEP = 1e-4
+
+        # CQL coefficient of regularization term in Q loss function
+        self.ALPHA_PRIME = 1.0
+        self.WITH_LAGRANGE = True
+        self.TARGET_ACTION_GAP = 10.0
