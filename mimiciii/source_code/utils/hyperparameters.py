@@ -1,4 +1,5 @@
 import torch
+from typing import Dict
 
 class Config(object):
     def __init__(self):
@@ -61,3 +62,7 @@ class Config(object):
         self.ALPHA_PRIME = 1.0
         self.WITH_LAGRANGE = True
         self.TARGET_ACTION_GAP = 10.0
+
+    def get_hyperparameters(self) -> Dict:
+        config_dict = {key: value for key, value in vars(self).items() if not key.startswith('__')}
+        return config_dict

@@ -8,6 +8,7 @@ import os
 import random
 import pickle
 from argparse import ArgumentParser
+import mlflow
 
 from agents import DQN_regularization, WDQNE, SAC_BC_E, SAC_BC, SAC, BaseAgent, CQL, CQL_BC, CQL_BC_E
 from utils import Config, plot_action_dist, plot_estimate_value, \
@@ -17,8 +18,6 @@ from utils import Config, plot_action_dist, plot_estimate_value, \
 from network import DuellingMLP
 from ope import WIS, DoublyRobust, FQE, QEstimator
 
-# import mlflow
-
 pd.options.mode.chained_assignment = None
 
 def parse_args():
@@ -26,7 +25,7 @@ def parse_args():
     parser.add_argument("--reward_type", type=int, help="reward function type", default=0)
     parser.add_argument("--batch_size", type=int, help="batch_size", default=128)
     parser.add_argument("--fqe_batch_size", type=int, help="batch_size", default=256)
-    parser.add_argument("--episode", type=int, help="episode", default=3e5)
+    parser.add_argument("--episode", type=int, help="episode", default=150000)
     parser.add_argument("--fqe_episode", type=int, help="episode", default=150)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
     parser.add_argument("--q_lr", type=float, help="q function learning rate", default=3e-4)
@@ -37,8 +36,8 @@ def parse_args():
     parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
-    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=2000)
-    parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=2000)
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=1000)
+    parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="env_model.pth")
     parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="LG_clf.sav")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
@@ -126,6 +125,7 @@ def training(agent: DQN_regularization, valid_dataset: pd.DataFrame, valid_dict:
 
     for i in range(start + 1, config.EPISODE + 1):
         loss = agent.update(i)
+        log_data = loss
 
         if i % valid_freq == 0:
             actions, action_probs = testing(valid_data, agent)
@@ -146,26 +146,27 @@ def training(agent: DQN_regularization, valid_dataset: pd.DataFrame, valid_dict:
                 max_expected_return = fqe_return
                 agent.save()
 
-            with open(os.path.join(agent.log_dir, "expected_return.txt"), "a") as f:
-                f.write(f'[EPISODE {i}] | WIS: {wis_return:.5f}, DR: {dr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f} | loss : {loss}\n')
             print(f'[EPISODE {i}] | WIS: {wis_return:.5f}, DR: {dr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f}')
 
-            log_data = loss
             log_data["WIS"] = wis_return
             log_data["DR"] = dr_return
             log_data["FQE"] = fqe_return
             log_data["QE"] = qe_return
-            # mlflow.log_metrics(log_data, i)
+
+        mlflow.log_metrics(log_data, i)
 
         agent.save_checkpoint(i)
-        fqe.records2csv()
 
     animation_action_distribution(hists, agent.log_dir)
     wis_returns = np.array(wis_returns)
     dr_returns = np.array(dr_returns)
     fqe_returns = np.array(fqe_returns)
     qe_returns = np.array(qe_returns)
-    plot_estimate_value(np.vstack((wis_returns, dr_returns, fqe_returns, qe_returns)), ['WIS', 'DR', 'FQE', 'QE'], agent.log_dir, valid_freq)
+    fig = plot_estimate_value(np.vstack((wis_returns, dr_returns, fqe_returns, qe_returns)), 
+                        ['WIS', 'DR', 'FQE', 'QE'], 
+                        valid_freq)
+    mlflow.log_figure(fig, 'fig/valid estimate value.png')
+    mlflow.log_table(fqe.records, 'table/fqe_loss.json')
 
 
 def testing(test_dict: dict, agent: BaseAgent):
@@ -252,88 +253,82 @@ if __name__ == '__main__':
 
     os.makedirs(log_path, exist_ok=True)
 
-    ######################################################################################
-    # Training
-    ######################################################################################
-
-    # mlflow.set_tracking_uri("http://127.0.0.1:8787")
-    # experiment = mlflow.set_experiment(f"{args.agent}-reward_type={args.reward_type}-clip_reward={args.clip_reward}")
-
     print('Adding dataset to replay buffer...')
     add_dataset_to_replay(train_data, agent)
 
-    print('Start training...')
-    # with mlflow.start_run(experiment_id=experiment.experiment_id, run_name="test00000") as run:
-    #     print(run.info.run_id)
-    #     mlflow.log_params({
-    #         "episode": config.EPISODE,
-    #         "batch_size": config.BATCH_SIZE,
-    #         "use_pri": config.USE_PRIORITY_REPLAY,
-    #         "lr": config.LR,
-    #         "hidden_size": hidden_size,
-    #     })
-        # mlflow.pytorch.log_model()
-    training(agent, valid_dataset, valid_dict, config, args)
+    # start mlflow
+    mlflow.set_tracking_uri("http://127.0.0.1:8787")
+    experiment = mlflow.set_experiment(f"reward_type={args.reward_type}")
+    # start run
+    with mlflow.start_run(experiment_id=experiment.experiment_id, run_name=f"{args.agent}") as run:
+        print(f'run id: {run.info.run_id}')
+        mlflow.log_params(config.get_hyperparameters())
+        # Training
+        print('Start training...')
+        training(agent, valid_dataset, valid_dict, config, args)
+        # Testing
+        agent.load()
 
+        print('Start testing...')
+        policy_actions, policy_action_probs = testing(test_data, agent)
 
-    ######################################################################################
-    # Testing
-    ######################################################################################
-    agent.load()
+        test_dataset['policy action'] = policy_actions
+        test_dataset['policy iv'] = policy_actions / 5
+        test_dataset['policy vaso'] = policy_actions % 5
 
-    print('Start testing...')
-    policy_actions, policy_action_probs = testing(test_data, agent)
+        # Off-policy Evaluation
+        wis = WIS(agent, test_dict['data'], config, args)
+        avg_wis_return, wis_returns = wis.estimate(policy_action_probs=policy_action_probs)
+        dr = DoublyRobust(agent, test_dict['data'], config, args, test_dataset)
+        avg_dr_return, dr_returns, est_alive = dr.estimate(policy_action_probs=policy_action_probs, policy_actions=policy_actions, agent=agent)
+        fqe = FQE(agent, 
+                train_dict['data'], 
+                test_dict['data'], 
+                config, 
+                args,
+                Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size),
+                target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size))
+        avg_fqe_return, fqe_returns = fqe.estimate(agent=agent)
+        qe = QEstimator(agent, test_dict['data'], config, args)
+        avg_qe_return, qe_returns = qe.estimate(agent=agent)
 
-    test_dataset['policy action'] = policy_actions
-    test_dataset['policy iv'] = policy_actions / 5
-    test_dataset['policy vaso'] = policy_actions % 5
+        # plot expected return result
+        policy_returns = np.vstack((wis_returns, dr_returns, fqe_returns, qe_returns))
+        mlflow.log_figure(plot_expected_return_distribution(policy_returns, ['WIS', 'DR', 'FQE', 'QE']), 
+                          'fig/expected_return_distribution.png')
+        mlflow.log_figure(plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'DR', 'FQE', 'QE']), 
+                          'fig/survival_rate.png')
 
-    # estimate expected return
-    ######################################################################################
-    # Off-policy Evaluation
-    ######################################################################################
-    wis = WIS(agent, test_dict['data'], config, args)
-    avg_wis_return, wis_returns = wis.estimate(policy_action_probs=policy_action_probs)
-    dr = DoublyRobust(agent, test_dict['data'], config, args, test_dataset)
-    avg_dr_return, dr_returns, est_alive = dr.estimate(policy_action_probs=policy_action_probs, policy_actions=policy_actions, agent=agent)
-    fqe = FQE(agent, 
-              train_dict['data'], 
-              test_dict['data'], 
-              config, 
-              args,
-              Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size),
-              target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size))
-    avg_fqe_return, fqe_returns = fqe.estimate(agent=agent)
-    qe = QEstimator(agent, test_dict['data'], config, args)
-    avg_qe_return, qe_returns = qe.estimate(agent=agent)
+        # plot action distribution
+        negative_traj = test_dataset.query('mortality_90d == 1.0')
+        positive_traj = test_dataset.query('mortality_90d != 1.0')
+        mlflow.log_figure(plot_action_dist(policy_actions, test_dataset),
+                          'fig/test_action_distribution.png')
+        mlflow.log_figure(plot_pos_neg_action_dist(positive_traj, negative_traj),
+                          'fig/pos_neg_action_compare.png')
+        mlflow.log_figure(plot_diff_action_SOFA_dist(positive_traj, negative_traj),
+                          'fig/diff_action_SOFA_dist.png')
+        pos_fig, neg_fig = plot_diff_action(positive_traj, negative_traj)
+        mlflow.log_figure(pos_fig, 'fig/pos_diff_action_compare.png')
+        mlflow.log_figure(neg_fig, 'fig/neg_diff_action_compare.png')
+        low_fig, medium_fig, high_fig = plot_action_diff_survival_rate(train_dataset, test_dataset)
+        mlflow.log_figure(low_fig, 'fig/diff_action_mortality_low_SOFA.png')
+        mlflow.log_figure(medium_fig, 'fig/diff_action_mortality_medium_SOFA.png')
+        mlflow.log_figure(high_fig, 'fig/diff_action_mortality_high_SOFA.png')
 
-    # plot expected return result
-    policy_returns = np.vstack((wis_returns, dr_returns, fqe_returns, qe_returns))
-    plot_expected_return_distribution(policy_returns, ['WIS', 'DR', 'FQE', 'QE'], log_path)
-    plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'DR', 'FQE', 'QE'], log_path)
+        # store result in text file
+        mlflow.log_text(f'''----------------------------------------------------------------------------------
+                        WIS : {avg_wis_return:.5f}
+                        DR : {avg_dr_return:.5f}
+                        FQE : {avg_fqe_return:.5f}
+                        QE : {avg_qe_return:.5f}
+                        Logistic regression survival rate: {est_alive.mean():.5f}
+                        ''', 'text/expected_return.txt')
+        # print result
+        print(f'WIS estimator: {avg_wis_return:.5f}')
+        print(f'DR estimator: {avg_dr_return:.5f}')
+        print(f'FQE estimator: {avg_fqe_return:.5f}')
+        print(f'QE estimator: {avg_qe_return:.5f}')
+        print(f'Logistic regression survival rate: {est_alive.mean():.5f}')
 
-    # plot action distribution
-    negative_traj = test_dataset.query('mortality_90d == 1.0')
-    positive_traj = test_dataset.query('mortality_90d != 1.0')
-    plot_action_dist(policy_actions, test_dataset, log_path)
-    plot_pos_neg_action_dist(positive_traj, negative_traj, log_path)
-    plot_diff_action_SOFA_dist(positive_traj, negative_traj, log_path)
-    plot_diff_action(positive_traj, negative_traj, log_path)
-    plot_action_diff_survival_rate(train_dataset, test_dataset, log_path)
-
-    # store result in text file
-    with open(os.path.join(log_path, 'expected_return.txt'), 'a') as f:
-        f.write('----------------------------------------------------------------------------------\n')
-        f.write(f'WIS : {avg_wis_return:.5f}\n')
-        f.write(f'DR : {avg_dr_return:.5f}\n')
-        f.write(f'FQE : {avg_fqe_return:.5f}\n')
-        f.write(f'QE : {avg_qe_return:.5f}\n')
-        f.write(f'Logistic regression survival rate: {est_alive.mean():.5f}\n')
-    # print result
-    print(f'WIS estimator: {avg_wis_return:.5f}')
-    print(f'DR estimator: {avg_dr_return:.5f}')
-    print(f'FQE estimator: {avg_fqe_return:.5f}')
-    print(f'QE estimator: {avg_qe_return:.5f}')
-    print(f'Logistic regression survival rate: {est_alive.mean():.5f}')
-
-    test_dataset.to_csv(os.path.join(agent.log_dir, 'test_data_predict.csv'), index=False)
+        mlflow.log_table(test_dataset, 'table/test_data_predict.json')

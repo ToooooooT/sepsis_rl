@@ -31,7 +31,7 @@ def animation_action_distribution(hists, log_dir: str):
     plt.close()
 
 
-def plot_estimate_value(policy_val: np.ndarray, names: list, log_dir: str, freq: int):
+def plot_estimate_value(policy_val: np.ndarray, names: list, freq: int, log_dir: str=None):
     '''
     Args:
         policy_val: estimate return value of learned policy during training process; expected shape (k, T)
@@ -50,11 +50,13 @@ def plot_estimate_value(policy_val: np.ndarray, names: list, log_dir: str, freq:
     ax.set_ylabel('expected return')
 
     ax.set_title('Learned policy expected return')
-    plt.savefig(os.path.join(log_dir, 'valid estimate value.png'))
+    if log_dir is not None:
+        plt.savefig(os.path.join(log_dir, 'valid estimate value.png'))
     plt.close()
+    return f
 
 
-def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str):
+def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str=None):
     '''
     Args:
         actions : policy action; expected shape (B, 1)
@@ -92,11 +94,13 @@ def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str):
     ax4.set_title('all')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(log_dir, 'test_action_distribution.png'))
+    if log_dir is not None:
+        plt.savefig(os.path.join(log_dir, 'test_action_distribution.png'))
     plt.close()
+    return f
 
 
-def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str):
+def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str=None):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(8, 8))
     height = np.bincount(negative_traj['policy action'], minlength=25)[:25]
     ax1.bar(range(25), height=height)
@@ -123,11 +127,13 @@ def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, negative_traj: pd.Data
     ax4.set_title('positive trajectories expert action')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(log_dir, 'pos_neg_action_compare.png'))
+    if log_dir is not None:
+        plt.savefig(os.path.join(log_dir, 'pos_neg_action_compare.png'))
     plt.close()
+    return f
 
 
-def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str):
+def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str=None):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12,12))
 
     height = np.bincount(positive_traj[positive_traj['action'] != positive_traj['policy action']]['SOFA'], minlength=25)[:25]
@@ -155,12 +161,14 @@ def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, negative_traj: pd.Da
     ax4.set_title('negative trajectories same action SOFA distribution')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(log_dir, 'diff_action_SOFA_dist.png'))
+    if log_dir is not None:
+        plt.savefig(os.path.join(log_dir, 'diff_action_SOFA_dist.png'))
     plt.close()
+    return f
 
 
-def plot_diff_action(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str):
-    f, ax = plt.subplots(5, 5, figsize=(32,32))
+def plot_diff_action(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str=None):
+    fig_pos, ax = plt.subplots(5, 5, figsize=(32,32))
 
     for i in range(5):
         for j in range(5):
@@ -172,10 +180,11 @@ def plot_diff_action(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, l
             ax[i][j].set_title(f'expert action: {i * 5 + j}')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(log_dir, 'pos_diff_action_compare.png'))
+    if log_dir is not None:
+        plt.savefig(os.path.join(log_dir, 'pos_diff_action_compare.png'))
     plt.close()
 
-    f, ax = plt.subplots(5, 5, figsize=(32,32))
+    fig_neg, ax = plt.subplots(5, 5, figsize=(32,32))
 
     for i in range(5):
         for j in range(5):
@@ -187,8 +196,10 @@ def plot_diff_action(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, l
             ax[i][j].set_title(f'expert action: {i * 5 + j}')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(log_dir, 'neg_diff_action_compare.png'))
+    if log_dir is not None:
+        plt.savefig(os.path.join(log_dir, 'neg_diff_action_compare.png'))
     plt.close()
+    return fig_pos, fig_neg
 
 
 def sliding_mean(data_array: list, window: int=1):
@@ -208,7 +219,7 @@ def plot_survival_rate(expected_return: np.ndarray,
                        id_index_map: dict, 
                        dataset: pd.DataFrame, 
                        name: list, 
-                       log_dir: str):
+                       log_dir: str=None):
     '''
     Args:
         expected_return : expected shape (k, N); k is number of estimators
@@ -274,11 +285,13 @@ def plot_survival_rate(expected_return: np.ndarray,
             ax[k].set_ylabel("Survival Rate")
 
     plt.tight_layout()
-    plt.savefig(os.path.join(log_dir, 'survival_rate.png'))
+    if log_dir is not None:
+        plt.savefig(os.path.join(log_dir, 'survival_rate.png'))
     plt.close()
+    return f
 
 
-def plot_expected_return_distribution(expected_return: np.ndarray, name: list, log_dir: str):
+def plot_expected_return_distribution(expected_return: np.ndarray, name: list, log_dir: str=None):
     '''
     Args:
         expected_return : expected shape (k, N); k is number of estimators
@@ -315,8 +328,10 @@ def plot_expected_return_distribution(expected_return: np.ndarray, name: list, l
         ax.set_title(f'{name[0]} expected return distribution')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(log_dir, f'expected_return_distribution.png'))
+    if log_dir is not None:
+        plt.savefig(os.path.join(log_dir, f'expected_return_distribution.png'))
     plt.close()
+    return f
 
 
 def make_df_diff(test_dataset: pd.DataFrame, vaso_vals: List, iv_vals) -> pd.DataFrame:
@@ -369,7 +384,7 @@ def make_vaso_plot_data(df_diff) -> Tuple[List, List, List]:
 
 def plot_action_diff_survival_rate(train_dataset: pd.DataFrame, 
                                    test_dataset: pd.DataFrame, 
-                                   log_dir: str):
+                                   log_dir: str=None):
     vaso_vals = [0]
     vaso_vals.extend(train_dataset['max_dose_vaso'][train_dataset['max_dose_vaso'] > 0].quantile([0.125, 0.375, 0.625, 0.875]))
     iv_vals = [0]
@@ -389,7 +404,7 @@ def plot_action_diff_survival_rate(train_dataset: pd.DataFrame,
     bin_med_iv_high, mort_iv_high, mort_std_iv_high = make_iv_plot_data(df_diff_high)
     bin_med_vaso_high, mort_vaso_high, mort_std_vaso_high = make_vaso_plot_data(df_diff_high)
 
-    def diff_plot(med_vaso, mort_vaso, std_vaso, med_iv, mort_iv, std_iv, col, title, log_dir):
+    def diff_plot(med_vaso, mort_vaso, std_vaso, med_iv, mort_iv, std_iv, col, title, log_dir=None):
         f, ((ax1, ax2)) = plt.subplots(1, 2, sharex='col', sharey='row', figsize=(10,4))
         step = 2
         if col == 'r':
@@ -421,12 +436,15 @@ def plot_action_diff_survival_rate(train_dataset: pd.DataFrame,
         f.text(0.725, -0.03, 'Difference between optimal and physician IV dose', ha='center', fontsize=10)
         f.text(0.05, 0.5, 'Observed Mortality', va='center', rotation='vertical', fontsize = 10)
 
-        plt.savefig(os.path.join(log_dir, f'diff_action_mortality_{title}.png'))
+        if log_dir is not None:
+            plt.savefig(os.path.join(log_dir, f'diff_action_mortality_{title}.png'))
         plt.close()
+        return f
         
-    diff_plot(bin_med_vaso_low, mort_vaso_low, mort_std_vaso_low, 
+    low_fig = diff_plot(bin_med_vaso_low, mort_vaso_low, mort_std_vaso_low, 
           bin_med_iv_low, mort_iv_low, mort_std_iv_low, 'b', 'Low SOFA', log_dir)
-    diff_plot(bin_med_vaso_mid, mort_vaso_mid, mort_std_vaso_mid, 
+    medium_fig = diff_plot(bin_med_vaso_mid, mort_vaso_mid, mort_std_vaso_mid, 
           bin_med_iv_mid, mort_iv_mid, mort_std_iv_mid, 'g', 'Medium SOFA', log_dir)
-    diff_plot(bin_med_vaso_high, mort_vaso_high, mort_std_vaso_high, 
+    high_fig = diff_plot(bin_med_vaso_high, mort_vaso_high, mort_std_vaso_high, 
           bin_med_iv_high, mort_iv_high, mort_std_iv_high, 'r', 'High SOFA', log_dir)
+    return low_fig, medium_fig, high_fig
