@@ -135,10 +135,13 @@ def training(agent: DQN_regularization, valid_dataset: pd.DataFrame, valid_dict:
             # estimate expected return
             wis_return, _ = wis.estimate(policy_action_probs=action_probs)
             wis_returns.append(wis_return)
-            dr_return, _, _ = dr.estimate(policy_actions=actions, policy_action_probs=action_probs, agent=agent)
-            dr_returns.append(dr_return)
             fqe_return, _  = fqe.estimate(agent=agent)
             fqe_returns.append(fqe_return)
+            dr_return, _, _ = dr.estimate(policy_actions=actions, 
+                                          policy_action_probs=action_probs, 
+                                          agent=agent, 
+                                          q=fqe.Q)
+            dr_returns.append(dr_return)
             qe_return, _ = qe.estimate(agent=agent)
             qe_returns.append(qe_return)
             # currently use fqe to choose model
@@ -153,7 +156,8 @@ def training(agent: DQN_regularization, valid_dataset: pd.DataFrame, valid_dict:
             log_data["FQE"] = fqe_return
             log_data["QE"] = qe_return
 
-        mlflow.log_metrics(log_data, i)
+        if i % (valid_freq // 10) == 0:
+            mlflow.log_metrics(log_data, i)
 
         agent.save_checkpoint(i)
 
@@ -279,8 +283,6 @@ if __name__ == '__main__':
         # Off-policy Evaluation
         wis = WIS(agent, test_dict['data'], config, args)
         avg_wis_return, wis_returns = wis.estimate(policy_action_probs=policy_action_probs)
-        dr = DoublyRobust(agent, test_dict['data'], config, args, test_dataset)
-        avg_dr_return, dr_returns, est_alive = dr.estimate(policy_action_probs=policy_action_probs, policy_actions=policy_actions, agent=agent)
         fqe = FQE(agent, 
                 train_dict['data'], 
                 test_dict['data'], 
@@ -289,6 +291,11 @@ if __name__ == '__main__':
                 Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size),
                 target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size))
         avg_fqe_return, fqe_returns = fqe.estimate(agent=agent)
+        dr = DoublyRobust(agent, test_dict['data'], config, args, test_dataset)
+        avg_dr_return, dr_returns, est_alive = dr.estimate(policy_action_probs=policy_action_probs, 
+                                                           policy_actions=policy_actions, 
+                                                           agent=agent,
+                                                           q=fqe.Q)
         qe = QEstimator(agent, test_dict['data'], config, args)
         avg_qe_return, qe_returns = qe.estimate(agent=agent)
 
@@ -317,7 +324,7 @@ if __name__ == '__main__':
         mlflow.log_figure(high_fig, 'fig/diff_action_mortality_high_SOFA.png')
 
         # store result in text file
-        mlflow.log_text(f'''----------------------------------------------------------------------------------
+        mlflow.log_text(f'''
                         WIS : {avg_wis_return:.5f}
                         DR : {avg_dr_return:.5f}
                         FQE : {avg_fqe_return:.5f}
@@ -332,3 +339,4 @@ if __name__ == '__main__':
         print(f'Logistic regression survival rate: {est_alive.mean():.5f}')
 
         mlflow.log_table(test_dataset, 'table/test_data_predict.json')
+        mlflow.log_artifacts(agent.log_dir, "states")

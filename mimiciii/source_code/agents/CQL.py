@@ -1,15 +1,13 @@
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical, kl_divergence
 from typing import List, Dict, Tuple
 import os
 
-from agents import BaseAgent, SAC
+from agents import SAC
 from utils import Config
-from network import DuellingMLP, PolicyMLP
 
 class CQL(SAC):
     def __init__(self, 

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 import torch
-import torch.nn.functional as F
+import torch.nn as nn
 import joblib
 from typing import Tuple
 
@@ -71,18 +71,31 @@ class DoublyRobust(BaseEstimator):
         self.sofa_dicts = (sofa_std, sofa_mean, max_norm_sofa, min_norm_sofa)
         self.lact_dicts = (lact_std, lact_mean, max_norm_lact, min_norm_lact)
 
-    def estimate_q_values(self) -> np.ndarray:
+    def estimate_q_values(self, q: nn.Module=None) -> np.ndarray:
+        '''
+        param:
+            q : q function from DM, e.g. fqe, ...
+        '''
         states = torch.tensor(self.states, dtype=torch.float, device=self.device)
         with torch.no_grad():
-            if isinstance(self.agent, DQN):
-                self.agent.q.eval()
-                est_q_values, _ = self.agent.q(states).max(dim=1)
-                est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy() # (B, 1)
-            elif isinstance(self.agent, SAC):
-                self.agent.q_dre.eval()
-                est_q_values, _ = self.agent.q_dre(states).max(dim=1)
-                est_q_values = est_q_values.view(-1, 1).detach().cpu().numpy() # (B, 1)
-        return est_q_values
+            if q is None:
+                if isinstance(self.agent, DQN):
+                    self.agent.q.eval()
+                    est_q_values, _ = self.agent.q(states).max(dim=1)
+                elif isinstance(self.agent, SAC):
+                    self.agent.q_dre.eval()
+                    action_probs = self.agent.get_action_probs(states)[3]
+                    est_q_values = (self.agent.q_dre(states) * action_probs).sum(dim=1, keepdim=True)
+            else:
+                print('-----------------------------------------')
+                if isinstance(self.agent, DQN):
+                    actions = self.agent.get_action_probs(states)[0]
+                    est_q_values = q(states).gather(1, actions)
+                else:
+                    action_probs = self.agent.get_action_probs(states)[3]
+                    est_q_values = (q(states) * action_probs).sum(dim=1, keepdim=True)
+
+        return est_q_values.view(-1, 1).detach().cpu().numpy() # (B, 1)
 
 
     def estimate(self, **kwargs) -> Tuple[float, np.ndarray, np.ndarray]:
@@ -98,7 +111,8 @@ class DoublyRobust(BaseEstimator):
         self.agent = kwargs['agent']
         policy_actions = kwargs['policy_actions']
         policy_action_probs = kwargs['policy_action_probs']
-        est_q_values = self.estimate_q_values()
+        q = kwargs.get('q', None)
+        est_q_values = self.estimate_q_values(q)
 
         est_next_states = self.estimate_next_state(policy_actions)
         est_reward, est_alive = self.estimate_reward(est_next_states, policy_actions)

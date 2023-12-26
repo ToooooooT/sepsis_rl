@@ -15,6 +15,7 @@ def remove_run_dir(run_dir):
     shutil.rmtree(path, ignore_errors=True)
     
 experiment_id = 422843293446608405
+# experiment_id = 378651521004183178
     
 exp = mlflow.tracking.MlflowClient(tracking_uri=ml_runs_path)
     

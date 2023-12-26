@@ -37,7 +37,7 @@ def plot_estimate_value(policy_val: np.ndarray, names: list, freq: int, log_dir:
         policy_val: estimate return value of learned policy during training process; expected shape (k, T)
     '''
     colors = ['blue', 'red', 'green', 'yellow']
-    f, ax = plt.subplots(1, 1)
+    f, ax = plt.subplots(1, 1, figsize=(8, 8))
     x = np.arange(policy_val.shape[1])
     for i in range(policy_val.shape[0]):
         ax.plot(x, policy_val[i], color=colors[i], label=names[i])

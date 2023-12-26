@@ -10,7 +10,7 @@ from tqdm import tqdm
 from typing import Tuple
 
 from utils import Config
-from agents import BaseAgent
+from agents import BaseAgent, DQN, SAC
 from ope.base_estimator import BaseEstimator
 
 class FQEDataset(Dataset):
@@ -101,8 +101,12 @@ class FQE(BaseEstimator):
     def predict(self) -> Tuple[float, np.ndarray]:
         initial_states = self.initial_states.to(self.device)
         with torch.no_grad():
-            actions = self.agent.get_action_probs(initial_states)[0]
-            expected_return = self.Q(initial_states).gather(1, actions)
+            if isinstance(self.agent, DQN):
+                actions = self.agent.get_action_probs(initial_states)[0]
+                expected_return = self.Q(initial_states).gather(1, actions)
+            else:
+                action_probs = self.agent.get_action_probs(initial_states)[3]
+                expected_return = (self.Q(initial_states) * action_probs).sum(dim=1, keepdim=True)
         return expected_return.mean().item(), expected_return.reshape(1, -1).cpu().numpy()
 
 
