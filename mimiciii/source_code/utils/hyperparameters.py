@@ -46,8 +46,8 @@ class Config(object):
 
         # coefficient of actor loss term in BC
         self.ACTOR_LAMBDA = 2.5
-        self.SOFA_THRESHOLD = 4
-        self.BC_KL_BETA = 2e-3
+        self.SOFA_THRESHOLD = 5
+        self.BC_KL_BETA = 2e-1
         self.BC_TYPE = "cross_entropy"
 
         self.HIDDEN_SIZE = (128, 128)

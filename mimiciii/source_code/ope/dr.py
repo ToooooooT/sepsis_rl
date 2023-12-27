@@ -87,7 +87,6 @@ class DoublyRobust(BaseEstimator):
                     action_probs = self.agent.get_action_probs(states)[3]
                     est_q_values = (self.agent.q_dre(states) * action_probs).sum(dim=1, keepdim=True)
             else:
-                print('-----------------------------------------')
                 if isinstance(self.agent, DQN):
                     actions = self.agent.get_action_probs(states)[0]
                     est_q_values = q(states).gather(1, actions)

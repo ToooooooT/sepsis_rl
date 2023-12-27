@@ -178,8 +178,9 @@ class SAC_BC_E(SAC):
             policy = Categorical(logits=logits)
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{clin}(a|s)))
-            kl_div = kl_divergence(policy, clin)
-            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * SOFAs
+            kl_div = kl_divergence(clin, policy)
+            # add 0.1 to avoid threshold be 0
+            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * (SOFAs + 0.1)
             bc_loss = nu * ((kl_div - kl_threshold) * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
 
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
@@ -222,10 +223,13 @@ class SAC_BC_E(SAC):
             loss['alpha_loss'] = alpha_loss.detach().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * SOFAs
-            nu_loss = nu * ((kl_div - kl_threshold).detach() * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            # add 0.1 to avoid threshold be 0
+            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * (SOFAs + 0.1)
+            nu_loss = -nu * ((kl_div - kl_threshold).detach() * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
             self.nu_optimizer.zero_grad()
             nu_loss.backward()
+            if self.is_gradient_clip:
+                self.log_nu.grad.data.clamp_(-1, 1)
             self.nu_optimizer.step()
             loss['nu_loss'] = nu_loss.detach().cpu().item()
             loss['kl_loss'] = kl_div.mean().detach().cpu().item()
@@ -305,8 +309,9 @@ class CQL_BC_E(CQL):
             policy = Categorical(logits=logits)
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{clin}(a|s)))
-            kl_div = kl_divergence(policy, clin)
-            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * SOFAs
+            kl_div = kl_divergence(clin, policy)
+            # add 0.1 to avoid threshold be 0
+            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * (SOFAs + 0.1)
             bc_loss = nu * ((kl_div - kl_threshold) * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
 
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
@@ -359,8 +364,11 @@ class CQL_BC_E(CQL):
             loss['alpha_prime_loss'] = alpha_prime_loss.detach().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * SOFAs
-            nu_loss = nu * ((kl_div - kl_threshold).detach() * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            # add 0.1 to avoid threshold be 0
+            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * (SOFAs + 0.1)
+            nu_loss = -nu * ((kl_div - kl_threshold).detach() * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            if self.is_gradient_clip:
+                self.log_nu.grad.data.clamp_(-1, 1)
             self.nu_optimizer.zero_grad()
             nu_loss.backward()
             self.nu_optimizer.step()

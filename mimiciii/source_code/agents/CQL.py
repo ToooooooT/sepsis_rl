@@ -216,7 +216,7 @@ class CQL_BC(CQL):
             policy = Categorical(logits=logits)
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{b}(a|s)))
-            kl_loss = kl_divergence(policy, behavior).mean()
+            kl_loss = kl_divergence(behavior, policy).mean()
             bc_loss = nu * (kl_loss - self.bc_kl_beta)
         # TODO: use a suitable coefficient of normalization term
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
@@ -270,9 +270,11 @@ class CQL_BC(CQL):
             loss['alpha_prime_loss'] = alpha_prime_loss.detach().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            nu_loss = nu * (kl_loss.detach() - self.bc_kl_beta)
+            nu_loss = -nu * (kl_loss.detach() - self.bc_kl_beta)
             self.nu_optimizer.zero_grad()
             nu_loss.backward()
+            if self.is_gradient_clip:
+                self.log_nu.grad.data.clamp_(-1, 1)
             self.nu_optimizer.step()
             loss['nu_loss'] = nu_loss.detach().cpu().item()
             loss['kl_loss'] = kl_loss.detach().cpu().item()
