@@ -32,6 +32,7 @@ def parse_args():
     parser.add_argument("--pi_lr", type=float, help="policy learning rate", default=3e-4)
     parser.add_argument("--fqe_lr", type=float, help="fitted q function learning rate", default=1e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
+    parser.add_argument("--bc_kl_beta", type=float, help="regularization term coeficient", default=2e-1)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
@@ -242,6 +243,7 @@ if __name__ == '__main__':
     config.EXP_REPLAY_SIZE = len(train_data['s'])
     config.IS_GRADIENT_CLIP = args.gradient_clip
     config.REG_LAMBDA = args.reg_lambda
+    config.BC_KL_BETA = args.bc_kl_beta
     config.BC_TYPE = args.bc_type
 
     env_spec = {'num_feats': 49, 'num_actions': 25}
@@ -251,6 +253,9 @@ if __name__ == '__main__':
         path += f'-reg_lambda={config.REG_LAMBDA}'
     if args.agent == 'SAC_BC_E' or args.agent == 'CQL_BC_E' or args.agent == 'SAC_BC' or args.agent == 'CQL_BC':
         path += f'-bc_type={config.BC_TYPE}'
+        if config.BC_TYPE == 'KL':
+            path += f'-bc_kl_beta={config.BC_KL_BETA}'
+
     log_path = os.path.join('./logs', path)
 
     agent = get_agent(args, log_path, env_spec, config)

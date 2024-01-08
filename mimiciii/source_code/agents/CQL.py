@@ -217,11 +217,13 @@ class CQL_BC(CQL):
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{b}(a|s)))
             kl_loss = kl_divergence(behavior, policy).mean()
+            # replace infinity of kl divergence to 20
+            kl_loss[torch.isinf(kl_loss)] = 20.0
             bc_loss = nu * (kl_loss - self.bc_kl_beta)
         # TODO: use a suitable coefficient of normalization term
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
         total_loss = actor_loss * coef + bc_loss
-        return total_loss, actor_loss * coef, bc_loss, kl_loss, action_probs, log_pi
+        return total_loss, actor_loss, bc_loss, kl_loss, action_probs, log_pi
 
 
     def update(self, t) -> Dict:
