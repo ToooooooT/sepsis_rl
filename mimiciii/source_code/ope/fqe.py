@@ -74,9 +74,7 @@ class FQE(BaseEstimator):
         self.num_worker = args.num_worker
         self.records = pd.DataFrame({'episode': [], 'epoch_loss': []})
 
-        done_indexs = np.where(self.dones == 1)[0]
-        start_indexs = [0] + (done_indexs + 1).tolist()[:-1]
-        self.initial_states = torch.tensor(self.states[start_indexs], dtype=torch.float)
+        self.initial_states = torch.tensor(self.states[self.start_indexs], dtype=torch.float)
 
         # train dataset
         self.dataloader = DataLoader(FQEDataset(self.train_dict),
@@ -107,6 +105,7 @@ class FQE(BaseEstimator):
             else:
                 action_probs = self.agent.get_action_probs(initial_states)[3]
                 expected_return = (self.Q(initial_states) * action_probs).sum(dim=1, keepdim=True)
+        expected_return = torch.clamp(expected_return, -self.clip_expected_return, self.clip_expected_return)
         return expected_return.mean().item(), expected_return.reshape(1, -1).cpu().numpy()
 
 
