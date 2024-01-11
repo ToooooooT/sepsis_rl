@@ -74,15 +74,81 @@ class DoublyRobust(BaseEstimator):
             gamma = 1
             prev_w = 1
             w = 1
-            for index in range(self.start_indexs[i], self.done_indexs[i] + 1):
+            start_index, done_index = self.start_indexs[i], self.done_indexs[i] + 1
+            
+            rhos_i = rhos[start_index:done_index]
+            rewards_i = self.rewards[start_index:done_index]
+            est_v_values_i = est_v_values[start_index:done_index]
+            est_q_values_i = est_q_values[start_index:done_index]
+
+            for index in range(self.done_indexs[i] - self.start_indexs[i]):
                 prev_w = w
-                w *= rhos[index]
-                total_reward += gamma * (w * self.rewards[index] + prev_w * est_v_values[index] \
-                                         - w * est_q_values[index])
+                w *= rhos_i[index]
+                total_reward += gamma * (w * rewards_i[index] + prev_w * est_v_values_i[index] \
+                                         - w * est_q_values_i[index])
                 gamma *= self.gamma
             policy_return[i] = total_reward
 
         policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
         return policy_return.mean(), policy_return.reshape(1, -1)
 
+class PHWDR(DoublyRobust):
+    def __init__(self, 
+                 agent: BaseAgent,
+                 data_dict: dict, 
+                 config: Config,
+                 args) -> None:
+        super().__init__(agent, data_dict, config, args)
 
+    def estimate(self, **kwargs) -> Tuple[float, ndarray]:
+        '''
+        Args:
+            policy_action_probs: np.ndarray; expected shape (B, D)
+        Returns:
+            average policy return
+            policy_return   : expected return of each patient; expected shape (1, B)
+        '''
+        self.agent = kwargs['agent']
+        policy_action_probs = kwargs['policy_action_probs']
+        q = kwargs.get('q', None)
+        est_q_values, est_v_values = self.estimate_values(q)
+
+        # \rho_t = \pi_1(a_t | s_t) / \pi_0(a_t | s_t), assume \pi_0(a_t | s_t) = 1
+        rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
+                                   self.actions.astype(np.int32).reshape(-1,)]
+
+        policy_return = np.zeros((self.n,), dtype=np.float64) 
+        length = np.zeros((self.n,), dtype=np.int32) # the horizon length of each patient
+        ws = np.zeros((self.max_length + 1, self.max_length + 1), dtype=np.float64)
+        W_l = np.zeros((self.max_length + 1,), dtype=np.float64)
+
+        for i in range(self.n):
+            start, end = self.start_indexs[i], self.done_indexs[i]
+            l = end - start + 1
+            ws[l, :l] += np.cumprod(rhos[start:end + 1])
+            W_l[l] += 1
+
+        for i in range(self.n):
+            gamma = 1
+            w = 1
+            start_index, done_index = self.start_indexs[i], self.done_indexs[i] + 1 # 0 ~ 5
+            l = done_index - start_index
+            length[i] = l
+            total_reward = est_v_values[start_index]
+            
+            rhos_i = rhos[start_index:done_index]
+            rewards_i = self.rewards[start_index:done_index]
+            est_v_values_i = est_v_values[start_index:done_index]
+            est_q_values_i = est_q_values[start_index:done_index]
+            est_v_values_i = np.append(est_v_values_i, 0)
+
+            for index in range(l):
+                total_reward += gamma * (w / ws[l, index]) * (rewards_i[index] + self.gamma * est_v_values_i[index + 1] \
+                                             - est_q_values_i[index])
+                w *= rhos_i[index]
+                gamma *= self.gamma
+
+            policy_return[i] = total_reward
+
+        policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
+        return policy_return.mean(), policy_return.reshape(1, -1)

@@ -16,7 +16,7 @@ from utils import Config, plot_action_dist, plot_estimate_value, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
                 plot_action_diff_survival_rate
 from network import DuellingMLP
-from ope import WIS, DoublyRobust, FQE, QEstimator, PHWIS
+from ope import WIS, DoublyRobust, FQE, QEstimator, PHWIS, PHWDR
 
 pd.options.mode.chained_assignment = None
 
@@ -92,7 +92,7 @@ def add_dataset_to_replay(train_data, agent: DQN_regularization):
     else:
         raise NotImplementedError
 
-def training(agent: DQN_regularization, valid_dataset: pd.DataFrame, valid_dict: dict, config: Config, args):
+def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
     '''
     Args:
         train_data      : processed training dataset
@@ -102,6 +102,7 @@ def training(agent: DQN_regularization, valid_dataset: pd.DataFrame, valid_dict:
     wis_returns = []
     phwis_returns = []
     dr_returns = []
+    phwdr_returns = []
     fqe_returns = []
     qe_returns = []
     hists = [] # save model actions of validation in every episode 
@@ -110,6 +111,7 @@ def training(agent: DQN_regularization, valid_dataset: pd.DataFrame, valid_dict:
     max_expected_return = -np.inf
     valid_data = valid_dict['data']
     dr = DoublyRobust(agent, valid_dict['data'], config, args)
+    phwdr = PHWDR(agent, valid_dict['data'], config, args)
     wis = WIS(agent, valid_dict['data'], config, args)
     phwis = PHWIS(agent, valid_dict['data'], config, args)
     fqe = FQE(agent, 
@@ -146,6 +148,10 @@ def training(agent: DQN_regularization, valid_dataset: pd.DataFrame, valid_dict:
                                        agent=agent, 
                                        q=fqe.Q)
             dr_returns.append(dr_return)
+            phwdr_return, _ = phwdr.estimate(policy_action_probs=action_probs, 
+                                       agent=agent, 
+                                       q=fqe.Q)
+            phwdr_returns.append(phwdr_return)
             qe_return, _ = qe.estimate(agent=agent)
             qe_returns.append(qe_return)
             # currently use fqe to choose model
@@ -153,11 +159,12 @@ def training(agent: DQN_regularization, valid_dataset: pd.DataFrame, valid_dict:
                 max_expected_return = fqe_return
                 agent.save()
 
-            print(f'[EPISODE {i}] | WIS: {wis_return:.5f}, PHWIS: {phwis_return:.5f}, DR: {dr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f}')
+            print(f'[EPISODE {i}] | WIS: {wis_return:.5f}, PHWIS: {phwis_return:.5f}, DR: {dr_return:.5f}, PHWDR: {phwdr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f}')
 
             log_data["WIS"] = wis_return
             log_data["PHWIS"] = phwis_return
             log_data["DR"] = dr_return
+            log_data["PHWDR"] = phwdr_return
             log_data["FQE"] = fqe_return
             log_data["QE"] = qe_return
 
@@ -278,7 +285,7 @@ if __name__ == '__main__':
         mlflow.log_params(config.get_hyperparameters())
         # Training
         print('Start training...')
-        training(agent, valid_dataset, valid_dict, config, args)
+        training(agent, valid_dict, config, args)
         # Testing
         agent.load()
 
@@ -304,17 +311,20 @@ if __name__ == '__main__':
         avg_fqe_return, fqe_returns = fqe.estimate(agent=agent)
         dr = DoublyRobust(agent, test_dict['data'], config, args)
         avg_dr_return, dr_returns = dr.estimate(policy_action_probs=policy_action_probs, 
-                                                           policy_actions=policy_actions, 
+                                                           agent=agent,
+                                                           q=fqe.Q)
+        phwdr = PHWDR(agent, test_dict['data'], config, args)
+        avg_phwdr_return, phwdr_returns = phwdr.estimate(policy_action_probs=policy_action_probs, 
                                                            agent=agent,
                                                            q=fqe.Q)
         qe = QEstimator(agent, test_dict['data'], config, args)
         avg_qe_return, qe_returns = qe.estimate(agent=agent)
 
         # plot expected return result
-        policy_returns = np.vstack((wis_returns, phwis_returns, dr_returns, fqe_returns, qe_returns))
-        mlflow.log_figure(plot_expected_return_distribution(policy_returns, ['WIS', 'PHWIS', 'DR', 'FQE', 'QE']), 
+        policy_returns = np.vstack((wis_returns, phwis_returns, dr_returns, phwdr_returns, fqe_returns, qe_returns))
+        mlflow.log_figure(plot_expected_return_distribution(policy_returns, ['WIS', 'PHWIS', 'DR', 'PHWDR', 'FQE', 'QE']), 
                           'fig/expected_return_distribution.png')
-        mlflow.log_figure(plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'PHWIS', 'DR', 'FQE', 'QE']), 
+        mlflow.log_figure(plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'PHWIS', 'DR', 'PHWDR', 'FQE', 'QE']), 
                           'fig/survival_rate.png')
 
         # plot action distribution
@@ -339,6 +349,7 @@ if __name__ == '__main__':
                         WIS : {avg_wis_return:.5f}
                         PHWIS : {avg_phwis_return:.5f}
                         DR : {avg_dr_return:.5f}
+                        PHWDR : {avg_phwdr_return:.5f}
                         FQE : {avg_fqe_return:.5f}
                         QE : {avg_qe_return:.5f}
                         ''', 'text/expected_return.txt')
@@ -346,6 +357,7 @@ if __name__ == '__main__':
         print(f'WIS estimator: {avg_wis_return:.5f}')
         print(f'PHWIS estimator: {avg_phwis_return:.5f}')
         print(f'DR estimator: {avg_dr_return:.5f}')
+        print(f'PHWDR estimator: {avg_phwdr_return:.5f}')
         print(f'FQE estimator: {avg_fqe_return:.5f}')
         print(f'QE estimator: {avg_qe_return:.5f}')
 

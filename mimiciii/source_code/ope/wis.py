@@ -36,16 +36,16 @@ class WIS(BaseEstimator):
         length = np.zeros((self.n,), dtype=np.int32) # the horizon length of each patient
         
         for i in range(self.n):
-            start = self.start_indexs[i]
-            end = self.done_indexs[i]
+            start, end = self.start_indexs[i], self.done_indexs[i]
             total_reward = 0
             length[i] = end - start + 1
-            for j, index in enumerate(range(end, start - 1, -1)):
-                # let the minimum probability be 0.01 to avoid nan
-                weights[i, end - start - j] = rhos[index]
-                total_reward = self.gamma * total_reward + self.rewards[index]
+            if start > 0:
+                weights[i, :length[i]] = rhos[end:start - 1:-1]
+            else:
+                weights[i, :length[i]] = rhos[end::-1]
+            total_reward = np.dot(self.rewards[start:end + 1, 0], self.gamma ** np.arange(length[i]))
             # \rho1:H * (\sum_{t=1}^H \gamma^{t-1} r_t) 
-            policy_return[i] = np.cumprod(weights[i])[length[i] - 1] * total_reward
+            policy_return[i] = np.cumprod(weights[i, :length[i]])[-1] * total_reward
 
         for i, l in enumerate(length):
             w_H = np.cumprod(weights[l <= length], axis=1)[:, l - 1].mean()
@@ -86,19 +86,18 @@ class PHWIS(BaseEstimator):
         W_l = np.zeros((self.max_length + 1,), dtype=np.float64)
         
         for i in range(self.n):
+            start, end = self.start_indexs[i], self.done_indexs[i]
             total_reward = 0
-            l = self.done_indexs[i] - self.start_indexs[i] + 1
-            w = 1
-            for index in range(self.done_indexs[i], self.start_indexs[i] - 1, -1):
-                w *= rhos[index]
-                total_reward = self.gamma * total_reward + self.rewards[index]
+            l = end - start + 1
+            w = np.prod(rhos[start:end + 1])
+            total_reward = np.dot(self.rewards[start:end + 1, 0], self.gamma ** np.arange(l))
             # \rho1:H * (\sum_{t=1}^H \gamma^{t-1} r_t) 
             policy_return[i] = w * total_reward
             length2sumwight[l] += w
             W_l[l] += 1
             length[i] = l
 
-        for i in range(length.shape[0]):
+        for i in range(self.n):
             policy_return[i] *= W_l[length[i]] / length2sumwight[length[i]]
 
         policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
