@@ -103,9 +103,12 @@ class WDQNE(WDQN):
         if self.priority_replay:
             diff = (q_values - (rewards + self.gamma * target_q_values * (1 - dones)))
             self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist())
-            loss = ((0.5 * diff.pow(2))* weights).mean()
+            loss = (F.smooth_l1_loss(q_values, 
+                                    rewards + self.gamma * target_q_values * (1 - dones),
+                                    reduction='none') * weights).mean()
         else:
-            loss = F.mse_loss(q_values, rewards + self.gamma * target_q_values * (1 - dones))
+            loss = F.smooth_l1_loss(q_values, 
+                                    rewards + self.gamma * target_q_values * (1 - dones))
         return loss
 
 
