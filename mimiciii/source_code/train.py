@@ -297,7 +297,7 @@ if __name__ == '__main__':
         test_dataset['policy iv'] = (policy_actions // 5).reshape(-1,)
         test_dataset['policy vaso'] = (policy_actions % 5).reshape(-1,)
 
-        # Off-policy Evaluation
+        # Off-policy Policy Evaluation
         wis = WIS(agent, test_dict['data'], config, args)
         avg_wis_return, wis_returns = wis.estimate(policy_action_probs=policy_action_probs)
         phwis = PHWIS(agent, test_dict['data'], config, args)
@@ -325,8 +325,18 @@ if __name__ == '__main__':
         policy_returns = np.vstack((wis_returns, phwis_returns, dr_returns, phwdr_returns, fqe_returns, qe_returns))
         mlflow.log_figure(plot_expected_return_distribution(policy_returns, ['WIS', 'PHWIS', 'DR', 'PHWDR', 'FQE', 'QE']), 
                           'fig/expected_return_distribution.png')
-        mlflow.log_figure(plot_survival_rate(policy_returns, test_id_index_map, test_dataset, ['WIS', 'PHWIS', 'DR', 'PHWDR', 'FQE', 'QE']), 
-                          'fig/survival_rate.png')
+        avg_expected_returns = [avg_wis_return, 
+                                avg_phwis_return, 
+                                avg_dr_return, 
+                                avg_phwdr_return, 
+                                avg_fqe_return, 
+                                avg_qe_return]
+        fig, survival_rate_means, survival_rate_stds = plot_survival_rate(avg_expected_returns,
+                                                                          policy_returns, 
+                                                                          test_id_index_map, 
+                                                                          test_dataset, 
+                                                                          ['WIS', 'PHWIS', 'DR', 'PHWDR', 'FQE', 'QE'])
+        mlflow.log_figure(fig, 'fig/survival_rate.png')
 
         # plot action distribution
         negative_traj = test_dataset.query('mortality_90d == 1.0')
@@ -346,21 +356,25 @@ if __name__ == '__main__':
         mlflow.log_figure(high_fig, 'fig/diff_action_mortality_high_SOFA.png')
 
         # store result in text file
-        mlflow.log_text(f'''
-                        WIS : {avg_wis_return:.3f}
-                        PHWIS : {avg_phwis_return:.3f}
-                        DR : {avg_dr_return:.3f}
-                        PHWDR : {avg_phwdr_return:.3f}
-                        FQE : {avg_fqe_return:.3f}
-                        QE : {avg_qe_return:.3f}
-                        ''', 'text/expected_return.txt')
+        result = f'''
+                expected_returns:
+                    WIS : {avg_wis_return:.3f}
+                    PHWIS : {avg_phwis_return:.3f}
+                    DR : {avg_dr_return:.3f}
+                    PHWDR : {avg_phwdr_return:.3f}
+                    FQE : {avg_fqe_return:.3f}
+                    QE : {avg_qe_return:.3f}
+                survival_rates:
+                    WIS : {survival_rate_means[0]:.3f} ({survival_rate_stds[0]:.3f})
+                    PHWIS : {survival_rate_means[1]:.3f} ({survival_rate_stds[1]:.3f})
+                    DR : {survival_rate_means[2]:.3f} ({survival_rate_stds[2]:.3f})
+                    PHWDR : {survival_rate_means[3]:.3f} ({survival_rate_stds[3]:.3f})
+                    FQE : {survival_rate_means[4]:.3f} ({survival_rate_stds[4]:.3f})
+                    QE : {survival_rate_means[5]:.3f} ({survival_rate_stds[5]:.3f})
+                '''
+        mlflow.log_text(result, 'text/expected_return.txt')
         # print result
-        print(f'WIS estimator: {avg_wis_return:.3f}')
-        print(f'PHWIS estimator: {avg_phwis_return:.3f}')
-        print(f'DR estimator: {avg_dr_return:.3f}')
-        print(f'PHWDR estimator: {avg_phwdr_return:.3f}')
-        print(f'FQE estimator: {avg_fqe_return:.3f}')
-        print(f'QE estimator: {avg_qe_return:.3f}')
+        print(result)
 
         mlflow.log_table(test_dataset, 'table/test_data_predict.json')
         mlflow.log_artifacts(agent.log_dir, "states")

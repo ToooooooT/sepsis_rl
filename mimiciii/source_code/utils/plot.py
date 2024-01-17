@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from scipy.stats import sem
 from typing import List, Tuple
+import bisect
 
 matplotlib.use('Agg')  # Set the backend to Agg
 
@@ -215,7 +216,8 @@ def sliding_mean(data_array: list, window: int=1):
     return np.array(new_list)
 
 
-def plot_survival_rate(expected_return: np.ndarray, 
+def plot_survival_rate(avg_expected_return: List,
+                       expected_return: np.ndarray, 
                        id_index_map: dict, 
                        dataset: pd.DataFrame, 
                        name: list, 
@@ -240,8 +242,8 @@ def plot_survival_rate(expected_return: np.ndarray,
         survive[i] = 1.0 if dataset.loc[index, 'mortality_90d'] != 1.0 else 0
 
     bin_medians = [[] for _ in range(n)]
-    mort = [[] for _ in range(n)]
-    mort_std = [[] for _ in range(n)]
+    survival_rate = [[] for _ in range(n)]
+    survival_rate_std = [[] for _ in range(n)]
     for k in range(n):
         i = -25
         while i <= 25:
@@ -250,8 +252,8 @@ def plot_survival_rate(expected_return: np.ndarray,
                 res = sum(count) / len(count)
                 if len(count) >= 2:
                     bin_medians[k].append(i)
-                    mort[k].append(res)
-                    mort_std[k].append(sem(count))
+                    survival_rate[k].append(res)
+                    survival_rate_std[k].append(sem(count))
             except ZeroDivisionError:
                 pass
             i += 0.5
@@ -259,9 +261,9 @@ def plot_survival_rate(expected_return: np.ndarray,
     f, ax = plt.subplots(n, 1, figsize=(16, n * 8))
 
     if n == 1:
-        ax.plot(bin_medians[0], sliding_mean(mort[0]), color='g')
-        ax.fill_between(bin_medians[0], sliding_mean(mort[0]) - 1 * mort_std[0],
-                        sliding_mean(mort[0]) + 1 * mort_std[0], color='palegreen')
+        ax.plot(bin_medians[0], sliding_mean(survival_rate[0]), color='g')
+        ax.fill_between(bin_medians[0], sliding_mean(survival_rate[0]) - 1 * survival_rate_std[0],
+                        sliding_mean(survival_rate[0]) + 1 * survival_rate_std[0], color='palegreen')
 
         x_r = [i / 1.0 for i in range(-25, 27, 3)]
         y_r = [i / 10.0 for i in range(0, 11, 1)]
@@ -272,9 +274,9 @@ def plot_survival_rate(expected_return: np.ndarray,
         ax.set_ylabel("Survival Rate")
     else:
         for k in range(n):
-            ax[k].plot(bin_medians[k], sliding_mean(mort[k]), color='g')
-            ax[k].fill_between(bin_medians[k], sliding_mean(mort[k]) - 1 * mort_std[k],
-                            sliding_mean(mort[k]) + 1 * mort_std[k], color='palegreen')
+            ax[k].plot(bin_medians[k], sliding_mean(survival_rate[k]), color='g')
+            ax[k].fill_between(bin_medians[k], sliding_mean(survival_rate[k]) - 1 * survival_rate_std[k],
+                            sliding_mean(survival_rate[k]) + 1 * survival_rate_std[k], color='palegreen')
 
             x_r = [i / 1.0 for i in range(-25, 27, 3)]
             y_r = [i / 10.0 for i in range(0, 11, 1)]
@@ -288,7 +290,11 @@ def plot_survival_rate(expected_return: np.ndarray,
     if log_dir is not None:
         plt.savefig(os.path.join(log_dir, 'survival_rate.png'))
     plt.close()
-    return f
+    survival_rates, survival_rates_std = expected_survival_rate(bin_medians, 
+                                                                [sliding_mean(survival_rate[k]) for k in range(n)], 
+                                                                survival_rate_std,
+                                                                avg_expected_return)
+    return f, survival_rates, survival_rates_std
 
 
 def plot_expected_return_distribution(expected_return: np.ndarray, name: list, log_dir: str=None):
@@ -448,3 +454,36 @@ def plot_action_diff_survival_rate(train_dataset: pd.DataFrame,
     high_fig = diff_plot(bin_med_vaso_high, mort_vaso_high, mort_std_vaso_high, 
           bin_med_iv_high, mort_iv_high, mort_std_iv_high, 'r', 'High SOFA', log_dir)
     return low_fig, medium_fig, high_fig
+
+def expected_survival_rate(bin_medians: List[List], 
+                           survival_rate_means: List[np.ndarray], 
+                           survival_rate_stds: List[List], 
+                           avg_expected_returns: List):
+    '''
+    Args:
+        bin_medians: the expected return values correspond to each mortality rate
+        survival_rate_means: the mean mortality rate 
+        mort_stds: the std mortality rate 
+    Returns:
+        survival_rates: survival rate of each ope method
+        survival_rates_std: std of survival rate of each ope method
+    Description:
+        each element in the list correspond to one ope method
+    '''
+    n = len(bin_medians)
+    survival_rates = []
+    survival_rates_std = []
+
+    for i in range(n):
+        index = bisect.bisect_right(bin_medians[i], avg_expected_returns[i]) # the smallest index cause bin_median > expected return
+        if index == 0:
+            # assume the mortality rate is the smallest index in survival_rate_means
+            survival_rates.append(survival_rate_means[i][index] * 100)
+            survival_rates_std.append(survival_rate_stds[i][index] * 100)
+        else:
+            ratio = (avg_expected_returns[i] - bin_medians[i][index - 1]) / (bin_medians[i][index] - bin_medians[i][index - 1])
+            survival_rate = ratio * (survival_rate_means[i][index] - survival_rate_means[i][index - 1]) + survival_rate_means[i][index - 1]
+            survival_rates.append(survival_rate * 100)
+            survival_rates_std.append(survival_rate_stds[i][index] * 100)
+
+    return survival_rates, survival_rates_std
