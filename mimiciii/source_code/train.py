@@ -178,8 +178,8 @@ def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
     dr_returns = np.array(dr_returns)
     fqe_returns = np.array(fqe_returns)
     qe_returns = np.array(qe_returns)
-    fig = plot_estimate_value(np.vstack((wis_returns, dr_returns, fqe_returns, qe_returns)), 
-                        ['WIS', 'DR', 'FQE', 'QE'], 
+    fig = plot_estimate_value(np.vstack((wis_returns, phwis_returns, dr_returns, phwdr_returns, fqe_returns, qe_returns)), 
+                        ['WIS', 'PHWIS', 'DR', 'PHWDR', 'FQE', 'QE'], 
                         valid_freq)
     mlflow.log_figure(fig, 'fig/valid estimate value.png')
     mlflow.log_table(fqe.records, 'table/fqe_loss.json')
@@ -244,6 +244,7 @@ if __name__ == '__main__':
         config.DEVICE = torch.device("cpu")
     else:
         config.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f'device : {config.DEVICE}')
 
     config.EPISODE = int(args.episode)
     config.USE_PRIORITY_REPLAY = args.use_pri
@@ -292,9 +293,9 @@ if __name__ == '__main__':
         print('Start testing...')
         policy_actions, policy_action_probs = testing(test_data, agent)
 
-        test_dataset['policy action'] = policy_actions
-        test_dataset['policy iv'] = policy_actions / 5
-        test_dataset['policy vaso'] = policy_actions % 5
+        test_dataset['policy action'] = policy_actions.reshape(-1,)
+        test_dataset['policy iv'] = (policy_actions // 5).reshape(-1,)
+        test_dataset['policy vaso'] = (policy_actions % 5).reshape(-1,)
 
         # Off-policy Evaluation
         wis = WIS(agent, test_dict['data'], config, args)
@@ -346,20 +347,20 @@ if __name__ == '__main__':
 
         # store result in text file
         mlflow.log_text(f'''
-                        WIS : {avg_wis_return:.5f}
-                        PHWIS : {avg_phwis_return:.5f}
-                        DR : {avg_dr_return:.5f}
-                        PHWDR : {avg_phwdr_return:.5f}
-                        FQE : {avg_fqe_return:.5f}
-                        QE : {avg_qe_return:.5f}
+                        WIS : {avg_wis_return:.3f}
+                        PHWIS : {avg_phwis_return:.3f}
+                        DR : {avg_dr_return:.3f}
+                        PHWDR : {avg_phwdr_return:.3f}
+                        FQE : {avg_fqe_return:.3f}
+                        QE : {avg_qe_return:.3f}
                         ''', 'text/expected_return.txt')
         # print result
-        print(f'WIS estimator: {avg_wis_return:.5f}')
-        print(f'PHWIS estimator: {avg_phwis_return:.5f}')
-        print(f'DR estimator: {avg_dr_return:.5f}')
-        print(f'PHWDR estimator: {avg_phwdr_return:.5f}')
-        print(f'FQE estimator: {avg_fqe_return:.5f}')
-        print(f'QE estimator: {avg_qe_return:.5f}')
+        print(f'WIS estimator: {avg_wis_return:.3f}')
+        print(f'PHWIS estimator: {avg_phwis_return:.3f}')
+        print(f'DR estimator: {avg_dr_return:.3f}')
+        print(f'PHWDR estimator: {avg_phwdr_return:.3f}')
+        print(f'FQE estimator: {avg_fqe_return:.3f}')
+        print(f'QE estimator: {avg_qe_return:.3f}')
 
         mlflow.log_table(test_dataset, 'table/test_data_predict.json')
         mlflow.log_artifacts(agent.log_dir, "states")

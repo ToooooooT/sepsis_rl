@@ -36,7 +36,7 @@ def plot_estimate_value(policy_val: np.ndarray, names: list, freq: int, log_dir:
     Args:
         policy_val: estimate return value of learned policy during training process; expected shape (k, T)
     '''
-    colors = ['blue', 'red', 'green', 'yellow']
+    colors = ['blue', 'red', 'green', 'yellow', 'cyan', 'magenta']
     f, ax = plt.subplots(1, 1, figsize=(8, 8))
     x = np.arange(policy_val.shape[1])
     for i in range(policy_val.shape[0]):
@@ -406,12 +406,10 @@ def plot_action_diff_survival_rate(train_dataset: pd.DataFrame,
 
     def diff_plot(med_vaso, mort_vaso, std_vaso, med_iv, mort_iv, std_iv, col, title, log_dir=None):
         f, ((ax1, ax2)) = plt.subplots(1, 2, sharex='col', sharey='row', figsize=(10,4))
-        step = 2
         if col == 'r':
             fillcol = 'lightsalmon'
         elif col == 'g':
             fillcol = 'palegreen'
-            step = 1
         elif col == 'b':
             fillcol = 'lightblue'
         ax1.plot(med_vaso, sliding_mean(mort_vaso), color=col)
@@ -419,9 +417,10 @@ def plot_action_diff_survival_rate(train_dataset: pd.DataFrame,
                         sliding_mean(mort_vaso) + 1 * std_vaso, color=fillcol)
         ax1.set_title(title + ': Vasopressors')
         x_r = [i / 10.0 for i in range(-6, 8, 2)]
-        y_r = [i / 20.0 for i in range(0, 20, step)]
+        y_r = [i / 10.0 for i in range(0, 10)]
         ax1.set_xticks(x_r)
         ax1.set_yticks(y_r)
+        ax1.set_ylim([0, 1])
         ax1.grid()
 
         ax2.plot(med_iv, sliding_mean(mort_iv), color=col)
@@ -430,6 +429,7 @@ def plot_action_diff_survival_rate(train_dataset: pd.DataFrame,
         ax2.set_title(title + ': IV fluids')
         x_iv = [i for i in range(-800, 900, 400)]
         ax2.set_xticks(x_iv)
+        ax2.set_ylim([0, 1])
         ax2.grid()
 
         f.text(0.3, -0.03, 'Difference between optimal and physician vasopressor dose', ha='center', fontsize=10)
