@@ -104,7 +104,7 @@ def add_reward_action(dataset: pd.DataFrame, hour, args):
     dataset.loc[dataset.index[-1], 'reward'] = r
     dataset.loc[dataset.index[-1], 'action'] = a
 
-def plot_reward_action(dataset: pd.DataFrame, name):
+def plot_reward_action(dataset: pd.DataFrame, source_path, name):
     rewards, actions, sofa = list(), list(), list()
     for index in dataset.index:
         s = dataset.loc[index, :]
@@ -119,11 +119,11 @@ def plot_reward_action(dataset: pd.DataFrame, name):
     # plot data reward distribution
     ax.hist(data['r'], bins=np.arange(53)-0.5)
     ax.set_xticks(range(-26, 26, 2))
-    plt.savefig(f'../logs/{name} reward distribution.png')
+    plt.savefig(os.path.join(source_path, f'{name} reward distribution.png'))
 
     # plot data action distribution
     actions_low = data[data['SOFA'] <= 5]['a']
-    actions_mid = data[data['SOFA'] > 5][data['SOFA'] < 15]['a']
+    actions_mid = data[(data['SOFA'] > 5) & (data['SOFA'] < 15)]['a']
     actions_high = data[data['SOFA'] >= 15]['a']
     actions = data['a']
 
@@ -148,7 +148,17 @@ def plot_reward_action(dataset: pd.DataFrame, name):
     ax4.tick_params(axis='x', labelsize=6)
     ax4.set_title('all')
 
-    plt.savefig(f'../logs/{name} action distribution.png')
+    plt.savefig(os.path.join(source_path, f'{name} action distribution.png'))
+
+    expected_return = dataset.groupby('icustayid').sum()['reward'].mean()
+    print(f'{name} expected return: {expected_return}')
+
+    mortaliy_rate = dataset.groupby('icustayid').mean()['mortality_90d'].mean()
+    print(f'{name} mortality rate: {mortaliy_rate}')
+
+    with open(os.path.join(source_path, f'{name}_info.txt'), 'w') as f:
+        f.write(f'expected return: {expected_return}\n')
+        f.write(f'mortality rate: {mortaliy_rate}')
 
 
 def normalization(period, dataset: pd.DataFrame):
@@ -248,7 +258,7 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
     data['SOFA'] = np.array(data['SOFA']).reshape(-1, 1)
     data['is_alive'] = np.array(data['is_alive']).reshape(-1, 1)
     data['bloc_num'] = np.array(data['bloc_num']).reshape(-1, 1)
-    data['iv'] = data['a'] / 5
+    data['iv'] = data['a'] // 5
     data['vaso'] = data['a'] % 5
 
     save_obj = {'data': data, 'id_index_map': id_index_map, 'terminal_index': terminal_index}
@@ -259,11 +269,22 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
 if __name__ == '__main__':
     args = parse_args()
 
-    source_path = '../../data/final_dataset/'
+    source_path = '../../data/final_dataset/v2_20873'
 
     hour = 4
 
     dataset = pd.read_csv(os.path.join(source_path, f'dataset_{hour}.csv'))
+
+    with open(os.path.join(source_path, f'dataset_info.txt'), 'w') as f:
+        t = dataset.groupby('icustayid').mean()['mortality_90d']
+        f.write(f'dead: {(t == 1).sum()}\n')
+        f.write(f'alive: {(t == 0).sum()}\n')
+        f.write(f'total: {t.shape[0]}\n')
+        f.write(f'mortality_rate: {t.mean() * 100:.3f}%')
+
+
+    source_path = os.path.join(source_path, f'reward_type={args.reward}')
+    os.makedirs(source_path, exist_ok=True)
 
     add_reward_action(dataset, hour, args)
 
@@ -288,17 +309,17 @@ if __name__ == '__main__':
     unnorm_valid_dataset = valid_dataset.copy(deep=True).reset_index(drop=True)
     unnorm_test_dataset = test_dataset.copy(deep=True).reset_index(drop=True)
 
-    unnorm_train_dataset.to_csv(os.path.join(source_path, f'train_{args.reward}.csv'), index=False)
-    unnorm_valid_dataset.to_csv(os.path.join(source_path, f'valid_{args.reward}.csv'), index=False)
-    unnorm_test_dataset.to_csv(os.path.join(source_path, f'test_{args.reward}.csv'), index=False)
+    unnorm_train_dataset.to_csv(os.path.join(source_path, f'train.csv'), index=False)
+    unnorm_valid_dataset.to_csv(os.path.join(source_path, f'valid.csv'), index=False)
+    unnorm_test_dataset.to_csv(os.path.join(source_path, f'test.csv'), index=False)
 
-    plot_reward_action(train_dataset, f'train_{args.reward}')
-    plot_reward_action(valid_dataset, f'valid_{args.reward}')
-    plot_reward_action(test_dataset, f'test_{args.reward}')
+    plot_reward_action(train_dataset, source_path, 'train')
+    plot_reward_action(valid_dataset, source_path, 'valid')
+    plot_reward_action(test_dataset, source_path, 'test')
     normalization(hour, train_dataset)
     normalization(hour, valid_dataset)
     normalization(hour, test_dataset)
 
-    process_dataset(train_dataset, unnorm_train_dataset, os.path.join(source_path, f'train_{args.reward}.pkl'))
-    process_dataset(valid_dataset, unnorm_valid_dataset, os.path.join(source_path, f'valid_{args.reward}.pkl'))
-    process_dataset(test_dataset, unnorm_test_dataset, os.path.join(source_path, f'test_{args.reward}.pkl'))
+    process_dataset(train_dataset, unnorm_train_dataset, os.path.join(source_path, f'train.pkl'))
+    process_dataset(valid_dataset, unnorm_valid_dataset, os.path.join(source_path, f'valid.pkl'))
+    process_dataset(test_dataset, unnorm_test_dataset, os.path.join(source_path, f'test.pkl'))
