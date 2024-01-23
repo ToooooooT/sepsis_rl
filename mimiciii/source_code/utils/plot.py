@@ -480,6 +480,10 @@ def expected_survival_rate(bin_medians: List[List],
             # assume the mortality rate is the smallest index in survival_rate_means
             survival_rates.append(survival_rate_means[i][index] * 100)
             survival_rates_std.append(survival_rate_stds[i][index] * 100)
+        elif index >= len(bin_medians[i]):
+            # assume the mortality rate is the highest index in survival_rate_means
+            survival_rates.append(survival_rate_means[i][-1] * 100)
+            survival_rates_std.append(survival_rate_stds[i][-1] * 100)
         else:
             ratio = (avg_expected_returns[i] - bin_medians[i][index - 1]) / (bin_medians[i][index] - bin_medians[i][index - 1])
             survival_rate = ratio * (survival_rate_means[i][index] - survival_rate_means[i][index - 1]) + survival_rate_means[i][index - 1]
