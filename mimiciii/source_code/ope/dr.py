@@ -116,6 +116,7 @@ class PHWDR(DoublyRobust):
         # \rho_t = \pi_1(a_t | s_t) / \pi_0(a_t | s_t), assume \pi_0(a_t | s_t) = 1
         rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
                                    self.actions.astype(np.int32).reshape(-1,)]
+        rhos[rhos < 0.01] = 0.01
 
         policy_return = np.zeros((self.n,), dtype=np.float64) 
         length = np.zeros((self.n,), dtype=np.int32) # the horizon length of each patient
