@@ -69,32 +69,43 @@ def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str=No
 
     # Count the occurrences of each unique action for each category
     actions_all = np.bincount(actions.ravel().astype(int), minlength=25)
+    max_all = int(np.ceil(actions_all.max() / 1000)) * 1000
     actions_low = np.bincount(actions[mask_low].ravel().astype(int), minlength=25)
+    max_low = int(np.ceil(actions_low.max() / 1000)) * 1000
     actions_mid = np.bincount(actions[mask_mid].ravel().astype(int), minlength=25)
+    max_mid = int(np.ceil(actions_mid.max() / 1000)) * 1000
     actions_high = np.bincount(actions[mask_high].ravel().astype(int), minlength=25)
+    max_high = int(np.ceil(actions_high.max() / 1000)) * 1000
 
-    f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(16,4))
-    ax1.bar(range(25), height=actions_low)
-    ax1.set_xticks(range(0, 25))
-    ax1.tick_params(axis='x', labelsize=6)
-    ax1.set_title('low SOFA')
+    iv_labels = ['0', '0-50', '50-180.435', '180.435-529.757', '>529.757']
+    vaso_labels = ['0', '0-0.08', '0.08-0.225', '0.225-0.45', '>0.45']
 
-    ax2.bar(range(25), height=actions_mid)
-    ax2.set_xticks(range(0, 25))
-    ax2.tick_params(axis='x', labelsize=6)
-    ax2.set_title('mid SOFA')
+    f, ax = plt.subplots(5, 4, figsize=(25, 15))
+    f.text(0.51, 0.05, 'Vasopressor dose', va='center', ha='center', rotation='horizontal', fontsize=15)
+    f.text(0.04, 0.5, 'IV fluid dose', va='center', ha='center', rotation='vertical', fontsize=15)
+    for i in range(5):
+        ax[i][0].bar(range(5), height=actions_low[i * 5:(i + 1) * 5])
+        ax[i][0].set_xticks(range(5), vaso_labels)
+        ax[i][0].set_yticks(np.arange(0, max_low + 1, 1000))
+        ax[i][0].set_ylabel(f'{iv_labels[i]}', rotation='horizontal', labelpad=50)
 
-    ax3.bar(range(25), height=actions_high)
-    ax3.set_xticks(range(0, 25))
-    ax3.tick_params(axis='x', labelsize=6)
-    ax3.set_title('high SOFA')
+        ax[i][1].bar(range(5), height=actions_mid[i * 5:(i + 1) * 5])
+        ax[i][1].set_xticks(range(5), vaso_labels)
+        ax[i][1].set_yticks(np.arange(0, max_mid + 1, 1000))
 
-    ax4.bar(range(25), height=actions_all)
-    ax4.set_xticks(range(0, 25))
-    ax4.tick_params(axis='x', labelsize=6)
-    ax4.set_title('all')
+        ax[i][2].bar(range(5), height=actions_high[i * 5:(i + 1) * 5])
+        ax[i][2].set_xticks(range(5), vaso_labels)
+        ax[i][2].set_yticks(np.arange(0, max_high + 1, 1000))
 
-    plt.tight_layout()
+        ax[i][3].bar(range(5), height=actions_all[i * 5:(i + 1) * 5])
+        ax[i][3].set_xticks(range(5), vaso_labels)
+        ax[i][3].set_yticks(np.arange(0, max_all + 1, 1000))
+
+        if i == 0:
+            ax[i][0].set_title('low SOFA', fontsize=20)
+            ax[i][1].set_title('mid SOFA', fontsize=20)
+            ax[i][2].set_title('high SOFA', fontsize=20)
+            ax[i][3].set_title('all', fontsize=20)
     if log_dir is not None:
         plt.savefig(os.path.join(log_dir, 'test_action_distribution.png'))
     plt.close()
