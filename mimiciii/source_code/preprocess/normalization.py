@@ -20,6 +20,7 @@ pd.options.mode.chained_assignment = None
 
 def parse_args():
     parser = ArgumentParser()
+    parser.add_argument("--dataset_version", type=str, help="dataset version", default='v0_20937')
     parser.add_argument("--reward", type=int, help="reward function type", default=0)
     parser.add_argument("--beta", type=float, help="reward function coefficient for type 1", default=0.6)
     args = parser.parse_args()
@@ -269,7 +270,7 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
 if __name__ == '__main__':
     args = parse_args()
 
-    source_path = '../../data/final_dataset/v2_20873'
+    source_path = f'../../data/final_dataset/{args.dataset_version}'
 
     hour = 4
 

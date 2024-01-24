@@ -22,6 +22,7 @@ pd.options.mode.chained_assignment = None
 
 def parse_args():
     parser = ArgumentParser()
+    parser.add_argument("--dataset_version", type=str, help="dataset version", default='v1_20849')
     parser.add_argument("--reward_type", type=int, help="reward function type", default=0)
     parser.add_argument("--batch_size", type=int, help="batch_size", default=128)
     parser.add_argument("--fqe_batch_size", type=int, help="batch_size", default=256)
@@ -215,23 +216,23 @@ if __name__ == '__main__':
     train / valid / test dataset are original unnomalized dataset, with action and reward
     train / valid / test data contain (s, a, r, s_, done, SOFA, is_alive) transitions, with normalization
     '''
-    dataset_path = "../data/final_dataset/"
+    dataset_path = f"../data/final_dataset/{args.dataset_version}/reward_type={args.reward_type}"
 
     # train
-    train_dataset = pd.read_csv(os.path.join(dataset_path, f'train_{args.reward_type}.csv'))
+    train_dataset = pd.read_csv(os.path.join(dataset_path, f'train.csv'))
     icustayids = train_dataset['icustayid'].unique()
-    with open(os.path.join(dataset_path, f'train_{args.reward_type}.pkl'), 'rb') as file:
+    with open(os.path.join(dataset_path, f'train.pkl'), 'rb') as file:
         train_dict = pickle.load(file)
     train_data = train_dict['data']
 
     # validation
-    valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid_{args.reward_type}.csv'))
-    with open(os.path.join(dataset_path, f'valid_{args.reward_type}.pkl'), 'rb') as file:
+    valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid.csv'))
+    with open(os.path.join(dataset_path, f'valid.pkl'), 'rb') as file:
         valid_dict = pickle.load(file)
 
     # test
-    test_dataset = pd.read_csv(os.path.join(dataset_path, f'test_{args.reward_type}.csv'))
-    with open(os.path.join(dataset_path, f'test_{args.reward_type}.pkl'), 'rb') as file:
+    test_dataset = pd.read_csv(os.path.join(dataset_path, f'test.csv'))
+    with open(os.path.join(dataset_path, f'test.pkl'), 'rb') as file:
         test_dict = pickle.load(file)
     test_data, test_id_index_map = test_dict['data'], test_dict['id_index_map']
 
@@ -260,7 +261,7 @@ if __name__ == '__main__':
 
     env_spec = {'num_feats': 49, 'num_actions': 25}
 
-    path = f'{args.agent}/reward_type={args.reward_type}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-q_lr={config.Q_LR}-pi_lr={config.PI_LR}-hidden_size={config.HIDDEN_SIZE}'
+    path = f'{args.agent}/{args.dataset_version}/reward_type={args.reward_type}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-q_lr={config.Q_LR}-pi_lr={config.PI_LR}-hidden_size={config.HIDDEN_SIZE}'
     if args.agent == 'D3QN':
         path += f'-reg_lambda={config.REG_LAMBDA}'
     if args.agent == 'SAC_BC_E' or args.agent == 'CQL_BC_E' or args.agent == 'SAC_BC' or args.agent == 'CQL_BC':
@@ -279,7 +280,7 @@ if __name__ == '__main__':
 
     # start mlflow
     mlflow.set_tracking_uri("http://127.0.0.1:8787")
-    experiment = mlflow.set_experiment(f"reward_type={args.reward_type}")
+    experiment = mlflow.set_experiment(f"dataset_version={args.dataset_version}-reward_type={args.reward_type}")
     # start run
     with mlflow.start_run(experiment_id=experiment.experiment_id, run_name=f"{args.agent}") as run:
         print(f'run id: {run.info.run_id}')
