@@ -97,6 +97,7 @@ class FQE(BaseEstimator):
 
 
     def predict(self) -> Tuple[float, np.ndarray]:
+        self.Q.eval()
         initial_states = self.initial_states.to(self.device)
         with torch.no_grad():
             if isinstance(self.agent, DQN):
