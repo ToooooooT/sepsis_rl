@@ -61,24 +61,24 @@ class BaseAgent(ABC):
 
 
     @abstractmethod
-    def save(self):
+    def save(self, name: str='model.pth'):
         ''' To override '''
         pass
     
 
     @abstractmethod
-    def load(self):
+    def load(self, name: str='model.pth'):
         ''' To override '''
         pass
 
     @abstractmethod
-    def save_checkpoint(self, epoch: int):
+    def save_checkpoint(self, epoch: int, name: str='checkpoint.pth'):
         ''' To override '''
         pass
     
 
     @abstractmethod
-    def load_checkpoint(self):
+    def load_checkpoint(self, name: str='checkpoint.pth'):
         ''' To override '''
         pass
 

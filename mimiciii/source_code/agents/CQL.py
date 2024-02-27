@@ -23,7 +23,7 @@ class CQL(SAC):
             self.log_alpha_prime = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
             self.alpha_prime_optimizer = optim.Adam([self.log_alpha_prime], lr=self.q_lr, eps=1e-4)
 
-    def save_checkpoint(self, epoch):
+    def save_checkpoint(self, epoch, name: str='checkpoint.pth'):
         checkpoint = {
             'epoch': epoch,
             'actor': self.actor.state_dict(),
@@ -39,10 +39,10 @@ class CQL(SAC):
         if self.with_lagrange:
             checkpoint['log_alpha_prime'] = self.log_alpha_prime.item()
             checkpoint['alpha_prime_optimizer'] = self.alpha_prime_optimizer.state_dict()
-        torch.save(checkpoint, os.path.join(self.log_dir, 'checkpoint.pth'))
+        torch.save(checkpoint, os.path.join(self.log_dir, name))
 
-    def load_checkpoint(self) -> int:
-        path = os.path.join(self.log_dir, 'checkpoint.pth')
+    def load_checkpoint(self, name: str='checkpoint.pth') -> int:
+        path = os.path.join(self.log_dir, name)
         if os.path.exists(path):
             checkpoint = torch.load(path)
         else:

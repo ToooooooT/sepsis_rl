@@ -30,16 +30,16 @@ class DQN(BaseAgent):
         else:
             self.q.train()
 
-    def save_checkpoint(self, epoch: int):
+    def save_checkpoint(self, epoch: int, name: str='checkpoint.pth'):
         checkpoint = {
             'epoch': epoch,
             'model': self.q.state_dict(),
             'optimizer': self.optimizer.state_dict(),
         }
-        torch.save(checkpoint, os.path.join(self.log_dir, 'checkpoint.pth'))
+        torch.save(checkpoint, os.path.join(self.log_dir, name))
 
-    def load_checkpoint(self) -> int:
-        path = os.path.join(self.log_dir, 'checkpoint.pth')
+    def load_checkpoint(self, name='checkpoint.pth') -> int:
+        path = os.path.join(self.log_dir, name)
         if os.path.exists(path):
             checkpoint = torch.load(path)
         else:
@@ -49,13 +49,13 @@ class DQN(BaseAgent):
         self.optimizer.load_state_dict(checkpoint['optimizer'])
         return checkpoint['epoch']
 
-    def save(self):
+    def save(self, name: str='model.pth'):
         os.makedirs(self.log_dir, exist_ok=True)
-        torch.save(self.q.state_dict(), os.path.join(self.log_dir, 'model.dump'))
+        torch.save(self.q.state_dict(), os.path.join(self.log_dir, name))
     
 
-    def load(self):
-        fname_model = os.path.join(self.log_dir, "model.dump")
+    def load(self, name: str='model.pth'):
+        fname_model = os.path.join(self.log_dir, name)
 
         if os.path.isfile(fname_model):
             self.q.load_state_dict(torch.load(fname_model))

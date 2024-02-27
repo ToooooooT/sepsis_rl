@@ -60,19 +60,19 @@ class SAC(BaseAgent):
             self.qf1.train()
             self.qf2.train()
 
-    def save(self):
+    def save(self, name: str='model.pth'):
         os.makedirs(self.log_dir, exist_ok=True)
         torch.save({
             'actor': self.actor.state_dict(),
             'qf1': self.qf1.state_dict(),
             'qf2': self.qf2.state_dict(),
             }, 
-            os.path.join(self.log_dir, 'model.pth')
+            os.path.join(self.log_dir, name)
         )
 
     
-    def load(self):
-        fname = os.path.join(self.log_dir, 'model.pth')
+    def load(self, name: str='model.pth'):
+        fname = os.path.join(self.log_dir, name)
 
         if os.path.isfile(fname):
             checkpoint = torch.load(fname)
