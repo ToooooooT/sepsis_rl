@@ -9,6 +9,7 @@ import random
 import pickle
 from argparse import ArgumentParser
 import mlflow
+from typing import Tuple, Dict
 
 from agents import DQN_regularization, WDQNE, SAC_BC_E, SAC_BC, SAC, BaseAgent, CQL, CQL_BC, CQL_BC_E
 from utils import Config, plot_action_dist, plot_estimate_value, \
@@ -16,7 +17,7 @@ from utils import Config, plot_action_dist, plot_estimate_value, \
                 plot_diff_action, plot_survival_rate, plot_expected_return_distribution, \
                 plot_action_diff_survival_rate
 from network import DuellingMLP
-from ope import WIS, DoublyRobust, FQE, QEstimator, PHWIS, PHWDR
+from ope import WIS, DoublyRobust, FQE, QEstimator, PHWIS, PHWDR, BaseEstimator
 
 pd.options.mode.chained_assignment = None
 
@@ -100,17 +101,10 @@ def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
         valid_dataset   : original valid dataset (DataFrame)
         valud_dict      : processed validation dataset
     '''
-    wis_returns = []
-    phwis_returns = []
-    dr_returns = []
-    phwdr_returns = []
-    fqe_returns = []
-    qe_returns = []
-    hists = [] # save model actions of validation in every episode 
-    valid_freq = args.valid_freq
-    gif_freq = args.gif_freq
-    max_expected_return = -np.inf
-    valid_data = valid_dict['data']
+    # note: the FQE method need to estimate first, since DR method need the Q value from FQE
+    ope_methods = ['FQE', 'WIS', 'PHWIS', 'DR', 'PHWDR', 'QE']
+    ope_returns = {'WIS': [], 'PHWIS': [], 'DR': [], 'PHWDR': [], 'FQE': [], 'QE': []}
+    max_expected_return = {'WIS': -np.inf, 'PHWIS': -np.inf, 'DR': -np.inf, 'PHWDR': -np.inf, 'FQE': -np.inf, 'QE': -np.inf}
     dr = DoublyRobust(agent, valid_dict['data'], config, args)
     phwdr = PHWDR(agent, valid_dict['data'], config, args)
     wis = WIS(agent, valid_dict['data'], config, args)
@@ -123,7 +117,13 @@ def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
               Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size),
               target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size))
     qe = QEstimator(agent, valid_dict['data'], config, args)
+    estimators = {'WIS': wis, 'PHWIS': phwis, 'DR': dr, 'PHWDR': phwdr, 'FQE': fqe, 'QE': qe}
 
+    hists = [] # save model actions of validation in every episode 
+    valid_freq = args.valid_freq
+    gif_freq = args.gif_freq
+    valid_data = valid_dict['data']
+    
     if args.load_checkpoint:
         start = agent.load_checkpoint()
     else:
@@ -139,35 +139,21 @@ def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
             if i % gif_freq == 0:
                 hists.append(np.bincount(actions.reshape(-1), minlength=25))
             # estimate expected return
-            wis_return, _ = wis.estimate(policy_action_probs=action_probs)
-            wis_returns.append(wis_return)
-            phwis_return, _ = phwis.estimate(policy_action_probs=action_probs)
-            phwis_returns.append(phwis_return)
-            fqe_return, _  = fqe.estimate(agent=agent)
-            fqe_returns.append(fqe_return)
-            dr_return, _ = dr.estimate(policy_action_probs=action_probs, 
-                                       agent=agent, 
-                                       q=fqe.Q)
-            dr_returns.append(dr_return)
-            phwdr_return, _ = phwdr.estimate(policy_action_probs=action_probs, 
-                                       agent=agent, 
-                                       q=fqe.Q)
-            phwdr_returns.append(phwdr_return)
-            qe_return, _ = qe.estimate(agent=agent)
-            qe_returns.append(qe_return)
-            # currently use fqe to choose model
-            if fqe_return > max_expected_return:
-                max_expected_return = fqe_return
-                agent.save()
+            for method in ope_methods:
+                expected_return, _ = estimators[method].estimate(policy_action_probs=action_probs,
+                                                        agent=agent,
+                                                        q=fqe.Q)
+                ope_returns[method].append(expected_return)
+            # save model
+            for method, returns in ope_returns.items():
+                if returns[-1] > max_expected_return[method]:
+                    max_expected_return[method] = returns[-1]
+                    agent.save(name=method+'_model.pth')
 
-            print(f'[EPISODE {i}] | WIS: {wis_return:.5f}, PHWIS: {phwis_return:.5f}, DR: {dr_return:.5f}, PHWDR: {phwdr_return:.5f}, FQE : {fqe_return:.5f}, QE: {qe_return:.5f}')
+            print(f'[EPISODE {i}] | WIS: {ope_returns["WIS"][-1]:.5f}, PHWIS: {ope_returns["PHWIS"][-1]:.5f}, DR: {ope_returns["DR"][-1]:.5f}, PHWDR: {ope_returns["PHWDR"][-1]:.5f}, FQE : {ope_returns["FQE"][-1]:.5f}, QE: {ope_returns["QE"][-1]:.5f}')
 
-            log_data["WIS"] = wis_return
-            log_data["PHWIS"] = phwis_return
-            log_data["DR"] = dr_return
-            log_data["PHWDR"] = phwdr_return
-            log_data["FQE"] = fqe_return
-            log_data["QE"] = qe_return
+            for method, returns in ope_returns.items():
+                log_data[method] = returns[-1]
 
         if i % (valid_freq // 10) == 0:
             mlflow.log_metrics(log_data, i)
@@ -175,13 +161,7 @@ def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
         agent.save_checkpoint(i)
 
     animation_action_distribution(hists, agent.log_dir)
-    wis_returns = np.array(wis_returns)
-    dr_returns = np.array(dr_returns)
-    fqe_returns = np.array(fqe_returns)
-    qe_returns = np.array(qe_returns)
-    fig = plot_estimate_value(np.vstack((wis_returns, phwis_returns, dr_returns, phwdr_returns, fqe_returns, qe_returns)), 
-                        ['WIS', 'PHWIS', 'DR', 'PHWDR', 'FQE', 'QE'], 
-                        valid_freq)
+    fig = plot_estimate_value(ope_returns, valid_freq)
     mlflow.log_figure(fig, 'fig/valid estimate value.png')
     mlflow.log_table(fqe.records, 'table/fqe_loss.json')
 
@@ -200,6 +180,55 @@ def testing(test_dict: dict, agent: BaseAgent):
         action_probs = action_probs.cpu().numpy()
 
     return actions, action_probs
+
+
+def evaluation(agent: BaseAgent,
+               test_data: Dict,
+               estimator: BaseEstimator, 
+               method: str, 
+               test_dataset,
+               q=None,
+               ) -> Tuple[np.ndarray, np.ndarray]:
+    agent.load(name=method+'.pth')
+
+    print(f'Start {method} testing...')
+    policy_actions, policy_action_probs = testing(test_data, agent)
+
+    policy_action_col = f'policy action {method}'
+    policy_iv_col = f'policy iv {method}'
+    policy_vaso_col = f'policy vaso {method}'
+
+    test_dataset[policy_action_col] = policy_actions.reshape(-1,)
+    test_dataset[policy_iv_col] = (policy_actions // 5).reshape(-1,)
+    test_dataset[policy_vaso_col] = (policy_actions % 5).reshape(-1,)
+
+    avg_return, returns = estimator.estimate(policy_action_probs=policy_action_probs,
+                                             agent=agent,
+                                             q=q)
+
+    # plot action distribution
+    negative_traj = test_dataset.query('mortality_90d == 1.0')
+    positive_traj = test_dataset.query('mortality_90d != 1.0')
+    mlflow.log_figure(plot_action_dist(policy_actions, test_dataset),
+                        f'fig/{method}/test_action_distribution.png')
+    mlflow.log_figure(plot_pos_neg_action_dist(positive_traj, negative_traj, policy_action_col),
+                        f'fig/{method}/pos_neg_action_compare.png')
+    mlflow.log_figure(plot_diff_action_SOFA_dist(positive_traj, negative_traj, policy_action_col),
+                        f'fig/{method}/diff_action_SOFA_dist.png')
+    pos_fig, neg_fig = plot_diff_action(positive_traj, negative_traj, policy_action_col)
+    mlflow.log_figure(pos_fig, f'fig/{method}/pos_diff_action_compare.png')
+    mlflow.log_figure(neg_fig, f'fig/{method}/neg_diff_action_compare.png')
+    low_fig, medium_fig, high_fig = plot_action_diff_survival_rate(
+        train_dataset, 
+        test_dataset,
+        policy_iv_col,
+        policy_vaso_col
+    )
+    mlflow.log_figure(low_fig, f'fig/{method}/diff_action_mortality_low_SOFA.png')
+    mlflow.log_figure(medium_fig, f'fig/{method}/diff_action_mortality_medium_SOFA.png')
+    mlflow.log_figure(high_fig, f'fig/{method}/diff_action_mortality_high_SOFA.png')
+
+    return avg_return, returns
 
 
 if __name__ == '__main__':
@@ -259,7 +288,7 @@ if __name__ == '__main__':
     config.BC_KL_BETA = args.bc_kl_beta
     config.BC_TYPE = args.bc_type
 
-    env_spec = {'num_feats': 49, 'num_actions': 25}
+    env_spec = {'num_feats': train_data['s'].shape[1], 'num_actions': 25}
 
     path = f'{args.agent}/{args.dataset_version}/reward_type={args.reward_type}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-q_lr={config.Q_LR}-pi_lr={config.PI_LR}-hidden_size={config.HIDDEN_SIZE}'
     if args.agent == 'D3QN':
@@ -284,25 +313,16 @@ if __name__ == '__main__':
     # start run
     with mlflow.start_run(experiment_id=experiment.experiment_id, run_name=f"{args.agent}") as run:
         print(f'run id: {run.info.run_id}')
-        mlflow.log_params(config.get_hyperparameters())
+        params = config.get_hyperparameters()
+        params['SEED'] = args.seed
+        mlflow.log_params(params)
         # Training
         print('Start training...')
         training(agent, valid_dict, config, args)
         # Testing
-        agent.load()
-
-        print('Start testing...')
-        policy_actions, policy_action_probs = testing(test_data, agent)
-
-        test_dataset['policy action'] = policy_actions.reshape(-1,)
-        test_dataset['policy iv'] = (policy_actions // 5).reshape(-1,)
-        test_dataset['policy vaso'] = (policy_actions % 5).reshape(-1,)
-
-        # Off-policy Policy Evaluation
+        ope_methods = ['FQE', 'WIS', 'PHWIS', 'DR', 'PHWDR', 'QE']
         wis = WIS(agent, test_dict['data'], config, args)
-        avg_wis_return, wis_returns = wis.estimate(policy_action_probs=policy_action_probs)
         phwis = PHWIS(agent, test_dict['data'], config, args)
-        avg_phwis_return, phwis_returns = phwis.estimate(policy_action_probs=policy_action_probs)
         fqe = FQE(agent, 
                 train_dict['data'], 
                 test_dict['data'], 
@@ -310,69 +330,39 @@ if __name__ == '__main__':
                 args,
                 Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size),
                 target_Q=DuellingMLP(agent.num_feats, agent.num_actions, hidden_size=agent.hidden_size))
-        avg_fqe_return, fqe_returns = fqe.estimate(agent=agent)
         dr = DoublyRobust(agent, test_dict['data'], config, args)
-        avg_dr_return, dr_returns = dr.estimate(policy_action_probs=policy_action_probs, 
-                                                           agent=agent,
-                                                           q=fqe.Q)
         phwdr = PHWDR(agent, test_dict['data'], config, args)
-        avg_phwdr_return, phwdr_returns = phwdr.estimate(policy_action_probs=policy_action_probs, 
-                                                           agent=agent,
-                                                           q=fqe.Q)
         qe = QEstimator(agent, test_dict['data'], config, args)
-        avg_qe_return, qe_returns = qe.estimate(agent=agent)
+        estimators = {'WIS': wis, 'PHWIS': phwis, 'DR': dr, 'PHWDR': phwdr, 'FQE': fqe, 'QE': qe}
+        ope_returns = []
+        avg_ope_returns = []
+
+        for method in ope_methods:
+            # Off-policy Policy Evaluation
+            avg_return, returns = evaluation(agent, test_data, estimators[method], method, test_dataset, fqe.Q)
+            ope_returns.append(returns)
+            avg_ope_returns.append(avg_return)
 
         # plot expected return result
-        policy_returns = np.vstack((wis_returns, phwis_returns, dr_returns, phwdr_returns, fqe_returns, qe_returns))
-        mlflow.log_figure(plot_expected_return_distribution(policy_returns, ['WIS', 'PHWIS', 'DR', 'PHWDR', 'FQE', 'QE']), 
+        ope_returns = np.vstack(ope_returns)
+        mlflow.log_table(pd.DataFrame(ope_returns.T, columns=ope_methods), 'table/expected_returns.json')
+        mlflow.log_figure(plot_expected_return_distribution(ope_returns, ope_methods), 
                           'fig/expected_return_distribution.png')
-        avg_expected_returns = [avg_wis_return, 
-                                avg_phwis_return, 
-                                avg_dr_return, 
-                                avg_phwdr_return, 
-                                avg_fqe_return, 
-                                avg_qe_return]
-        fig, survival_rate_means, survival_rate_stds = plot_survival_rate(avg_expected_returns,
-                                                                          policy_returns, 
+        fig, survival_rate_means, survival_rate_stds = plot_survival_rate(avg_ope_returns,
+                                                                          ope_returns,
                                                                           test_id_index_map, 
                                                                           test_dataset, 
-                                                                          ['WIS', 'PHWIS', 'DR', 'PHWDR', 'FQE', 'QE'])
+                                                                          ope_methods)
         mlflow.log_figure(fig, 'fig/survival_rate.png')
 
-        # plot action distribution
-        negative_traj = test_dataset.query('mortality_90d == 1.0')
-        positive_traj = test_dataset.query('mortality_90d != 1.0')
-        mlflow.log_figure(plot_action_dist(policy_actions, test_dataset),
-                          'fig/test_action_distribution.png')
-        mlflow.log_figure(plot_pos_neg_action_dist(positive_traj, negative_traj),
-                          'fig/pos_neg_action_compare.png')
-        mlflow.log_figure(plot_diff_action_SOFA_dist(positive_traj, negative_traj),
-                          'fig/diff_action_SOFA_dist.png')
-        pos_fig, neg_fig = plot_diff_action(positive_traj, negative_traj)
-        mlflow.log_figure(pos_fig, 'fig/pos_diff_action_compare.png')
-        mlflow.log_figure(neg_fig, 'fig/neg_diff_action_compare.png')
-        low_fig, medium_fig, high_fig = plot_action_diff_survival_rate(train_dataset, test_dataset)
-        mlflow.log_figure(low_fig, 'fig/diff_action_mortality_low_SOFA.png')
-        mlflow.log_figure(medium_fig, 'fig/diff_action_mortality_medium_SOFA.png')
-        mlflow.log_figure(high_fig, 'fig/diff_action_mortality_high_SOFA.png')
-
         # store result in text file
-        result = f'''
-                expected_returns:
-                    WIS : {avg_wis_return:.3f}
-                    PHWIS : {avg_phwis_return:.3f}
-                    DR : {avg_dr_return:.3f}
-                    PHWDR : {avg_phwdr_return:.3f}
-                    FQE : {avg_fqe_return:.3f}
-                    QE : {avg_qe_return:.3f}
-                survival_rates:
-                    WIS : {survival_rate_means[0]:.3f} ({survival_rate_stds[0]:.3f})
-                    PHWIS : {survival_rate_means[1]:.3f} ({survival_rate_stds[1]:.3f})
-                    DR : {survival_rate_means[2]:.3f} ({survival_rate_stds[2]:.3f})
-                    PHWDR : {survival_rate_means[3]:.3f} ({survival_rate_stds[3]:.3f})
-                    FQE : {survival_rate_means[4]:.3f} ({survival_rate_stds[4]:.3f})
-                    QE : {survival_rate_means[5]:.3f} ({survival_rate_stds[5]:.3f})
-                '''
+        result = 'expected returns:\n'
+        for i, method in enumerate(ope_methods):
+            result += f'\t{method}: {avg_ope_returns[i]:.3f}\n'
+        result += 'survival rates:\n'
+        for i, method in enumerate(ope_methods):
+            result += f'\t{method}: {survival_rate_means[i]:.3f} ({survival_rate_stds[i]:.3f})\n'
+
         mlflow.log_text(result, 'text/expected_return.txt')
         # print result
         print(result)
