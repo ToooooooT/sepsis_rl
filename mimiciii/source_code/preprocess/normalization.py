@@ -21,13 +21,14 @@ pd.options.mode.chained_assignment = None
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--dataset_version", type=str, help="dataset version", default='v0_20937')
-    parser.add_argument("--reward", type=int, help="reward function type", default=0)
+    parser.add_argument("--icustayid", type=str, help="a pickle file of dictionary contain icustayid list correspond to train, valid, test", default=None)
     parser.add_argument("--beta", type=float, help="reward function coefficient for type 1", default=0.6)
+    parser.add_argument("--min_max", action='store_true', help="normalize with min, max aggregation dataset")
     args = parser.parse_args()
     return args
 
-def get_reward(s, s_, args):
-    if args.reward == 0:
+def get_reward(s, s_, reward_type):
+    if reward_type == 0:
         if s_ is None or s['icustayid'] != s_['icustayid']:
             r = -15 if int(s['mortality_90d']) else 15
         else:
@@ -39,14 +40,14 @@ def get_reward(s, s_, args):
 
             r = c0 * int(s_sofa_ == s_sofa and s_sofa_ > 0) + \
                     c1 * (s_sofa_ - s_sofa) + c2 * tanh(s_lactate_ - s_lactate)
-    elif args.reward == 1:
+    elif reward_type == 1:
         if s_ is None or s['icustayid'] != s_['icustayid']:
             r = -24 if int(s['mortality_90d']) else 24
         else:
             s_sofa = s['SOFA']
             s_sofa_ = s_['SOFA']
             r = args.beta * (s_sofa - s_sofa_)
-    elif args.reward == 2:
+    elif reward_type == 2:
         if s_ is None or s['icustayid'] != s_['icustayid']:
             r = -24 if int(s['mortality_90d']) else 24
         else:
@@ -85,35 +86,43 @@ def map_action(s, hour):
     return a
 
 
-def add_reward_action(dataset: pd.DataFrame, hour, args):
+def add_reward(dataset: pd.DataFrame, reward_type):
     dataset['reward'] = [0] * dataset.shape[0]
+    for index in tqdm(dataset.index[:-1]):
+        s = dataset.loc[index, :]
+        s_ = dataset.loc[index + 1, :]
+        if s['icustayid'] != s_['icustayid']:
+            s_ = None 
+        r = get_reward(s, s_, reward_type)
+        dataset.loc[index, 'reward'] = r
+
+    # handle last state
+    s = dataset.loc[dataset.index[-1], :]
+    r = get_reward(s, None, reward_type)
+    dataset.loc[dataset.index[-1], 'reward'] = r
+
+def add_action(dataset: pd.DataFrame, hour):
     dataset['action'] = [0] * dataset.shape[0]
     for index in tqdm(dataset.index[:-1]):
         s = dataset.loc[index, :]
         s_ = dataset.loc[index + 1, :]
         if s['icustayid'] != s_['icustayid']:
             s_ = None 
-        r = get_reward(s, s_, args)
         a = map_action(s, hour)
-        dataset.loc[index, 'reward'] = r
         dataset.loc[index, 'action'] = a
 
     # handle last state
     s = dataset.loc[dataset.index[-1], :]
-    r = get_reward(s, None, args)
     a = map_action(s, hour)
-    dataset.loc[dataset.index[-1], 'reward'] = r
     dataset.loc[dataset.index[-1], 'action'] = a
 
-def plot_reward_action(dataset: pd.DataFrame, source_path, name):
-    rewards, actions, sofa = list(), list(), list()
+def plot_reward(dataset: pd.DataFrame, source_path, name):
+    rewards = list()
     for index in dataset.index:
         s = dataset.loc[index, :]
-        sofa.append(s['SOFA'])
         rewards.append(s['reward'])
-        actions.append(s['action'])
 
-    data = pd.DataFrame({'a':actions, 'SOFA':sofa, 'r': rewards})
+    data = pd.DataFrame({'r': rewards})
 
     fig, ax = plt.subplots()
 
@@ -121,6 +130,16 @@ def plot_reward_action(dataset: pd.DataFrame, source_path, name):
     ax.hist(data['r'], bins=np.arange(53)-0.5)
     ax.set_xticks(range(-26, 26, 2))
     plt.savefig(os.path.join(source_path, f'{name} reward distribution.png'))
+    plt.close()
+
+def plot_action(dataset: pd.DataFrame, source_path, name):
+    actions, sofa = list(), list()
+    for index in dataset.index:
+        s = dataset.loc[index, :]
+        sofa.append(s['SOFA'])
+        actions.append(s['action'])
+
+    data = pd.DataFrame({'a':actions, 'SOFA':sofa})
 
     # plot data action distribution
     actions_low = data[data['SOFA'] <= 5]['a']
@@ -150,7 +169,10 @@ def plot_reward_action(dataset: pd.DataFrame, source_path, name):
     ax4.set_title('all')
 
     plt.savefig(os.path.join(source_path, f'{name} action distribution.png'))
+    plt.close()
 
+
+def save_info(dataset: pd.DataFrame, source_path: str, name: str):
     expected_return = dataset.groupby('icustayid').sum()['reward'].mean()
     print(f'{name} expected return: {expected_return}')
 
@@ -162,21 +184,50 @@ def plot_reward_action(dataset: pd.DataFrame, source_path, name):
         f.write(f'mortality rate: {mortaliy_rate}')
 
 
-def normalization(period, dataset: pd.DataFrame):
-    dataset['PaO2_FiO2'].replace(np.inf, np.nan, inplace=True)
-    dataset['PaO2_FiO2'].replace(-np.inf, np.nan, inplace=True)
-    mean_PaO2_FiO2 = dataset['PaO2_FiO2'].mean(skipna=True)
-    dataset['PaO2_FiO2'].fillna(value=mean_PaO2_FiO2, inplace=True)
+def normalization(period, dataset: pd.DataFrame, is_min_max: bool):
+    feats = ['PaO2_FiO2']
+    if is_min_max:
+        feats = ['PaO2_FiO2_min', 'PaO2_FiO2_max']
+    for feat in feats:
+        dataset[feat].replace(np.inf, np.nan, inplace=True)
+        dataset[feat].replace(-np.inf, np.nan, inplace=True)
+        mean_PaO2_FiO2 = dataset[feat].mean(skipna=True)
+        dataset[feat].fillna(value=mean_PaO2_FiO2, inplace=True)
 
     binary_features = ['gender', 're_admission', 'mechvent']
-    norm_features = ['age', 'elixhauser', 'GCS', 'SOFA', 'Albumin', 'Arterial_pH', 
+    # norm_features = ['age', 'elixhauser', 'GCS', 'SOFA', 'Albumin', 'Arterial_pH', 
+    #                     'Calcium', 'Glucose', 'Hb', 'Magnesium', 'PTT', 'Potassium', 
+    #                     'Arterial_BE', 'HCO3', 'Arterial_lactate', 'CO2_mEqL', 'Ionised_Ca', 'PT', 
+    #                     'Platelets_count', 'WBC_count', 'Chloride', 'DiaBP', 'SysBP', 'MeanBP', 
+    #                     'paCO2', 'paO2', 'FiO2_1', 'RR', 'Temp_C', 'Weight_kg', 'HR', 'Shock_Index', 
+    #                     'SIRS', 'PaO2_FiO2', 'cumulated_balance']
+    # log_norm_features = ['SGPT', 'BUN', 'INR', 'Creatinine', 'SGOT', 'Total_bili', 'SpO2', 'input_total',
+    #                     f'input_{period}hourly', 'output_total', f'output_{period}hourly', 'bloc']
+
+    norm_features = ['GCS', 'Albumin', 'Arterial_pH', 
                         'Calcium', 'Glucose', 'Hb', 'Magnesium', 'PTT', 'Potassium', 
-                        'Arterial_BE', 'HCO3', 'Arterial_lactate', 'CO2_mEqL', 'Ionised_Ca', 'PT', 
+                        'Arterial_BE', 'HCO3', 'CO2_mEqL', 'Ionised_Ca', 'PT', 
                         'Platelets_count', 'WBC_count', 'Chloride', 'DiaBP', 'SysBP', 'MeanBP', 
                         'paCO2', 'paO2', 'FiO2_1', 'RR', 'Temp_C', 'Weight_kg', 'HR', 'Shock_Index', 
-                        'SIRS', 'PaO2_FiO2', 'cumulated_balance']
-    log_norm_features = ['SGPT', 'BUN', 'INR', 'Creatinine', 'SGOT', 'Total_bili', 'SpO2', 'input_total',
-                        f'input_{period}hourly', 'output_total', f'output_{period}hourly', 'bloc']
+                        'SIRS', 'PaO2_FiO2'] 
+    if is_min_max:
+        tmp = []
+        for feature in norm_features:
+            tmp.append(feature + '_min')
+            tmp.append(feature + '_max')
+        norm_features = tmp
+
+    norm_features += ['age', 'elixhauser', 'cumulated_balance', 'SOFA', 'Arterial_lactate']
+
+    log_norm_features = ['SGPT', 'BUN', 'INR', 'Creatinine', 'SGOT', 'Total_bili', 'SpO2']
+    if is_min_max:
+        tmp = []
+        for feature in log_norm_features:
+            tmp.append(feature + '_min')
+            tmp.append(feature + '_max')
+        log_norm_features = tmp
+
+    log_norm_features += ['input_total', f'input_{period}hourly', 'output_total', f'output_{period}hourly', 'bloc']
 
     dataset[binary_features] = dataset[binary_features] - 0.5
         
@@ -276,6 +327,37 @@ if __name__ == '__main__':
 
     dataset = pd.read_csv(os.path.join(source_path, f'dataset_{hour}.csv'))
 
+    add_action(dataset, hour)
+
+    ################################################################
+    # split dataset 8:1:1 (train:valid:test)
+    ################################################################
+    if args.icustayid is None:
+        icustayid = list(dataset['icustayid'].unique())
+        random.shuffle(icustayid)
+        test_id = set(icustayid[:int(len(icustayid) / 10)])
+        valid_id = set(icustayid[int(len(icustayid) / 10):int(len(icustayid) / 5)])
+        train_id = set(icustayid[int(len(icustayid) / 5):])
+    else:
+        with open(args.icustayid, 'rb') as file:
+            icustayid = pickle.load(file)
+        train_id = set(icustayid['train'])
+        valid_id = set(icustayid['valid'])
+        test_id = set(icustayid['test'])
+
+        # check all train_id, valid_id, test_id is in the dataset
+        icustayid_set = set(dataset['icustayid'].unique())
+        assert train_id.issubset(icustayid_set)
+        assert valid_id.issubset(icustayid_set)
+        assert test_id.issubset(icustayid_set)
+        # check train, valid, test are not overlap with each other
+        assert train_id.isdisjoint(valid_id)
+        assert valid_id.isdisjoint(test_id)
+        assert train_id.isdisjoint(test_id)
+        # replace original dataset
+        dataset = dataset[[x in train_id or x in valid_id or x in test_id for x in dataset['icustayid']]]
+        dataset.to_csv(os.path.join(source_path, f'dataset_{hour}.csv'))
+
     with open(os.path.join(source_path, f'dataset_info.txt'), 'w') as f:
         t = dataset.groupby('icustayid').mean()['mortality_90d']
         f.write(f'dead: {(t == 1).sum()}\n')
@@ -283,44 +365,50 @@ if __name__ == '__main__':
         f.write(f'total: {t.shape[0]}\n')
         f.write(f'mortality_rate: {t.mean() * 100:.3f}%')
 
+    train_dataset_origin = dataset[[x in train_id for x in dataset['icustayid']]]
+    valid_dataset_origin = dataset[[x in valid_id for x in dataset['icustayid']]]
+    test_dataset_origin = dataset[[x in test_id for x in dataset['icustayid']]]
 
-    source_path = os.path.join(source_path, f'reward_type={args.reward}')
-    os.makedirs(source_path, exist_ok=True)
+    train_dataset_origin = train_dataset_origin.reset_index(drop=True)
+    valid_dataset_origin = valid_dataset_origin.reset_index(drop=True)
+    test_dataset_origin = test_dataset_origin.reset_index(drop=True)
 
-    add_reward_action(dataset, hour, args)
+    plot_action(train_dataset_origin, source_path, 'train')
+    plot_action(valid_dataset_origin, source_path, 'valid')
+    plot_action(test_dataset_origin, source_path, 'test')
 
-    ################################################################
-    # split dataset 8:1:1 (train:valid:test)
-    ################################################################
-    icustayid = list(dataset['icustayid'].unique())
-    random.shuffle(icustayid)
-    test_id = icustayid[:int(len(icustayid) / 10)]
-    valid_id = icustayid[int(len(icustayid) / 10):int(len(icustayid) / 5)]
-    train_id = icustayid[int(len(icustayid) / 5):]
+    for reward_type in range(3):
+        reward_path = os.path.join(source_path, f'reward_type={reward_type}')
+        os.makedirs(reward_path, exist_ok=True)
 
-    train_dataset = dataset[[x in train_id for x in dataset['icustayid']]]
-    valid_dataset = dataset[[x in valid_id for x in dataset['icustayid']]]
-    test_dataset = dataset[[x in test_id for x in dataset['icustayid']]]
+        train_dataset = train_dataset_origin.copy(deep=True)
+        valid_dataset = valid_dataset_origin.copy(deep=True)
+        test_dataset = test_dataset_origin.copy(deep=True)
 
-    train_dataset = train_dataset.reset_index(drop=True)
-    valid_dataset = valid_dataset.reset_index(drop=True)
-    test_dataset = test_dataset.reset_index(drop=True)
+        add_reward(train_dataset, reward_type)
+        add_reward(valid_dataset, reward_type)
+        add_reward(test_dataset, reward_type)
 
-    unnorm_train_dataset = train_dataset.copy(deep=True).reset_index(drop=True)
-    unnorm_valid_dataset = valid_dataset.copy(deep=True).reset_index(drop=True)
-    unnorm_test_dataset = test_dataset.copy(deep=True).reset_index(drop=True)
+        unnorm_train_dataset = train_dataset.copy(deep=True).reset_index(drop=True)
+        unnorm_valid_dataset = valid_dataset.copy(deep=True).reset_index(drop=True)
+        unnorm_test_dataset = test_dataset.copy(deep=True).reset_index(drop=True)
 
-    unnorm_train_dataset.to_csv(os.path.join(source_path, f'train.csv'), index=False)
-    unnorm_valid_dataset.to_csv(os.path.join(source_path, f'valid.csv'), index=False)
-    unnorm_test_dataset.to_csv(os.path.join(source_path, f'test.csv'), index=False)
+        unnorm_train_dataset.to_csv(os.path.join(reward_path, f'train.csv'), index=False)
+        unnorm_valid_dataset.to_csv(os.path.join(reward_path, f'valid.csv'), index=False)
+        unnorm_test_dataset.to_csv(os.path.join(reward_path, f'test.csv'), index=False)
 
-    plot_reward_action(train_dataset, source_path, 'train')
-    plot_reward_action(valid_dataset, source_path, 'valid')
-    plot_reward_action(test_dataset, source_path, 'test')
-    normalization(hour, train_dataset)
-    normalization(hour, valid_dataset)
-    normalization(hour, test_dataset)
+        normalization(hour, train_dataset, args.min_max)
+        normalization(hour, valid_dataset, args.min_max)
+        normalization(hour, test_dataset, args.min_max)
 
-    process_dataset(train_dataset, unnorm_train_dataset, os.path.join(source_path, f'train.pkl'))
-    process_dataset(valid_dataset, unnorm_valid_dataset, os.path.join(source_path, f'valid.pkl'))
-    process_dataset(test_dataset, unnorm_test_dataset, os.path.join(source_path, f'test.pkl'))
+        plot_reward(train_dataset, reward_path, 'train')
+        plot_reward(valid_dataset, reward_path, 'valid')
+        plot_reward(test_dataset, reward_path, 'test')
+
+        save_info(train_dataset, reward_path, 'train')
+        save_info(valid_dataset, reward_path, 'valid')
+        save_info(test_dataset, reward_path, 'test')
+
+        process_dataset(train_dataset, unnorm_train_dataset, os.path.join(reward_path, f'train.pkl'))
+        process_dataset(valid_dataset, unnorm_valid_dataset, os.path.join(reward_path, f'valid.pkl'))
+        process_dataset(test_dataset, unnorm_test_dataset, os.path.join(reward_path, f'test.pkl'))
