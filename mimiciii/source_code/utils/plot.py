@@ -2,7 +2,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from scipy.stats import sem
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import bisect
 
 matplotlib.use('Agg')  # Set the backend to Agg
@@ -32,17 +32,17 @@ def animation_action_distribution(hists, log_dir: str):
     plt.close()
 
 
-def plot_estimate_value(policy_val: np.ndarray, names: list, freq: int, log_dir: str=None):
+def plot_estimate_value(ope_returns: Dict, freq: int, log_dir: str=None):
     '''
     Args:
         policy_val: estimate return value of learned policy during training process; expected shape (k, T)
     '''
     colors = ['blue', 'red', 'green', 'yellow', 'cyan', 'magenta']
     f, ax = plt.subplots(1, 1, figsize=(8, 8))
-    x = np.arange(policy_val.shape[1])
-    for i in range(policy_val.shape[0]):
-        ax.plot(x, policy_val[i], color=colors[i], label=names[i])
-    ax.legend(names, loc='best')
+    for i, (method, returns) in enumerate(ope_returns.items()):
+        x = np.arange(len(returns))
+        ax.plot(x, returns, color=colors[i], label=method)
+    ax.legend(loc='best')
 
     if freq > 1:
         ax.set_xlabel(f'epoch * {freq}')
@@ -112,9 +112,12 @@ def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str=No
     return f
 
 
-def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str=None):
+def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, 
+                             negative_traj: pd.DataFrame, 
+                             policy_action_col: str, 
+                             log_dir: str=None):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(8, 8))
-    height = np.bincount(negative_traj['policy action'], minlength=25)[:25]
+    height = np.bincount(negative_traj[policy_action_col], minlength=25)[:25]
     ax1.bar(range(25), height=height)
     ax1.set_xticks(range(0, 25))
     ax1.tick_params(axis='x', labelsize=6)
@@ -126,7 +129,7 @@ def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, negative_traj: pd.Data
     ax2.tick_params(axis='x', labelsize=6)
     ax2.set_title('negative trajectories expert action')
 
-    height = np.bincount(positive_traj['policy action'], minlength=25)[:25]
+    height = np.bincount(positive_traj[policy_action_col], minlength=25)[:25]
     ax3.bar(range(25), height=height)
     ax3.set_xticks(range(0, 25))
     ax3.tick_params(axis='x', labelsize=6)
@@ -145,28 +148,35 @@ def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, negative_traj: pd.Data
     return f
 
 
-def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str=None):
+def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, 
+                               negative_traj: pd.DataFrame, 
+                               policy_action_col: str, 
+                               log_dir: str=None):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12,12))
 
-    height = np.bincount(positive_traj[positive_traj['action'] != positive_traj['policy action']]['SOFA'], minlength=25)[:25]
+    height = np.bincount(positive_traj[positive_traj['action'] != positive_traj[policy_action_col]]['SOFA'], 
+                         minlength=25)[:25]
     ax1.bar(range(25), height=height)
     ax1.set_xticks(range(0, 25))
     ax1.tick_params(axis='x', labelsize=6)
     ax1.set_title('positive trajectories different action SOFA distribution')
 
-    height = np.bincount(positive_traj[positive_traj['action'] == positive_traj['policy action']]['SOFA'], minlength=25)[:25]
+    height = np.bincount(positive_traj[positive_traj['action'] == positive_traj[policy_action_col]]['SOFA'], 
+                         minlength=25)[:25]
     ax2.bar(range(25), height=height)
     ax2.set_xticks(range(0, 25))
     ax2.tick_params(axis='x', labelsize=6)
     ax2.set_title('positive trajectories same action SOFA distribution')
 
-    height = np.bincount(negative_traj[negative_traj['action'] != negative_traj['policy action']]['SOFA'], minlength=25)[:25]
+    height = np.bincount(negative_traj[negative_traj['action'] != negative_traj[policy_action_col]]['SOFA'], 
+                         minlength=25)[:25]
     ax3.bar(range(25), height=height)
     ax3.set_xticks(range(0, 25))
     ax3.tick_params(axis='x', labelsize=6)
     ax3.set_title('negative trajectories different action SOFA distribution')
 
-    height = np.bincount(negative_traj[negative_traj['action'] == negative_traj['policy action']]['SOFA'], minlength=25)[:25]
+    height = np.bincount(negative_traj[negative_traj['action'] == negative_traj[policy_action_col]]['SOFA'],
+                         minlength=25)[:25]
     ax4.bar(range(25), height=height)
     ax4.set_xticks(range(0, 25))
     ax4.tick_params(axis='x', labelsize=6)
@@ -179,13 +189,16 @@ def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, negative_traj: pd.Da
     return f
 
 
-def plot_diff_action(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, log_dir: str=None):
+def plot_diff_action(positive_traj: pd.DataFrame, 
+                     negative_traj: pd.DataFrame, 
+                     policy_action_col:str, 
+                     log_dir: str=None) -> Tuple:
     fig_pos, ax = plt.subplots(5, 5, figsize=(32,32))
 
     for i in range(5):
         for j in range(5):
             idx = i * 5 + j
-            height = np.bincount(positive_traj[positive_traj['action'] == idx]['policy action'], minlength=25)[:25]
+            height = np.bincount(positive_traj[positive_traj['action'] == idx][policy_action_col], minlength=25)[:25]
             ax[i][j].bar(range(25), height=height)
             ax[i][j].set_xticks(range(0, 25))
             ax[i][j].tick_params(axis='x', labelsize=6)
@@ -201,7 +214,7 @@ def plot_diff_action(positive_traj: pd.DataFrame, negative_traj: pd.DataFrame, l
     for i in range(5):
         for j in range(5):
             idx = i * 5 + j
-            height = np.bincount(negative_traj[negative_traj['action'] == idx]['policy action'], minlength=25)[:25]
+            height = np.bincount(negative_traj[negative_traj['action'] == idx][policy_action_col], minlength=25)[:25]
             ax[i][j].bar(range(25), height=height)
             ax[i][j].set_xticks(range(0, 25))
             ax[i][j].tick_params(axis='x', labelsize=6)
@@ -351,9 +364,15 @@ def plot_expected_return_distribution(expected_return: np.ndarray, name: list, l
     return f
 
 
-def make_df_diff(test_dataset: pd.DataFrame, vaso_vals: List, iv_vals) -> pd.DataFrame:
-    iv_diff = test_dataset['input_4hourly'].values - test_dataset['policy iv'].replace({i: iv_vals[i] for i in range(5)}).values
-    vaso_diff = test_dataset['max_dose_vaso'].values - test_dataset['policy vaso'].replace({i: vaso_vals[i] for i in range(5)}).values
+def make_df_diff(test_dataset: pd.DataFrame, 
+                 vaso_vals: List, 
+                 iv_vals: List,
+                 policy_iv_col: str,
+                 policy_vaso_col: str) -> pd.DataFrame:
+    iv_diff = test_dataset['input_4hourly'].values - \
+        test_dataset[policy_iv_col].replace({i: iv_vals[i] for i in range(5)}).values
+    vaso_diff = test_dataset['max_dose_vaso'].values - \
+        test_dataset[policy_vaso_col].replace({i: vaso_vals[i] for i in range(5)}).values
     df_diff = pd.DataFrame()
     df_diff['mort'] = test_dataset['died_in_hosp']
     df_diff['iv_diff'] = iv_diff
@@ -401,6 +420,8 @@ def make_vaso_plot_data(df_diff) -> Tuple[List, List, List]:
 
 def plot_action_diff_survival_rate(train_dataset: pd.DataFrame, 
                                    test_dataset: pd.DataFrame, 
+                                   policy_iv_col: str,
+                                   policy_vaso_col: str,
                                    log_dir: str=None):
     vaso_vals = [0]
     vaso_vals.extend(train_dataset['max_dose_vaso'][train_dataset['max_dose_vaso'] > 0].quantile([0.125, 0.375, 0.625, 0.875]))
@@ -411,9 +432,9 @@ def plot_action_diff_survival_rate(train_dataset: pd.DataFrame,
     df_test_mid = test_dataset[(test_dataset['SOFA'] > 5) & (test_dataset['SOFA'] < 15)]
     df_test_high = test_dataset[test_dataset['SOFA'] >= 15]
     # get low, mid, high action diff
-    df_diff_low = make_df_diff(df_test_low, vaso_vals, iv_vals)
-    df_diff_mid = make_df_diff(df_test_mid, vaso_vals, iv_vals)
-    df_diff_high = make_df_diff(df_test_high, vaso_vals, iv_vals)
+    df_diff_low = make_df_diff(df_test_low, vaso_vals, iv_vals, policy_iv_col, policy_vaso_col)
+    df_diff_mid = make_df_diff(df_test_mid, vaso_vals, iv_vals, policy_iv_col, policy_vaso_col)
+    df_diff_high = make_df_diff(df_test_high, vaso_vals, iv_vals, policy_iv_col, policy_vaso_col)
     bin_med_iv_low, mort_iv_low, mort_std_iv_low = make_iv_plot_data(df_diff_low)
     bin_med_vaso_low, mort_vaso_low, mort_std_vaso_low = make_vaso_plot_data(df_diff_low)
     bin_med_iv_mid, mort_iv_mid, mort_std_iv_mid = make_iv_plot_data(df_diff_mid)
