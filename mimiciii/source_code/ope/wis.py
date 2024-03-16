@@ -54,6 +54,7 @@ class WIS(BaseEstimator):
         policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
         return policy_return.mean(), policy_return.reshape(1, -1)
 
+
 class PHWIS(BaseEstimator):
     def __init__(self, 
                  agent: BaseAgent,

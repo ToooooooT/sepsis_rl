@@ -189,7 +189,7 @@ def evaluation(agent: BaseAgent,
                test_dataset,
                q=None,
                ) -> Tuple[np.ndarray, np.ndarray]:
-    agent.load(name=method+'.pth')
+    agent.load(name=method+'_model.pth')
 
     print(f'Start {method} testing...')
     policy_actions, policy_action_probs = testing(test_data, agent)
