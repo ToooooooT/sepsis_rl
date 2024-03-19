@@ -507,6 +507,12 @@ def expected_survival_rate(bin_medians: List[List],
     survival_rates_std = []
 
     for i in range(n):
+        if len(bin_medians[i]) == 0:
+            # the expected returns are all higher then 25 or lower than 25, the estimator is biased, add survival rates 100 to indicate not well estimated
+            survival_rates.append(100)
+            survival_rates_std.append(0)
+            break
+
         index = bisect.bisect_right(bin_medians[i], avg_expected_returns[i]) # the smallest index cause bin_median > expected return
         if index == 0:
             # assume the mortality rate is the smallest index in survival_rate_means
