@@ -40,43 +40,6 @@ def parse_args():
     return args
 
 
-def get_model(args):
-    if args.model == 'lg':
-        model = LogisticRegression(max_iter=args.episode, 
-                                   multi_class='multinomial', 
-                                   random_state=args.seed)
-    elif args.model == 'xgb':
-        model = xgb.XGBRFClassifier(random_state=args.seed,
-                                    n_jobs=16)
-    elif args.model == 'lgb':
-        model = lgb.LGBMClassifier(random_state=args.seed)
-    else:
-        raise ValueError
-    return model
-
-
-def train_lg(args, 
-             train_X: np.ndarray, 
-             train_Y: np.ndarray, 
-             valid_X: np.ndarray, 
-             valid_Y: np.ndarray, 
-             test_X: np.ndarray, 
-             test_Y: np.ndarray):
-    model = LogisticRegression(max_iter=args.episode, 
-                               multi_class='multinomial', 
-                               random_state=args.seed)
-    model.fit(train_X, train_Y)
-    mlflow.sklearn.log_model(model, 'model')
-    # test
-    y_pred = model.predict(test_X)
-    accuracy = accuracy_score(test_Y, y_pred) * 100
-    result = f'test score: {accuracy:.5f}'
-    print(result)
-    mlflow.log_text(result, 'test_accuracy.txt')
-
-    return model
-
-
 def train_xgb(args, 
               train_X: np.ndarray, 
               train_Y: np.ndarray, 
@@ -238,6 +201,7 @@ def train_nn(args,
     max_acc = 0
     for epoch in tqdm(range(args.episode)):
         model.train()
+        train_acc = 0
         epoch_loss = 0.
         for data in train_dataloader:
             inputs, labels = data
@@ -250,11 +214,18 @@ def train_nn(args,
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
+            train_acc += (logits.argmax(dim=-1) == labels).float().sum().item()
 
-        log_data = {'epoch_loss': epoch_loss}   
+        train_acc /= train_X.shape[0]
+
+        log_data = {
+            'epoch_loss': epoch_loss,
+            'train_acc': train_acc,
+        }   
 
         if epoch % args.valid_freq == 0:
             model.eval()
+            valid_near_acc = 0
             valid_acc = 0
             valid_loss = 0
             for data in valid_dataloader:
@@ -265,14 +236,17 @@ def train_nn(args,
                 with torch.no_grad():
                     logits = model(inputs)
                 valid_acc += (logits.argmax(dim=-1) == labels).float().sum().item()
+                valid_near_acc += near_acc(logits.cpu().numpy(), labels.cpu().numpy())
                 valid_loss += loss.item()
 
             valid_acc /= valid_X.shape[0]
+            valid_near_acc /= valid_X.shape[0]
 
             if valid_acc > max_acc:
                 mlflow.pytorch.log_model(model, 'model')
 
             log_data['valid_acc'] = valid_acc
+            log_data['valid_near_acc'] = valid_near_acc
 
         mlflow.log_metrics(log_data, epoch)
 
@@ -280,6 +254,7 @@ def train_nn(args,
     model = mlflow.pytorch.load_model(model_uri)
     model.eval()
     test_acc = 0
+    test_near_acc = 0
     for data in test_dataloader:
         inputs, labels = data
         inputs = inputs.to(device)
@@ -288,12 +263,26 @@ def train_nn(args,
         with torch.no_grad():
             logits = model(inputs)
         test_acc += (logits.argmax(dim=-1) == labels).float().sum().item()
+        test_near_acc += near_acc(logits.cpu().numpy(), labels.cpu().numpy())
 
     test_acc /= test_X.shape[0]
+    test_near_acc /= test_X.shape[0]
 
-    result = f'Test accuracy: {test_acc:.5f}'
+    result = f'Test accuracy: {test_acc:.5f}\nTest near accuracy: {test_near_acc:.5f}'
     print(result)
     mlflow.log_text(result, 'test_accuracy.txt')
+
+
+def near_acc(logits: np.ndarray, label: np.ndarray, top_n_rank: int=3):
+    acc = 0
+    pred = np.argsort(logits)[:, ::-1][:, :top_n_rank]
+    for i, num in enumerate(label):
+        near_label = [num - 6, num - 5, num - 4, 
+                      num - 1, num    , num + 1,
+                      num + 4, num + 5, num + 6]
+        if len(set(pred[i]) & set(near_label)) > 0:
+            acc += 1
+    return acc
                 
 
 if __name__ == '__main__':
@@ -337,9 +326,7 @@ if __name__ == '__main__':
     mlflow.set_tracking_uri("http://127.0.0.1:8787")
     experiment = mlflow.set_experiment(f"behavior_policy_classification")
     with mlflow.start_run(experiment_id=experiment.experiment_id, run_name=f"{args.model}") as run:
-        if args.model == 'lg':
-            model = train_lg(args, train_X, train_Y, valid_X, valid_Y, test_X, test_Y)
-        elif args.model == 'xgb':
+        if args.model == 'xgb':
             model = train_xgb(args, train_X, train_Y, valid_X, valid_Y, test_X, test_Y)
         elif args.model == 'lgb':
             model = train_lgb(args, train_X, train_Y, valid_X, valid_Y, test_X, test_Y)
