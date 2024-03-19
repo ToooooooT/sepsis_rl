@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 class MLP(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_size=(128, 256, 128)) -> None:
+    def __init__(self, state_dim, action_dim, hidden_size=(128, 256, 256, 128)) -> None:
         super().__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim

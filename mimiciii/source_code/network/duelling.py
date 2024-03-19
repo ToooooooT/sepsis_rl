@@ -38,3 +38,31 @@ class DuellingMLP(nn.Module):
         self.main.apply(init_weights)
         self.adv.reset_parameters()
         self.val.reset_parameters()
+
+
+class WDQN_DuelingMLP(nn.Module):
+    def __init__(self, state_dim, n_actions):
+        super().__init__()
+
+        self.conv = nn.Sequential(
+            nn.Linear(state_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
+        )
+        self.fc_val = nn.Sequential(
+            nn.Linear(128, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1)
+        )
+        self.fc_adv = nn.Sequential(
+            nn.Linear(128, 256),
+            nn.ReLU(),
+            nn.Linear(256, n_actions)
+        )
+
+    def forward(self, state):
+        conv_out = self.conv(state)
+        val = self.fc_val(conv_out)
+        adv = self.fc_adv(conv_out)
+        return val + adv - adv.mean(dim=1, keepdim=True)

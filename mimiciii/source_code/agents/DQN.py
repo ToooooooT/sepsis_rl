@@ -8,6 +8,7 @@ from typing import Dict, Tuple
 
 from agents.BaseAgent import BaseAgent
 from utils import Config
+from network import WDQN_DuelingMLP
 
 class DQN(BaseAgent):
     def __init__(self, 
@@ -155,6 +156,10 @@ class WDQN(DQN):
                  log_dir='./logs',
                  static_policy=False):
         super().__init__(env, config, log_dir, static_policy)
+
+    def declare_networks(self):
+        self.q = WDQN_DuelingMLP(self.num_feats, self.num_actions).to(self.device)
+        self.target_q = WDQN_DuelingMLP(self.num_feats, self.num_actions).to(self.device)
 
     def compute_loss(self, batch_vars: Tuple) -> torch.Tensor:
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
