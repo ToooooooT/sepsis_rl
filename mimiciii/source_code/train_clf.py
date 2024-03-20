@@ -8,10 +8,10 @@ import xgboost as xgb
 import torch
 import torch.optim as optim
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import mlflow
 import lightgbm as lgb
-import joblib
 import random
 from tqdm import tqdm
 
@@ -20,8 +20,10 @@ from network.behavior_policy import MLP
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, help="random seed", default=10)
+    parser.add_argument("--gen_run_id", type=str, help="run id to load model for generating behavior policy prob", default=None)
     parser.add_argument("--log_dir", type=str, help="log directory", default='./logs/behavior_policy')
     parser.add_argument("--dataset_version", type=str, help="dataset version", default='v1_20849')
+    parser.add_argument("--reward_type", type=int, help="reward type of dataset", default=0)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-3)
     parser.add_argument("--batch_size", type=int, help="batch size", default=32)
     parser.add_argument("--optimizer", type=str, help="optimizer", default='adam')
@@ -273,7 +275,7 @@ def train_nn(args,
     mlflow.log_text(result, 'test_accuracy.txt')
 
 
-def near_acc(logits: np.ndarray, label: np.ndarray, top_n_rank: int=3):
+def near_acc(logits: np.ndarray, label: np.ndarray, top_n_rank: int=1):
     acc = 0
     pred = np.argsort(logits)[:, ::-1][:, :top_n_rank]
     for i, num in enumerate(label):
@@ -283,7 +285,55 @@ def near_acc(logits: np.ndarray, label: np.ndarray, top_n_rank: int=3):
         if len(set(pred[i]) & set(near_label)) > 0:
             acc += 1
     return acc
-                
+
+
+def gen_behavior_policy_prob(args, 
+                             dataset_path: str,
+                             valid_X: np.ndarray, 
+                             test_X: np.ndarray):
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    valid_dataset = CustomDataset(valid_X.astype(np.float32), valid_Y)
+    valid_dataloader = DataLoader(dataset=valid_dataset,
+                                  batch_size=args.batch_size,
+                                  shuffle=False,
+                                  drop_last=False)
+
+    test_dataset = CustomDataset(test_X.astype(np.float32), test_Y)
+    test_dataloader = DataLoader(dataset=test_dataset,
+                                  batch_size=args.batch_size,
+                                  shuffle=False,
+                                  drop_last=False)
+
+    model_uri = f"runs:/{args.gen_run_id}/model"
+    model = mlflow.pytorch.load_model(model_uri)
+    model.eval()
+
+    valid_probs = []
+    for data in valid_dataloader:
+        inputs, _ = data
+        inputs = inputs.to(device)
+
+        with torch.no_grad():
+            logits = model(inputs)
+        prob = F.softmax(logits, dim=1).cpu().numpy()
+        valid_probs.append(prob)
+    valid_probs = np.vstack(valid_probs)
+    np.save(os.path.join(dataset_path, 'behavior_policy_prob_valid.npy'), valid_probs)
+
+    test_probs = []
+    for data in test_dataloader:
+        inputs, _ = data
+        inputs = inputs.to(device)
+
+        with torch.no_grad():
+            logits = model(inputs)
+        prob = F.softmax(logits, dim=1).cpu().numpy()
+        test_probs.append(prob)
+    test_probs = np.vstack(test_probs)
+    np.save(os.path.join(dataset_path, 'behavior_policy_prob_test.npy'), test_probs)
+
 
 if __name__ == '__main__':
     args = parse_args()
@@ -299,7 +349,7 @@ if __name__ == '__main__':
     train / valid / test dataset are original unnomalized dataset, with action and reward
     train / valid / test data contain (s, a, r, s_, done, SOFA, is_alive) transitions, with normalization
     '''
-    dataset_path = f"../data/final_dataset/{args.dataset_version}/reward_type=0"
+    dataset_path = f"../data/final_dataset/{args.dataset_version}/reward_type={args.reward_type}"
 
     # train
     with open(os.path.join(dataset_path, 'train.pkl'), 'rb') as file:
@@ -325,14 +375,16 @@ if __name__ == '__main__':
 
     mlflow.set_tracking_uri("http://127.0.0.1:8787")
     experiment = mlflow.set_experiment(f"behavior_policy_classification")
-    with mlflow.start_run(experiment_id=experiment.experiment_id, run_name=f"{args.model}") as run:
-        if args.model == 'xgb':
-            model = train_xgb(args, train_X, train_Y, valid_X, valid_Y, test_X, test_Y)
-        elif args.model == 'lgb':
-            model = train_lgb(args, train_X, train_Y, valid_X, valid_Y, test_X, test_Y)
-        elif args.model == 'nn':
-            model = train_nn(args, train_X, train_Y, valid_X, valid_Y, test_X, test_Y)
-        else:
-            raise ValueError
 
-    joblib.dump(model, os.path.join(args.log_dir, 'LG_clf.sav'))
+    if args.gen_run_id is not None:
+        gen_behavior_policy_prob(args, dataset_path, valid_X, test_X)
+    else:
+        with mlflow.start_run(experiment_id=experiment.experiment_id, run_name=f"{args.model}-{args.dataset_version}") as run:
+            if args.model == 'xgb':
+                model = train_xgb(args, train_X, train_Y, valid_X, valid_Y, test_X, test_Y)
+            elif args.model == 'lgb':
+                model = train_lgb(args, train_X, train_Y, valid_X, valid_Y, test_X, test_Y)
+            elif args.model == 'nn':
+                model = train_nn(args, train_X, train_Y, valid_X, valid_Y, test_X, test_Y)
+            else:
+                raise ValueError
