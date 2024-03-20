@@ -37,6 +37,7 @@ def parse_args():
     parser.add_argument("--bc_kl_beta", type=float, help="regularization term coeficient", default=2e-1)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
+    parser.add_argument("--pi_b_est", action="store_true", help="use estimate behavior policy action probabilities for OPE and KL in BC")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
     parser.add_argument("--valid_freq", type=int, help="validation frequency", default=1000)
@@ -131,7 +132,7 @@ def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
 
     for i in range(start + 1, config.EPISODE + 1):
         loss = agent.update(i)
-        log_data = loss
+        log_metrics = loss
 
         if i % valid_freq == 0:
             actions, action_probs = testing(valid_data, agent)
@@ -141,8 +142,9 @@ def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
             # estimate expected return
             for method in ope_methods:
                 expected_return, _ = estimators[method].estimate(policy_action_probs=action_probs,
-                                                        agent=agent,
-                                                        q=fqe.Q)
+                                                                 behavior_action_probs=valid_dict['pi_b'],
+                                                                 agent=agent,
+                                                                 q=fqe.Q)
                 ope_returns[method].append(expected_return)
             # save model
             for method, returns in ope_returns.items():
@@ -153,10 +155,10 @@ def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
             print(f'[EPISODE {i}] | WIS: {ope_returns["WIS"][-1]:.5f}, PHWIS: {ope_returns["PHWIS"][-1]:.5f}, DR: {ope_returns["DR"][-1]:.5f}, PHWDR: {ope_returns["PHWDR"][-1]:.5f}, FQE : {ope_returns["FQE"][-1]:.5f}, QE: {ope_returns["QE"][-1]:.5f}')
 
             for method, returns in ope_returns.items():
-                log_data[method] = returns[-1]
+                log_metrics[method] = returns[-1]
 
         if i % (valid_freq // 10) == 0:
-            mlflow.log_metrics(log_data, i)
+            mlflow.log_metrics(log_metrics, i)
 
         agent.save_checkpoint(i)
 
@@ -166,13 +168,13 @@ def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
     mlflow.log_table(fqe.records, 'table/fqe_loss.json')
 
 
-def testing(test_dict: dict, agent: BaseAgent):
+def testing(test_data: dict, agent: BaseAgent):
     '''
     Returns:
         actions     : np.ndarray; expected shape (B, 1)
         action_probs: np.ndarray; expected shape (B, D)
     '''
-    states = torch.tensor(test_dict['s'], device=agent.device, dtype=torch.float).view(-1, agent.num_feats)
+    states = torch.tensor(test_data['s'], device=agent.device, dtype=torch.float).view(-1, agent.num_feats)
 
     with torch.no_grad():
         actions, _, _, action_probs = agent.get_action_probs(states)
@@ -183,7 +185,7 @@ def testing(test_dict: dict, agent: BaseAgent):
 
 
 def evaluation(agent: BaseAgent,
-               test_data: Dict,
+               test_dict: Dict,
                estimator: BaseEstimator, 
                method: str, 
                test_dataset,
@@ -192,7 +194,7 @@ def evaluation(agent: BaseAgent,
     agent.load(name=method+'_model.pth')
 
     print(f'Start {method} testing...')
-    policy_actions, policy_action_probs = testing(test_data, agent)
+    policy_actions, policy_action_probs = testing(test_dict['data'], agent)
 
     policy_action_col = f'policy action {method}'
     policy_iv_col = f'policy iv {method}'
@@ -203,6 +205,7 @@ def evaluation(agent: BaseAgent,
     test_dataset[policy_vaso_col] = (policy_actions % 5).reshape(-1,)
 
     avg_return, returns = estimator.estimate(policy_action_probs=policy_action_probs,
+                                             behavior_action_probs=test_dict['pi_b'],
                                              agent=agent,
                                              q=q)
 
@@ -248,22 +251,28 @@ if __name__ == '__main__':
     dataset_path = f"../data/final_dataset/{args.dataset_version}/reward_type={args.reward_type}"
 
     # train
-    train_dataset = pd.read_csv(os.path.join(dataset_path, f'train.csv'))
+    train_dataset = pd.read_csv(os.path.join(dataset_path, 'train.csv'))
     icustayids = train_dataset['icustayid'].unique()
-    with open(os.path.join(dataset_path, f'train.pkl'), 'rb') as file:
+    with open(os.path.join(dataset_path, 'train.pkl'), 'rb') as file:
         train_dict = pickle.load(file)
     train_data = train_dict['data']
 
     # validation
-    valid_dataset = pd.read_csv(os.path.join(dataset_path, f'valid.csv'))
-    with open(os.path.join(dataset_path, f'valid.pkl'), 'rb') as file:
+    valid_dataset = pd.read_csv(os.path.join(dataset_path, 'valid.csv'))
+    with open(os.path.join(dataset_path, 'valid.pkl'), 'rb') as file:
         valid_dict = pickle.load(file)
 
     # test
-    test_dataset = pd.read_csv(os.path.join(dataset_path, f'test.csv'))
-    with open(os.path.join(dataset_path, f'test.pkl'), 'rb') as file:
+    test_dataset = pd.read_csv(os.path.join(dataset_path, 'test.csv'))
+    with open(os.path.join(dataset_path, 'test.pkl'), 'rb') as file:
         test_dict = pickle.load(file)
-    test_data, test_id_index_map = test_dict['data'], test_dict['id_index_map']
+
+    # validation and test behavior policy probabilities
+    valid_pi_b_probs = np.load(os.path.join(dataset_path, 'behavior_policy_prob_valid.npy'))
+    test_pi_b_probs = np.load(os.path.join(dataset_path, 'behavior_policy_prob_test.npy'))
+
+    valid_dict['pi_b'] = valid_pi_b_probs
+    test_dict['pi_b'] = test_pi_b_probs
 
     ######################################################################################
     # Hyperparameters
@@ -287,6 +296,7 @@ if __name__ == '__main__':
     config.REG_LAMBDA = args.reg_lambda
     config.BC_KL_BETA = args.bc_kl_beta
     config.BC_TYPE = args.bc_type
+    config.PI_B_EST = args.pi_b_est
 
     env_spec = {'num_feats': train_data['s'].shape[1], 'num_actions': 25}
 
@@ -339,7 +349,12 @@ if __name__ == '__main__':
 
         for method in ope_methods:
             # Off-policy Policy Evaluation
-            avg_return, returns = evaluation(agent, test_data, estimators[method], method, test_dataset, fqe.Q)
+            avg_return, returns = evaluation(agent, 
+                                             test_dict, 
+                                             estimators[method], 
+                                             method, 
+                                             test_dataset, 
+                                             fqe.Q)
             ope_returns.append(returns)
             avg_ope_returns.append(avg_return)
 
@@ -350,7 +365,7 @@ if __name__ == '__main__':
                           'fig/expected_return_distribution.png')
         fig, survival_rate_means, survival_rate_stds = plot_survival_rate(avg_ope_returns,
                                                                           ope_returns,
-                                                                          test_id_index_map, 
+                                                                          test_dict['id_index_map'], 
                                                                           test_dataset, 
                                                                           ope_methods)
         mlflow.log_figure(fig, 'fig/survival_rate.png')

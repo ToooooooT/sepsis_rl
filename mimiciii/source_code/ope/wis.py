@@ -18,18 +18,17 @@ class WIS(BaseEstimator):
         Description:
             compute all trajectory total reward and weight imporatance sampling.
         Args:
-            policy_actions     : np.ndarray; expected shape (B, 1)
-            policy_action_probs: np.ndarray; expected shape (B, D)
+            policy_actions       : np.ndarray; expected shape (B, 1)
+            policy_action_probs  : np.ndarray; expected shape (B, D)
+            behavior_action_probs: np.ndarray; expected shape (B, D)
         Returns:
             avg_policy_return   : average policy return
             policy_return       : expected return of each patient; numpy array expected shape (1, B)
         '''
         policy_action_probs = kwargs['policy_action_probs']
-        # \rho_t = \pi_1(a_t | s_t) / \pi_0(a_t | s_t), assume \pi_0(a_t | s_t) = 1
-        rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
-                                   self.actions.astype(np.int32).reshape(-1,)]
-        # let the minimum probability be 0.01 to avoid nan
-        rhos[rhos < 0.01] = 0.01
+        behavior_action_probs = kwargs['behavior_action_probs']
+
+        rhos = self.get_rho(policy_action_probs, behavior_action_probs)
 
         policy_return = np.zeros((self.n,), dtype=np.float64) 
         weights = np.zeros((self.n, self.max_length)) # the patient max length is 20 
@@ -68,18 +67,17 @@ class PHWIS(BaseEstimator):
         Description:
             compute all trajectory total reward and weight imporatance sampling.
         Args:
-            policy_actions     : np.ndarray; expected shape (B, 1)
-            policy_action_probs: np.ndarray; expected shape (B, D)
+            policy_actions       : np.ndarray; expected shape (B, 1)
+            policy_action_probs  : np.ndarray; expected shape (B, D)
+            behavior_action_probs: np.ndarray; expected shape (B, D)
         Returns:
             avg_policy_return   : average policy return
             policy_return       : expected return of each patient; numpy array expected shape (1, B)
         '''
         policy_action_probs = kwargs['policy_action_probs']
-        # \rho_t = \pi_1(a_t | s_t) / \pi_0(a_t | s_t), assume \pi_0(a_t | s_t) = 1
-        rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
-                                   self.actions.astype(np.int32).reshape(-1,)]
-        # let the minimum probability be 0.01 to avoid nan
-        rhos[rhos < 0.01] = 0.01
+        behavior_action_probs = kwargs['behavior_action_probs']
+
+        rhos = self.get_rho(policy_action_probs, behavior_action_probs)
 
         policy_return = np.zeros((self.n,), dtype=np.float64) 
         length = np.zeros((self.n,), dtype=np.int32) # the horizon length of each patient

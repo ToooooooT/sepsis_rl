@@ -25,6 +25,7 @@ class BaseEstimator(ABC):
         self.next_states = data_dict['s_']
         self.dones = data_dict['done']
         self.clip_expected_return = args.clip_expected_return
+        self.pi_b_est = config.PI_B_EST
         self.gamma = config.GAMMA
         self.device = config.DEVICE
         self.done_indexs = np.where(self.dones == 1)[0]
@@ -36,3 +37,29 @@ class BaseEstimator(ABC):
     def estimate(self, **kwargs) -> Tuple[float, np.ndarray]:
         ''' To override '''
         pass
+
+    
+    def get_rho(self, 
+                policy_action_probs: np.ndarray, 
+                behavior_action_probs: np.ndarray) -> np.ndarray:
+        '''
+        Args:
+            policy_action_probs  : np.ndarray; expected shape (B, D)
+            behavior_action_probs: np.ndarray; expected shape (B, D)
+        Returns:
+            rhos : np.ndarray; expected shape (B, D)
+        '''
+        # \rho_t = \pi_1(a_t | s_t) / \pi_0(a_t | s_t)
+        if self.pi_b_est:
+            rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
+                                    self.actions.astype(np.int32).reshape(-1,)] / \
+                    behavior_action_probs[np.arange(behavior_action_probs.shape[0]), 
+                                    self.actions.astype(np.int32).reshape(-1,)]
+        else:
+            # assume \pi_0(a_t | s_t) = 1
+            rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
+                                    self.actions.astype(np.int32).reshape(-1,)]
+        # let the minimum probability be 0.01 to avoid nan
+        rhos[rhos < 0.01] = 0.01
+
+        return rhos

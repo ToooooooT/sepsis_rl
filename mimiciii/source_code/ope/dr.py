@@ -54,18 +54,18 @@ class DoublyRobust(BaseEstimator):
         '''
         Args:
             policy_action_probs: np.ndarray; expected shape (B, D)
+            behavior_action_probs: np.ndarray; expected shape (B, D)
         Returns:
             average policy return
             policy_return   : expected return of each patient; expected shape (1, B)
         '''
         self.agent = kwargs['agent']
         policy_action_probs = kwargs['policy_action_probs']
+        behavior_action_probs = kwargs['behavior_action_probs']
         q = kwargs.get('q', None)
         est_q_values, est_v_values = self.estimate_values(q)
 
-        # \rho_t = \pi_1(a_t | s_t) / \pi_0(a_t | s_t), assume \pi_0(a_t | s_t) = 1
-        rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
-                                   self.actions.astype(np.int32).reshape(-1,)]
+        rhos = self.get_rho(policy_action_probs, behavior_action_probs)
 
         policy_return = np.zeros((self.n,), dtype=np.float64) 
 
@@ -92,6 +92,7 @@ class DoublyRobust(BaseEstimator):
         policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
         return policy_return.mean(), policy_return.reshape(1, -1)
 
+
 class PHWDR(DoublyRobust):
     def __init__(self, 
                  agent: BaseAgent,
@@ -104,19 +105,18 @@ class PHWDR(DoublyRobust):
         '''
         Args:
             policy_action_probs: np.ndarray; expected shape (B, D)
+            behavior_action_probs: np.ndarray; expected shape (B, D)
         Returns:
             average policy return
             policy_return   : expected return of each patient; expected shape (1, B)
         '''
         self.agent = kwargs['agent']
         policy_action_probs = kwargs['policy_action_probs']
+        behavior_action_probs = kwargs['behavior_action_probs']
         q = kwargs.get('q', None)
         est_q_values, est_v_values = self.estimate_values(q)
 
-        # \rho_t = \pi_1(a_t | s_t) / \pi_0(a_t | s_t), assume \pi_0(a_t | s_t) = 1
-        rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
-                                   self.actions.astype(np.int32).reshape(-1,)]
-        rhos[rhos < 0.01] = 0.01
+        rhos = self.get_rho(policy_action_probs, behavior_action_probs)
 
         policy_return = np.zeros((self.n,), dtype=np.float64) 
         length = np.zeros((self.n,), dtype=np.int32) # the horizon length of each patient
