@@ -27,3 +27,5 @@ t.py
 script*.py
 *.pth
 *.sav
+mlruns/
+mlartifacts/
