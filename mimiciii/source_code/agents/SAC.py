@@ -302,7 +302,30 @@ class SAC_BC(SAC):
             self.bc_kl_beta = config.BC_KL_BETA
             self.log_nu = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
             self.nu_optimizer = optim.Adam([self.log_nu], lr=self.q_lr, eps=1e-4)
+            self.pi_b_est = config.PI_B_EST
+            if self.pi_b_est:
+                if self.num_feats == 87:
+                    self.pi_b_model = torch.load('pi_b_models/model_min_max_agg.pth').to(self.device)
+                elif self.num_feats == 49:
+                    self.pi_b_model = torch.load('pi_b_models/model_mean_agg.pth').to(self.device)
+                else:
+                    raise ValueError
+                self.pi_b_model.eval()
 
+    def get_behavior(self, 
+                     states: torch.Tensor, 
+                     actions: torch.Tensor, 
+                     action_probs: torch.Tensor) -> Categorical:
+        if self.pi_b_est:
+            behavior_logits = self.pi_b_model(states)
+            behavior = Categorical(logits=behavior_logits)
+        else:
+            # assume other action probabilities is 0.001 of behavior policy
+            behavior_probs = torch.full(action_probs.shape, 0.001, device=self.device)
+            behavior_probs.scatter_(1, actions, 1 - 0.001 * (self.num_actions - 1))
+            behavior = Categorical(probs=behavior_probs)
+
+        return behavior
 
     def compute_actor_loss(self, states: torch.Tensor, actions: torch.Tensor) -> Tuple[torch.Tensor,
                                                                                        torch.Tensor,
@@ -321,10 +344,7 @@ class SAC_BC(SAC):
             bc_loss = F.cross_entropy(action_probs, actions.view(-1))
             kl_loss = None
         else:
-            # assume other action probabilities is 0.001 of behavior policy
-            behavior_probs = torch.full(action_probs.shape, 0.001, device=self.device)
-            behavior_probs.scatter_(1, actions, 1 - 0.001 * (self.num_actions - 1))
-            behavior = Categorical(probs=behavior_probs)
+            behavior = self.get_behavior(states, actions, action_probs)
             policy = Categorical(logits=logits)
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{b}(a|s)))

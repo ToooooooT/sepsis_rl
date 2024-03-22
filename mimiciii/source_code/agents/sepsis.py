@@ -112,20 +112,15 @@ class WDQNE(WDQN):
         return loss
 
 
-class SAC_BC_E(SAC):
+class SAC_BC_E(SAC_BC):
     def __init__(self, 
                  env: dict, 
                  config: Config, 
                  log_dir='./logs',
                  static_policy=False) -> None:
         super().__init__(env, config, log_dir, static_policy)
-        self.actor_lambda = config.ACTOR_LAMBDA
+
         self.sofa_threshold = config.SOFA_THRESHOLD
-        self.bc_type = config.BC_TYPE
-        if self.bc_type == "KL":
-            self.bc_kl_beta = config.BC_KL_BETA
-            self.log_nu = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
-            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.q_lr, eps=1e-4)
 
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1, 1)
@@ -174,10 +169,7 @@ class SAC_BC_E(SAC):
             bc_loss = (bc_loss * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
             kl_div = None
         else:
-            # assume other action probabilities is 0.001 of behavior policy
-            clin_probs = torch.full(action_probs.shape, 0.001, device=self.device)
-            clin_probs.scatter_(1, actions, 1 - 0.001 * (self.num_actions - 1))
-            clin = Categorical(probs=clin_probs)
+            clin = self.get_behavior(states, actions, action_probs)
             policy = Categorical(logits=logits)
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{clin}(a|s)))
@@ -246,20 +238,15 @@ class SAC_BC_E(SAC):
         return loss
 
 
-class CQL_BC_E(CQL):
+class CQL_BC_E(CQL_BC):
     def __init__(self, 
                  env: dict, 
                  config: Config, 
                  log_dir='./logs',
                  static_policy=False) -> None:
         super().__init__(env, config, log_dir, static_policy)
-        self.actor_lambda = config.ACTOR_LAMBDA
+
         self.sofa_threshold = config.SOFA_THRESHOLD
-        self.bc_type = config.BC_TYPE
-        if self.bc_type == "KL":
-            self.bc_kl_beta = config.BC_KL_BETA
-            self.log_nu = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
-            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.q_lr, eps=1e-4)
 
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1, 1)
@@ -308,10 +295,7 @@ class CQL_BC_E(CQL):
             bc_loss = (bc_loss * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
             kl_div = None
         else:
-            # assume other action probabilities is 0.001 of behavior policy
-            clin_probs = torch.full(action_probs.shape, 0.001, device=self.device)
-            clin_probs.scatter_(1, actions, 1 - 0.001 * (self.num_actions - 1))
-            clin = Categorical(probs=clin_probs.detach())
+            clin = self.get_behavior(states, actions, action_probs)
             policy = Categorical(logits=logits)
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{clin}(a|s)))

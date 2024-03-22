@@ -332,7 +332,7 @@ def plot_expected_return_distribution(expected_return: np.ndarray, name: list, l
     if expected_return.ndim == 1:
         expected_return = expected_return.reshape(1, -1)
     assert(n == expected_return.shape[0])
-    expected_return = np.round(expected_return).astype(np.int32)
+    expected_return = np.round(expected_return).astype(np.int64)
     # igonre the outlier expected return
     expected_return = np.clip(expected_return, -clip_val, clip_val)
     expected_return_count = np.apply_along_axis(
