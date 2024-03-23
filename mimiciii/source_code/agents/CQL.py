@@ -194,9 +194,9 @@ class CQL_BC(CQL):
             self.pi_b_est = config.PI_B_EST
             if self.pi_b_est:
                 if self.num_feats == 87:
-                    self.pi_b_model = torch.load('pi_b_models/model_min_max_agg.pth').to(self.device)
+                    self.pi_b_model = torch.load('pi_b_models/model_min_max_agg.pth', map_location=torch.device('cpu')).to(self.device)
                 elif self.num_feats == 49:
-                    self.pi_b_model = torch.load('pi_b_models/model_mean_agg.pth').to(self.device)
+                    self.pi_b_model = torch.load('pi_b_models/model_mean_agg.pth', map_location=torch.device('cpu')).to(self.device)
                 else:
                     raise ValueError
                 self.pi_b_model.eval()
