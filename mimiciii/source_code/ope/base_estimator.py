@@ -47,10 +47,14 @@ class BaseEstimator(ABC):
             policy_action_probs  : np.ndarray; expected shape (B, D)
             behavior_action_probs: np.ndarray; expected shape (B, D)
         Returns:
-            rhos : np.ndarray; expected shape (B, D)
+            rhos : np.ndarray; expected shape (B,)
         '''
         # \rho_t = \pi_1(a_t | s_t) / \pi_0(a_t | s_t)
         if self.pi_b_est:
+            # let the minimum probability of action be 0.01 to avoid nan
+            behavior_action_probs[behavior_action_probs < 1e-2] = 1e-2
+            policy_action_probs[policy_action_probs < 1e-2] = 1e-2
+
             rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
                                     self.actions.astype(np.int32).reshape(-1,)] / \
                     behavior_action_probs[np.arange(behavior_action_probs.shape[0]), 
@@ -59,7 +63,7 @@ class BaseEstimator(ABC):
             # assume \pi_0(a_t | s_t) = 1
             rhos = policy_action_probs[np.arange(policy_action_probs.shape[0]), 
                                     self.actions.astype(np.int32).reshape(-1,)]
-        # let the minimum probability be 0.01 to avoid nan
-        rhos[rhos < 0.01] = 0.01
+            # let the minimum probability be 0.01 to avoid nan
+            rhos[rhos < 1e-2] = 1e-2
 
         return rhos
