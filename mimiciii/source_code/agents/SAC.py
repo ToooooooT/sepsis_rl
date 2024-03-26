@@ -302,8 +302,8 @@ class SAC_BC(SAC):
             self.bc_kl_beta = config.BC_KL_BETA
             self.log_nu = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
             self.nu_optimizer = optim.Adam([self.log_nu], lr=self.q_lr, eps=1e-4)
-            self.pi_b_est = config.PI_B_EST
-            if self.pi_b_est:
+            self.use_pi_b_kl = config.USE_PI_B_KL
+            if self.use_pi_b_kl:
                 if self.num_feats == 87:
                     self.pi_b_model = torch.load('pi_b_models/model_min_max_agg.pth', map_location=torch.device('cpu')).to(self.device)
                 elif self.num_feats == 49:
@@ -316,7 +316,7 @@ class SAC_BC(SAC):
                      states: torch.Tensor, 
                      actions: torch.Tensor, 
                      action_probs: torch.Tensor) -> Categorical:
-        if self.pi_b_est:
+        if self.use_pi_b_kl:
             behavior_logits = self.pi_b_model(states)
             behavior = Categorical(logits=behavior_logits)
         else:

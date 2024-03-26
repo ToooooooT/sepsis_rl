@@ -63,7 +63,8 @@ class Config(object):
         self.WITH_LAGRANGE = True
         self.TARGET_ACTION_GAP = 10.0
 
-        self.PI_B_EST = False
+        self.USE_PI_B_EST = False
+        self.USE_PI_B_KL = False
 
     def get_hyperparameters(self) -> Dict:
         config_dict = {key: value for key, value in vars(self).items() if not key.startswith('__')}

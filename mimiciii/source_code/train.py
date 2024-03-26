@@ -37,7 +37,8 @@ def parse_args():
     parser.add_argument("--bc_kl_beta", type=float, help="regularization term coeficient", default=2e-1)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
-    parser.add_argument("--pi_b_est", action="store_true", help="use estimate behavior policy action probabilities for OPE and KL in BC")
+    parser.add_argument("--use_pi_b_est", action="store_true", help="use estimate behavior policy action probabilities for OPE")
+    parser.add_argument("--use_pi_b_kl", action="store_true", help="use estimate behavior policy action probabilities for KL in BC")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
     parser.add_argument("--valid_freq", type=int, help="validation frequency", default=1000)
@@ -296,7 +297,8 @@ if __name__ == '__main__':
     config.REG_LAMBDA = args.reg_lambda
     config.BC_KL_BETA = args.bc_kl_beta
     config.BC_TYPE = args.bc_type
-    config.PI_B_EST = args.pi_b_est
+    config.USE_PI_B_EST = args.use_pi_b_est
+    config.USE_PI_B_KL = args.use_pi_b_kl
 
     env_spec = {'num_feats': train_data['s'].shape[1], 'num_actions': 25}
 

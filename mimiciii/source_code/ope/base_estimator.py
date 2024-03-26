@@ -25,7 +25,7 @@ class BaseEstimator(ABC):
         self.next_states = data_dict['s_']
         self.dones = data_dict['done']
         self.clip_expected_return = args.clip_expected_return
-        self.pi_b_est = config.PI_B_EST
+        self.pi_b_est = config.USE_PI_B_EST
         self.gamma = config.GAMMA
         self.device = config.DEVICE
         self.done_indexs = np.where(self.dones == 1)[0]
