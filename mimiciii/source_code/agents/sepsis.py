@@ -150,6 +150,11 @@ class SAC_BC_E(SAC_BC):
 
         return states, actions, rewards, next_states, dones, SOFAs, indices, weights
 
+    def compute_kl_threshold(self, shape, SOFAs: torch.Tensor) -> torch.Tensor:
+        # add 1 to avoid threshold be 0
+        kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (SOFAs + 1)
+        return kl_threshold
+
     def compute_actor_loss(self, states, actions, SOFAs) -> Tuple[torch.Tensor,
                                                                   torch.Tensor,
                                                                   torch.Tensor,
@@ -176,9 +181,9 @@ class SAC_BC_E(SAC_BC):
             kl_div = kl_divergence(clin, policy)
             # replace infinity of kl divergence to 20
             kl_div[torch.isinf(kl_div)] = 20.0
-            # add 1 to avoid threshold be 0
-            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * (SOFAs + 1)
-            bc_loss = nu * ((kl_div - kl_threshold) * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            kl_threshold = self.compute_kl_threshold(kl_div.shape, SOFAs)
+            bc_loss = nu * ((kl_div - kl_threshold) * \
+                            (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
 
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
         total_loss = actor_loss * coef + bc_loss
@@ -220,9 +225,9 @@ class SAC_BC_E(SAC_BC):
             loss['alpha_loss'] = alpha_loss.detach().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            # add 1 to avoid threshold be 0
-            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * (SOFAs + 1)
-            nu_loss = -nu * ((kl_div - kl_threshold).detach() * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            kl_threshold = self.compute_kl_threshold(kl_div.shape, SOFAs)
+            nu_loss = -nu * ((kl_div - kl_threshold).detach() * \
+                             (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
             self.nu_optimizer.zero_grad()
             nu_loss.backward()
             if self.is_gradient_clip:
@@ -276,6 +281,10 @@ class CQL_BC_E(CQL_BC):
 
         return states, actions, rewards, next_states, dones, SOFAs, indices, weights
 
+    def compute_kl_threshold(self, shape, SOFAs: torch.Tensor) -> torch.Tensor:
+        kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (SOFAs + 1)
+        return kl_threshold
+
     def compute_actor_loss(self, states, actions, SOFAs) -> Tuple[torch.Tensor,
                                                                   torch.Tensor,
                                                                   torch.Tensor,
@@ -302,9 +311,9 @@ class CQL_BC_E(CQL_BC):
             kl_div = kl_divergence(clin, policy)
             # replace infinity of kl divergence to 20
             kl_div[torch.isinf(kl_div)] = 20.0
-            # add 1 to avoid threshold be 0
-            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * (SOFAs + 1)
-            bc_loss = nu * ((kl_div - kl_threshold.detach()) * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            kl_threshold = self.compute_kl_threshold(kl_div.shape, SOFAs)
+            bc_loss = nu * ((kl_div - kl_threshold.detach()) * \
+                            (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
 
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
         total_loss = actor_loss * coef + bc_loss
@@ -356,9 +365,9 @@ class CQL_BC_E(CQL_BC):
             loss['alpha_prime_loss'] = alpha_prime_loss.detach().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            # add 1 to avoid threshold be 0
-            kl_threshold = torch.full(kl_div.shape, self.bc_kl_beta, device=self.device) * (SOFAs + 1)
-            nu_loss = -nu * ((kl_div - kl_threshold).detach() * (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            kl_threshold = self.compute_kl_threshold(kl_div.shape, SOFAs)
+            nu_loss = -nu * ((kl_div - kl_threshold).detach() * \
+                             (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
             if self.is_gradient_clip:
                 self.log_nu.grad.data.clamp_(-1, 1)
             self.nu_optimizer.zero_grad()
