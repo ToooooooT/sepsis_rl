@@ -34,9 +34,12 @@ def parse_args():
     parser.add_argument("--pi_lr", type=float, help="policy learning rate", default=3e-4)
     parser.add_argument("--fqe_lr", type=float, help="fitted q function learning rate", default=1e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
+    parser.add_argument("--kl_threshold_exp", type=float, help="exponential term of the kl threshold exponential method", default=1.5)
+    parser.add_argument("--kl_threshold_coef", type=float, help="coefficient term of the kl threshold exponential method", default=0.15)
     parser.add_argument("--bc_kl_beta", type=float, help="regularization term coeficient", default=2e-1)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
+    parser.add_argument("--kl_threshold_type", type=str, help="type of method to compute kl threshold", default="step")
     parser.add_argument("--use_pi_b_est", action="store_true", help="use estimate behavior policy action probabilities for OPE")
     parser.add_argument("--use_pi_b_kl", action="store_true", help="use estimate behavior policy action probabilities for KL in BC")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
@@ -297,6 +300,9 @@ if __name__ == '__main__':
     config.REG_LAMBDA = args.reg_lambda
     config.BC_KL_BETA = args.bc_kl_beta
     config.BC_TYPE = args.bc_type
+    config.KL_THRESHOLD_TYPE = args.kl_threshold_type
+    config.KL_THRESHOLD_EXP = args.kl_threshold_exp
+    config.KL_THRESHOLD_COEF = args.kl_threshold_coef
     config.USE_PI_B_EST = args.use_pi_b_est
     config.USE_PI_B_KL = args.use_pi_b_kl
 

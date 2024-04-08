@@ -121,6 +121,9 @@ class SAC_BC_E(SAC_BC):
         super().__init__(env, config, log_dir, static_policy)
 
         self.sofa_threshold = config.SOFA_THRESHOLD
+        self.kl_threshold_type = config.KL_THRESHOLD_TYPE
+        self.kl_threshold_exp = config.KL_THRESHOLD_EXP
+        self.kl_threshold_coef = config.KL_THRESHOLD_COEF
 
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1, 1)
@@ -151,8 +154,13 @@ class SAC_BC_E(SAC_BC):
         return states, actions, rewards, next_states, dones, SOFAs, indices, weights
 
     def compute_kl_threshold(self, shape, SOFAs: torch.Tensor) -> torch.Tensor:
-        # add 1 to avoid threshold be 0
-        kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (SOFAs + 1)
+        if self.kl_threshold_type == 'step':
+            # add 1 to avoid threshold be 0
+            kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (SOFAs + 1)
+        elif self.kl_threshold_type == 'exp':
+            kl_threshold = self.kl_threshold_coef * (torch.full(shape, self.kl_threshold_exp, device=self.device) ** SOFAs)
+        else:
+            raise ValueError("Wrong kl threshold type!")
         return kl_threshold
 
     def compute_actor_loss(self, states, actions, SOFAs) -> Tuple[torch.Tensor,
@@ -252,6 +260,9 @@ class CQL_BC_E(CQL_BC):
         super().__init__(env, config, log_dir, static_policy)
 
         self.sofa_threshold = config.SOFA_THRESHOLD
+        self.kl_threshold_type = config.KL_THRESHOLD_TYPE
+        self.kl_threshold_exp = config.KL_THRESHOLD_EXP
+        self.kl_threshold_coef = config.KL_THRESHOLD_COEF
 
     def declare_memory(self):
         dims = (self.num_feats, 1, 1, self.num_feats, 1, 1)
@@ -282,7 +293,13 @@ class CQL_BC_E(CQL_BC):
         return states, actions, rewards, next_states, dones, SOFAs, indices, weights
 
     def compute_kl_threshold(self, shape, SOFAs: torch.Tensor) -> torch.Tensor:
-        kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (SOFAs + 1)
+        if self.kl_threshold_type == 'step':
+            # add 1 to avoid threshold be 0
+            kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (SOFAs + 1)
+        elif self.kl_threshold_type == 'exp':
+            kl_threshold = self.kl_threshold_coef * (torch.full(shape, self.kl_threshold_exp, device=self.device) ** SOFAs)
+        else:
+            raise ValueError("Wrong kl threshold type!")
         return kl_threshold
 
     def compute_actor_loss(self, states, actions, SOFAs) -> Tuple[torch.Tensor,

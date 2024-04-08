@@ -66,6 +66,11 @@ class Config(object):
         self.USE_PI_B_EST = False
         self.USE_PI_B_KL = False
 
+        # KL threshold
+        self.KL_THRESHOLD_TYPE = "step"
+        self.KL_THRESHOLD_EXP = 1.5
+        self.KL_THRESHOLD_COEF = 0.15
+
     def get_hyperparameters(self) -> Dict:
         config_dict = {key: value for key, value in vars(self).items() if not key.startswith('__')}
         return config_dict
