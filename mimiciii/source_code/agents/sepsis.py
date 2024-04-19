@@ -121,6 +121,7 @@ class SAC_BC_E(SAC_BC):
         super().__init__(env, config, log_dir, static_policy)
 
         self.sofa_threshold = config.SOFA_THRESHOLD
+        self.is_sofa_threshold_below = config.IS_SOFA_THRESHOLD_BELOW
         self.kl_threshold_type = config.KL_THRESHOLD_TYPE
         self.kl_threshold_exp = config.KL_THRESHOLD_EXP
         self.kl_threshold_coef = config.KL_THRESHOLD_COEF
@@ -163,7 +164,25 @@ class SAC_BC_E(SAC_BC):
             raise ValueError("Wrong kl threshold type!")
         return kl_threshold
 
-    def compute_actor_loss(self, states, actions, SOFAs) -> Tuple[torch.Tensor,
+    def compute_bc_loss(self, 
+                        kl_div: torch.Tensor, 
+                        kl_threshold: torch.Tensor, 
+                        SOFAs: torch.Tensor) -> torch.Tensor:
+        # \nu * (KL(\pi_\phi(a|s) || \pi_{clin}(a|s)) - \beta)
+        nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
+        if self.is_sofa_threshold_below:
+            mask = (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()
+        else:
+            mask = (SOFAs >= self.sofa_threshold).to(torch.float).view(-1).detach()
+
+        bc_loss = nu * ((kl_div - kl_threshold.detach()) * mask).mean()
+
+        return bc_loss
+
+    def compute_actor_loss(self, 
+                           states: torch.Tensor, 
+                           actions: torch.Tensor, 
+                           SOFAs: torch.Tensor) -> Tuple[torch.Tensor,
                                                                   torch.Tensor,
                                                                   torch.Tensor,
                                                                   torch.Tensor,
@@ -184,14 +203,11 @@ class SAC_BC_E(SAC_BC):
         else:
             clin = self.get_behavior(states, actions, action_probs)
             policy = Categorical(logits=logits)
-            nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{clin}(a|s)))
             kl_div = kl_divergence(clin, policy)
             # replace infinity of kl divergence to 20
             kl_div[torch.isinf(kl_div)] = 20.0
             kl_threshold = self.compute_kl_threshold(kl_div.shape, SOFAs)
-            bc_loss = nu * ((kl_div - kl_threshold) * \
-                            (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            bc_loss = self.compute_bc_loss(kl_div, kl_threshold, SOFAs)
 
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
         total_loss = actor_loss * coef + bc_loss
@@ -260,6 +276,7 @@ class CQL_BC_E(CQL_BC):
         super().__init__(env, config, log_dir, static_policy)
 
         self.sofa_threshold = config.SOFA_THRESHOLD
+        self.is_sofa_threshold_below = config.IS_SOFA_THRESHOLD_BELOW
         self.kl_threshold_type = config.KL_THRESHOLD_TYPE
         self.kl_threshold_exp = config.KL_THRESHOLD_EXP
         self.kl_threshold_coef = config.KL_THRESHOLD_COEF
@@ -302,12 +319,30 @@ class CQL_BC_E(CQL_BC):
             raise ValueError("Wrong kl threshold type!")
         return kl_threshold
 
-    def compute_actor_loss(self, states, actions, SOFAs) -> Tuple[torch.Tensor,
-                                                                  torch.Tensor,
-                                                                  torch.Tensor,
-                                                                  torch.Tensor,
-                                                                  torch.Tensor,
-                                                                  torch.Tensor]:
+    def compute_bc_loss(self, 
+                        kl_div: torch.Tensor, 
+                        kl_threshold: torch.Tensor, 
+                        SOFAs: torch.Tensor) -> torch.Tensor:
+        # \nu * (KL(\pi_\phi(a|s) || \pi_{clin}(a|s)) - \beta)
+        nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
+        if self.is_sofa_threshold_below:
+            mask = (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()
+        else:
+            mask = (SOFAs >= self.sofa_threshold).to(torch.float).view(-1).detach()
+
+        bc_loss = nu * ((kl_div - kl_threshold.detach()) * mask).mean()
+
+        return bc_loss
+
+    def compute_actor_loss(self, 
+                           states: torch.Tensor, 
+                           actions: torch.Tensor, 
+                           SOFAs: torch.Tensor) -> Tuple[torch.Tensor,
+                                                        torch.Tensor,
+                                                        torch.Tensor,
+                                                        torch.Tensor,
+                                                        torch.Tensor,
+                                                        torch.Tensor]:
         _, logits, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -323,14 +358,11 @@ class CQL_BC_E(CQL_BC):
         else:
             clin = self.get_behavior(states, actions, action_probs)
             policy = Categorical(logits=logits)
-            nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{clin}(a|s)))
             kl_div = kl_divergence(clin, policy)
             # replace infinity of kl divergence to 20
             kl_div[torch.isinf(kl_div)] = 20.0
             kl_threshold = self.compute_kl_threshold(kl_div.shape, SOFAs)
-            bc_loss = nu * ((kl_div - kl_threshold.detach()) * \
-                            (SOFAs < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            bc_loss = self.compute_bc_loss(kl_div, kl_threshold, SOFAs)
 
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
         total_loss = actor_loss * coef + bc_loss

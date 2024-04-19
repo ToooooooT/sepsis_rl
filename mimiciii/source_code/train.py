@@ -34,6 +34,8 @@ def parse_args():
     parser.add_argument("--pi_lr", type=float, help="policy learning rate", default=3e-4)
     parser.add_argument("--fqe_lr", type=float, help="fitted q function learning rate", default=1e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
+    parser.add_argument("--is_sofa_threshold_below", action="store_true", help="employ behavior cloning when sofa score smaller then sofa threshold")
+    parser.add_argument("--sofa_threshold", type=float, help="sofa threshold with behavior cloning", default=5)
     parser.add_argument("--kl_threshold_exp", type=float, help="exponential term of the kl threshold exponential method", default=1.5)
     parser.add_argument("--kl_threshold_coef", type=float, help="coefficient term of the kl threshold exponential method", default=0.15)
     parser.add_argument("--bc_kl_beta", type=float, help="regularization term coeficient", default=2e-1)
@@ -300,6 +302,8 @@ if __name__ == '__main__':
     config.REG_LAMBDA = args.reg_lambda
     config.BC_KL_BETA = args.bc_kl_beta
     config.BC_TYPE = args.bc_type
+    config.SOFA_THRESHOLD = args.sofa_threshold
+    config.IS_SOFA_THRESHOLD_BELOW = args.is_sofa_threshold_below
     config.KL_THRESHOLD_TYPE = args.kl_threshold_type
     config.KL_THRESHOLD_EXP = args.kl_threshold_exp
     config.KL_THRESHOLD_COEF = args.kl_threshold_coef

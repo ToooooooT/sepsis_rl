@@ -348,14 +348,14 @@ class SAC_BC(SAC):
             policy = Categorical(logits=logits)
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{b}(a|s)))
-            kl_loss = kl_divergence(behavior, policy).mean()
+            kl_div = kl_divergence(behavior, policy).mean()
             # replace infinity of kl divergence to 20
-            kl_loss[torch.isinf(kl_loss)] = 20.0
-            bc_loss = nu * (kl_loss - self.bc_kl_beta)
+            kl_div[torch.isinf(kl_div)] = 20.0
+            bc_loss = nu * (kl_div - self.bc_kl_beta)
         # TODO: use a suitable coefficient of normalization term
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
         total_loss = actor_loss * coef + bc_loss / 6
-        return total_loss, actor_loss, bc_loss, kl_loss, action_probs, log_pi
+        return total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi
 
     def update(self, t):
         self.actor.train()
@@ -371,7 +371,7 @@ class SAC_BC(SAC):
             self.gradient_clip_q()
         self.q_optimizer.step()
         # update actor 
-        total_loss, actor_loss, bc_loss, kl_loss, action_probs, log_pi = self.compute_actor_loss(states, actions)
+        total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi = self.compute_actor_loss(states, actions)
         self.actor_optimizer.zero_grad()
         total_loss.backward()
         if self.is_gradient_clip:
@@ -393,14 +393,14 @@ class SAC_BC(SAC):
             loss['alpha_loss'] = alpha_loss.detach().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            nu_loss = -nu * (kl_loss.detach() - self.bc_kl_beta)
+            nu_loss = -nu * (kl_div.detach() - self.bc_kl_beta)
             self.nu_optimizer.zero_grad()
             nu_loss.backward()
             if self.is_gradient_clip:
                 self.log_nu.grad.data.clamp_(-1, 1)
             self.nu_optimizer.step()
             loss['nu_loss'] = nu_loss.detach().cpu().item()
-            loss['kl_loss'] = kl_loss.detach().cpu().item()
+            loss['kl_loss'] = kl_div.detach().cpu().item()
         # update the target network
         if t % self.target_net_update_freq == 0:
             self.update_target_model(self.target_qf1, self.qf1)
