@@ -246,8 +246,9 @@ def normalization(period, dataset: pd.DataFrame, is_min_max: bool):
 def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_path):
     drop_column = ['charttime', 'median_dose_vaso', 'input_total', 'icustayid', 'died_in_hosp', 'mortality_90d',
                 'died_within_48h_of_out_time', 'delay_end_of_record_and_discharge_or_death',
-                'input_4hourly', 'max_dose_vaso', 'reward', 'action']
-    data = {'s': [], 'a': [], 'r': [], 's_': [], 'a_': [], 'bloc_num': [], 'done': [], 'SOFA': [], 'is_alive': []}
+                'input_4hourly', 'max_dose_vaso', 'reward', 'action', 'SOFA_CV']
+    data = {'s': [], 'a': [], 'r': [], 's_': [], 'a_': [], 'bloc_num': [], 
+            'done': [], 'SOFA': [], 'SOFA_CV': [], 'is_alive': []}
     state_dim = len(set(dataset.columns) - set(drop_column))
     id_index_map = defaultdict(list)
     terminal_index = set()
@@ -259,6 +260,7 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
         a_ = s_['action']
         r = s['reward']
         SOFA = unnorm_dataset.loc[index, 'SOFA']
+        SOFA_CV = unnorm_dataset.loc[index, 'SOFA_CV']
         if s['icustayid'] != s_['icustayid']:
             done = 1
             s_ = [0] * state_dim
@@ -277,6 +279,7 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
         data['a_'].append(a_)
         data['done'].append(done)
         data['SOFA'].append(SOFA)
+        data['SOFA_CV'].append(SOFA_CV)
         data['is_alive'].append(1 if r != -15 else 0)
         data['bloc_num'].append(bloc_num)
 
@@ -288,6 +291,7 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
     a_ = 0 # useless action
     r = s['reward']
     SOFA = unnorm_dataset.loc[index, 'SOFA']
+    SOFA_CV = unnorm_dataset.loc[index, 'SOFA_CV']
     id_index_map[s['icustayid']].append(index)
     s.drop(drop_column, inplace=True)
     done = 1
@@ -298,6 +302,7 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
     data['a_'].append(a_)
     data['done'].append(done)
     data['SOFA'].append(SOFA)
+    data['SOFA_CV'].append(SOFA_CV)
     data['is_alive'].append(1 if r != -15 else 0)
     data['bloc_num'].append(bloc_num)
 
@@ -308,6 +313,7 @@ def process_dataset(dataset: pd.DataFrame, unnorm_dataset: pd.DataFrame, save_pa
     data['a_'] = np.array(data['a_']).reshape(-1, 1)
     data['done'] = np.array(data['done']).reshape(-1, 1)
     data['SOFA'] = np.array(data['SOFA']).reshape(-1, 1)
+    data['SOFA_CV'] = np.array(data['SOFA_CV']).reshape(-1, 1)
     data['is_alive'] = np.array(data['is_alive']).reshape(-1, 1)
     data['bloc_num'] = np.array(data['bloc_num']).reshape(-1, 1)
     data['iv'] = data['a'] // 5

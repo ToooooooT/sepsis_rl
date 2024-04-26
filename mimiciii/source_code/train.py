@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument("--reward_type", type=int, help="reward function type", default=0)
     parser.add_argument("--batch_size", type=int, help="batch_size", default=128)
     parser.add_argument("--fqe_batch_size", type=int, help="batch_size", default=256)
-    parser.add_argument("--episode", type=int, help="episode", default=150000)
+    parser.add_argument("--episode", type=int, help="episode", default=120000)
     parser.add_argument("--fqe_episode", type=int, help="episode", default=150)
     parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
     parser.add_argument("--q_lr", type=float, help="q function learning rate", default=3e-4)
@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--fqe_lr", type=float, help="fitted q function learning rate", default=1e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
     parser.add_argument("--is_sofa_threshold_below", action="store_true", help="employ behavior cloning when sofa score smaller then sofa threshold")
+    parser.add_argument("--use_sofa_cv", action="store_true", help="use sofa cv as condition for behavior cloning")
     parser.add_argument("--sofa_threshold", type=float, help="sofa threshold with behavior cloning", default=5)
     parser.add_argument("--kl_threshold_exp", type=float, help="exponential term of the kl threshold exponential method", default=1.5)
     parser.add_argument("--kl_threshold_coef", type=float, help="coefficient term of the kl threshold exponential method", default=0.15)
@@ -88,9 +89,10 @@ def add_dataset_to_replay(train_data, agent: DQN_regularization):
     a_ = train_data['a_']
     done = train_data['done']
     SOFA = train_data['SOFA']
+    SOFA_CV = train_data['SOFA_CV']
 
     if isinstance(agent, SAC_BC_E) or isinstance(agent, CQL_BC_E):
-        data = [s, a, r, s_, done, SOFA]
+        data = [s, a, r, s_, done, SOFA, SOFA_CV]
         agent.memory.read_data(data)
     elif isinstance(agent, WDQNE):
         data = [s, a, r, s_, a_, done, SOFA]
@@ -303,6 +305,7 @@ if __name__ == '__main__':
     config.BC_KL_BETA = args.bc_kl_beta
     config.BC_TYPE = args.bc_type
     config.SOFA_THRESHOLD = args.sofa_threshold
+    config.USE_SOFA_CV = args.use_sofa_cv
     config.IS_SOFA_THRESHOLD_BELOW = args.is_sofa_threshold_below
     config.KL_THRESHOLD_TYPE = args.kl_threshold_type
     config.KL_THRESHOLD_EXP = args.kl_threshold_exp
