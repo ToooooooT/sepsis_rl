@@ -255,25 +255,30 @@ class SAC_BC_E(SAC_BC):
         if self.autotune:
             # Entropy regularization coefficient training
             # reuse action probabilities for temperature loss
-            alpha_loss = (action_probs.detach() * (-self.log_alpha.exp() * \
-                                                   (log_pi + self.target_entropy).detach())).mean()
+            alpha = self.log_alpha.exp()
+            alpha_loss = (action_probs.detach() * (-alpha * (log_pi + self.target_entropy).detach())).mean()
             self.alpha_optimizer.zero_grad()
             alpha_loss.backward()
             self.alpha_optimizer.step()
             self.alpha = self.log_alpha.exp().item()
             loss['alpha_loss'] = alpha_loss.detach().cpu().item()
+            loss['alpha'] = alpha.detach().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             kl_threshold = self.compute_kl_threshold(kl_div.shape, bc_condition)
-            nu_loss = -nu * ((kl_div - kl_threshold).detach() * \
-                             (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            if self.is_sofa_threshold_below:
+                mask = (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()
+            else:
+                mask = (bc_condition >= self.sofa_threshold).to(torch.float).view(-1).detach()
+            nu_loss = -nu * ((kl_div - kl_threshold).detach() * mask).mean()
             self.nu_optimizer.zero_grad()
             nu_loss.backward()
             if self.is_gradient_clip:
                 self.log_nu.grad.data.clamp_(-1, 1)
             self.nu_optimizer.step()
             loss['nu_loss'] = nu_loss.detach().cpu().item()
-            loss['kl_loss'] = kl_div.mean().detach().cpu().item()
+            loss['kl_div'] = (kl_div * mask).mean().detach().cpu().item()
+            loss['nu'] = nu.detach().cpu().item()
         # update the target network
         if t % self.target_net_update_freq == 0:
             self.update_target_model(self.target_qf1, self.qf1)
@@ -425,12 +430,14 @@ class CQL_BC_E(CQL_BC):
         if self.autotune:
             # Entropy regularization coefficient training
             # reuse action probabilities for temperature loss
-            alpha_loss = (action_probs.detach() * (-self.log_alpha.exp() * (log_pi + self.target_entropy).detach())).mean()
+            alpha = self.log_alpha.exp()
+            alpha_loss = (action_probs.detach() * (-alpha * (log_pi + self.target_entropy).detach())).mean()
             self.alpha_optimizer.zero_grad()
             alpha_loss.backward()
             self.alpha_optimizer.step()
             self.alpha = self.log_alpha.exp().item()
             loss['alpha_loss'] = alpha_loss.detach().cpu().item()
+            loss['alpha'] = alpha.detach().cpu().item()
         if self.with_lagrange:
             # CQL regularization training
             alpha_prime = torch.clamp(self.log_alpha_prime.exp(), min=0.0, max=1000000.0)
@@ -441,18 +448,23 @@ class CQL_BC_E(CQL_BC):
             alpha_prime_loss.backward()
             self.alpha_prime_optimizer.step()
             loss['alpha_prime_loss'] = alpha_prime_loss.detach().cpu().item()
+            loss['alpha_prime'] = alpha_prime.detach().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             kl_threshold = self.compute_kl_threshold(kl_div.shape, bc_condition)
-            nu_loss = -nu * ((kl_div - kl_threshold).detach() * \
-                             (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            if self.is_sofa_threshold_below:
+                mask = (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()
+            else:
+                mask = (bc_condition >= self.sofa_threshold).to(torch.float).view(-1).detach()
+            nu_loss = -nu * ((kl_div - kl_threshold).detach() * mask).mean()
             if self.is_gradient_clip:
                 self.log_nu.grad.data.clamp_(-1, 1)
             self.nu_optimizer.zero_grad()
             nu_loss.backward()
             self.nu_optimizer.step()
             loss['nu_loss'] = nu_loss.detach().cpu().item()
-            loss['kl_loss'] = kl_div.mean().detach().cpu().item()
+            loss['kl_div'] = (kl_div * mask).mean().detach().cpu().item()
+            loss['nu'] = nu.detach().cpu().item()
         # update the target network
         if t % self.target_net_update_freq == 0:
             self.update_target_model(self.target_qf1, self.qf1)
