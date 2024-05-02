@@ -168,13 +168,13 @@ class SAC_BC_E(SAC_BC):
     def compute_kl_threshold(self, shape, bc_condition: torch.Tensor) -> torch.Tensor:
         if self.kl_threshold_type == 'step':
             # add 1 to avoid threshold be 0
-            kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (bc_condition + 1)
+            kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (6 - bc_condition.view(-1,))
         elif self.kl_threshold_type == 'exp':
             kl_threshold = self.kl_threshold_coef * \
-                            (torch.full(shape, self.kl_threshold_exp, device=self.device) ** bc_condition)
+                            (torch.full(shape, self.kl_threshold_exp, device=self.device) ** bc_condition.view(-1,))
         else:
             raise ValueError("Wrong kl threshold type!")
-        return kl_threshold
+        return kl_threshold.detach()
 
     def compute_bc_loss(self, 
                         kl_div: torch.Tensor, 
@@ -209,6 +209,7 @@ class SAC_BC_E(SAC_BC):
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
 
         if self.bc_type == 'cross_entropy':
+            # TODO: fix this
             bc_loss = F.cross_entropy(action_probs, actions.view(-1), reduction='none') 
             bc_loss = (bc_loss * (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
             kl_div = None
@@ -223,7 +224,7 @@ class SAC_BC_E(SAC_BC):
 
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
         total_loss = actor_loss * coef + bc_loss
-        return total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi
+        return total_loss, actor_loss, bc_loss, kl_div, kl_threshold, action_probs, log_pi
 
     def update(self, t) -> Dict:
         self.actor.train()
@@ -240,7 +241,7 @@ class SAC_BC_E(SAC_BC):
         self.q_optimizer.step()
         # update actor 
         bc_condition = SOFA_CVs if self.use_sofa_cv else SOFAs
-        total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi = \
+        total_loss, actor_loss, bc_loss, kl_div, kl_threshold, action_probs, log_pi = \
                                             self.compute_actor_loss(states, actions, bc_condition)
         self.actor_optimizer.zero_grad()
         total_loss.backward()
@@ -265,7 +266,6 @@ class SAC_BC_E(SAC_BC):
             loss['alpha'] = alpha.detach().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            kl_threshold = self.compute_kl_threshold(kl_div.shape, bc_condition)
             if self.is_sofa_threshold_below:
                 mask = (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()
             else:
@@ -277,7 +277,8 @@ class SAC_BC_E(SAC_BC):
                 self.log_nu.grad.data.clamp_(-1, 1)
             self.nu_optimizer.step()
             loss['nu_loss'] = nu_loss.detach().cpu().item()
-            loss['kl_div'] = (kl_div * mask).mean().detach().cpu().item()
+            loss['kl_div'] = kl_div[mask.to(torch.bool)].mean().detach().cpu().item()
+            loss['kl_threshold'] = kl_threshold[mask.to(torch.bool)].mean().cpu().item()
             loss['nu'] = nu.detach().cpu().item()
         # update the target network
         if t % self.target_net_update_freq == 0:
@@ -343,13 +344,13 @@ class CQL_BC_E(CQL_BC):
     def compute_kl_threshold(self, shape, bc_condition: torch.Tensor) -> torch.Tensor:
         if self.kl_threshold_type == 'step':
             # add 1 to avoid threshold be 0
-            kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (bc_condition + 1)
+            kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (6 - bc_condition.view(-1))
         elif self.kl_threshold_type == 'exp':
             kl_threshold = self.kl_threshold_coef * \
-                            (torch.full(shape, self.kl_threshold_exp, device=self.device) ** bc_condition)
+                            (torch.full(shape, self.kl_threshold_exp, device=self.device) ** bc_condition.view(-1))
         else:
             raise ValueError("Wrong kl threshold type!")
-        return kl_threshold
+        return kl_threshold.detach()
 
     def compute_bc_loss(self, 
                         kl_div: torch.Tensor, 
@@ -362,7 +363,7 @@ class CQL_BC_E(CQL_BC):
         else:
             mask = (bc_condition >= self.sofa_threshold).to(torch.float).view(-1).detach()
 
-        bc_loss = nu * ((kl_div - kl_threshold.detach()) * mask).mean()
+        bc_loss = nu * ((kl_div - kl_threshold) * mask).mean()
 
         return bc_loss
 
@@ -384,6 +385,7 @@ class CQL_BC_E(CQL_BC):
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
 
         if self.bc_type == 'cross_entropy':
+            # TODO: fix this
             bc_loss = F.cross_entropy(action_probs, actions.view(-1), reduction='none') 
             bc_loss = (bc_loss * (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
             kl_div = None
@@ -463,7 +465,8 @@ class CQL_BC_E(CQL_BC):
             nu_loss.backward()
             self.nu_optimizer.step()
             loss['nu_loss'] = nu_loss.detach().cpu().item()
-            loss['kl_div'] = (kl_div * mask).mean().detach().cpu().item()
+            loss['kl_div'] = kl_div[mask.to(torch.bool)].mean().detach().cpu().item()
+            loss['kl_threshold'] = kl_threshold[mask.to(torch.bool)].mean().cpu().item()
             loss['nu'] = nu.detach().cpu().item()
         # update the target network
         if t % self.target_net_update_freq == 0:

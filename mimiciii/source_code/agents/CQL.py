@@ -209,9 +209,10 @@ class CQL_BC(CQL):
             behavior_logits = self.pi_b_model(states)
             behavior = Categorical(logits=behavior_logits)
         else:
-            # assume other action probabilities is 0.001 of behavior policy
-            behavior_probs = torch.full(action_probs.shape, 0.001, device=self.device)
-            behavior_probs.scatter_(1, actions, 1 - 0.001 * (self.num_actions - 1))
+            # assume other action probabilities is 0.01 of behavior policy
+            epsilon = 0.01
+            behavior_probs = torch.full(action_probs.shape, epsilon, device=self.device)
+            behavior_probs.scatter_(1, actions, 1 - epsilon * (self.num_actions - 1))
             behavior = Categorical(probs=behavior_probs)
 
         return behavior
