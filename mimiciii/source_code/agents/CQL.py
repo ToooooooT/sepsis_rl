@@ -18,7 +18,7 @@ class CQL(SAC):
         static_policy: bool=False
     ) -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
-
+        # TODO: delete q_dre 
         self.with_lagrange = config.WITH_LAGRANGE
         if self.with_lagrange:
             self.target_action_gap = config.TARGET_ACTION_GAP
@@ -77,12 +77,16 @@ class CQL(SAC):
         indices: List, 
         weights: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        qf1_values = self.qf1(states).gather(1, actions)
-        qf2_values = self.qf2(states).gather(1, actions)
+        if self.use_state_augmentation:
+            states, next_states = self.augmentation(states, next_states, rewards, dones)
+            actions = actions.unsqueeze(1).repeat(1, 2, 1)
+
+        qf1_values = self.qf1(states).gather(-1, actions)
+        qf2_values = self.qf2(states).gather(-1, actions)
 
         # CQL regulariztion loss
-        min_qf1_loss_ = torch.logsumexp(self.qf1(states), dim=1).mean() - qf1_values.mean()
-        min_qf2_loss_ = torch.logsumexp(self.qf2(states), dim=1).mean() - qf2_values.mean()
+        min_qf1_loss_ = torch.logsumexp(self.qf1(states), dim=-1).mean() - qf1_values.mean()
+        min_qf2_loss_ = torch.logsumexp(self.qf2(states), dim=-1).mean() - qf2_values.mean()
 
         if self.with_lagrange:
             alpha_prime = torch.clamp(self.log_alpha_prime.exp(), min=0.0, max=1000000.0).detach()
@@ -98,8 +102,14 @@ class CQL(SAC):
                 torch.min(qf1_next_target, qf2_next_target) - self.alpha * next_state_log_pi
             )
             # adapt Q-target for discrete Q-function
-            min_qf_next_target = min_qf_next_target.sum(dim=1, keepdim=True)
-            next_q_value = rewards + (1 - dones) * self.gamma * (min_qf_next_target)
+            min_qf_next_target = min_qf_next_target.sum(dim=-1, keepdim=True)
+
+        if self.use_state_augmentation:
+            qf1_values = qf1_values.mean(dim=1)
+            qf2_values = qf2_values.mean(dim=1)
+            min_qf_next_target = min_qf_next_target.mean(dim=1)
+
+        next_q_value = rewards + (1 - dones) * self.gamma * (min_qf_next_target)
 
         if self.priority_replay:
             # include actor loss, cql regularization loss or not?
@@ -120,14 +130,7 @@ class CQL(SAC):
             qf1_loss = qf1_loss + min_qf1_loss_
             qf2_loss = qf2_loss + min_qf2_loss_
 
-        # update q function for doubly robust estimator
-        q_dre_values = self.q_dre(states).gather(1, actions)
-        with torch.no_grad():
-            max_next_action = self.q_dre(next_states).max(dim=1)[1].view(-1, 1)
-            target_q_dre_values = self.target_q_dre(next_states).gather(1, max_next_action)
-        q_dre_loss = F.mse_loss(q_dre_values, rewards + self.gamma * target_q_dre_values * (1 - dones))
-
-        qf_loss = qf1_loss + qf2_loss + q_dre_loss
+        qf_loss = qf1_loss + qf2_loss
         return qf_loss, min_qf1_loss_, min_qf2_loss_
 
     def update(self, t: int) -> Dict:

@@ -144,18 +144,21 @@ class DQN(BaseAgent):
         dones: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         '''
-        for data augmentation
+        for data augmentation, currently only augment states (no next_states)
+        use Bellman Q Equation to update state
         '''
-        # TODO: check this function, currently only augment on states (no next_states)
         states = states.clone().detach().requires_grad_(True) 
 
         q_values = self.q(states).max(-1, keepdim=True)[0]
-        next_q_values = self.q(next_states).max(-1, keepdim=True)[0]
-        loss = (rewards + next_q_values * (1 - dones) - q_values).mean()
-        states.grad.zero_()
+        with torch.no_grad():
+            max_next_action = self.get_max_next_state_action(next_states)
+            next_q_values = self.target_q(next_states).gather(-1, max_next_action)
+
+        loss = F.mse_loss(q_values, rewards + next_q_values * (1 - dones))
         loss.backward()
         with torch.no_grad():
-            states = states + states.grad * self.adversarial_step
+            # only update features that are not use for computing reward
+            states[:, :, :-2] += states.grad[:, :, :-2] * self.adversarial_step
         return states.detach().clone().requires_grad_(False), next_states
 
         

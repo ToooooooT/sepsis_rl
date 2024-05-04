@@ -272,36 +272,37 @@ class SAC(BaseAgent):
 
     def adversarial_state_training(
         self, 
-        states: np.ndarray, 
-        next_states: np.ndarray, 
-        rewards: np.ndarray,
-        dones: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        states: torch.Tensor, 
+        next_states: torch.Tensor, 
+        rewards: torch.Tensor,
+        dones: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         '''
-        for data augmentation
+        for data augmentation, currently only augment states (no next_states)
+        use Bellman Q Equation to update state
         '''
-        # TODO: check this function, currently only augment on states
-        states = torch.tensor(states, device=self.device, dtype=torch.float, requires_grad=True)
-        next_states = torch.tensor(next_states, device=self.device, dtype=torch.float)
-        rewards = torch.tensor(rewards, device=self.device, dtype=torch.float)
-        dones = torch.tensor(dones, device=self.device, dtype=torch.float)
+        states = states.clone().detach().requires_grad_(True) 
 
         actions = self.get_action_probs(states)[0]
         next_actions = self.get_action_probs(next_states)[0]
 
-        qf1_values = self.qf1(states).gather(1, actions)
-        qf2_values = self.qf2(states).gather(1, actions)
-        qf1_next_values = self.qf1(next_states).gather(1, next_actions)
-        qf2_next_values = self.qf2(next_states).gather(1, next_actions)
-        q_values = torch.min(qf1_values, qf2_values)
-        next_q_values = torch.min(qf1_next_values, qf2_next_values)
+        qf1_values = self.qf1(states).gather(-1, actions)
+        qf2_values = self.qf2(states).gather(-1, actions)
 
-        loss = (rewards + next_q_values * (1 - dones) - q_values).mean()
-        states.grad.zero_()
-        loss.backward()
         with torch.no_grad():
-            states = states + states.grad * self.adversarial_step
-        return states.detach().cpu().numpy(), next_states.cpu().numpy()
+            qf1_next_values = self.qf1(next_states).gather(-1, next_actions)
+            qf2_next_values = self.qf2(next_states).gather(-1, next_actions)
+            next_q_values = torch.min(qf1_next_values, qf2_next_values)
+
+        qf1_loss = F.mse_loss(qf1_values, rewards + next_q_values * (1 - dones))
+        qf2_loss = F.mse_loss(qf2_values, rewards + next_q_values * (1 - dones))
+        q_loss = qf1_loss + qf2_loss
+        q_loss.backward()
+
+        with torch.no_grad():
+            # only update features that are not use for computing reward
+            states[:, :, :-2] += states.grad[:, :, :-2] * self.adversarial_step
+        return states.detach().clone().requires_grad_(False), next_states
 
 
 class SAC_BC(SAC):

@@ -156,22 +156,27 @@ class BaseAgent(ABC):
         rewards: torch.Tensor, 
         dones: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        '''
+        Description:
+            state augmentation only augment the features that are not used for computing reward,
+            don't change SOFA and lactate which are the last two columns in the state
+        '''
         states =  states.unsqueeze(1).repeat(1, self.state_augmentation_num, 1)
         next_states = next_states.unsqueeze(1).repeat(1, self.state_augmentation_num, 1)
         rewards =  rewards.unsqueeze(1).repeat(1, self.state_augmentation_num, 1)
         dones =  dones.unsqueeze(1).repeat(1, self.state_augmentation_num, 1)
         if self.state_augmentation_type == "Gaussian":
-            states = states + torch.randn(states.shape, device=self.device) * self.gaussian_noise_std
-            next_states = next_states + torch.randn(next_states.shape, device=self.device) * self.gaussian_noise_std
+            states[:, :, :-2] += torch.randn(states[:, :, :-2].shape, device=self.device) * self.gaussian_noise_std
+            next_states[:, :, :-2] += torch.randn(next_states[:, :, :-2].shape, device=self.device) * self.gaussian_noise_std
         elif self.state_augmentation_type == "Uniform":
-            states = states + torch.FloatTensor(states.shape, device=self.device)\
-                                .uniform_(-self.uniform_noise, self.uniform_noise)
-            next_states = next_states + torch.FloatTensor(states.shape, device=self.device)\
-                                .uniform_(-self.uniform_noise, self.uniform_noise)
+            states[:, :, :-2] += torch.zeros(states[:, :, :-2].shape, device=self.device) \
+                                                    .uniform_(-self.uniform_noise, self.uniform_noise)
+            next_states[:, :, :-2] += torch.zeros(next_states[:, :, :-2].shape, device=self.device) \
+                                                    .uniform_(-self.uniform_noise, self.uniform_noise)
         elif self.state_augmentation_type == "Mixup":
             # vector or scalar ?
             lmbda = torch.distributions.Beta(self.mixup_alpha, self.mixup_alpha).sample().to(self.device)
-            states = lmbda * states + (1 - lmbda) * next_states
+            states[:, :, :-2] = lmbda * states[:, :, :-2] + (1 - lmbda) * next_states[:, :, :-2]
         elif self.state_augmentation_type == "Adversarial":
             states, next_states = self.adversarial_state_training(states, next_states, rewards, dones)
         else:
