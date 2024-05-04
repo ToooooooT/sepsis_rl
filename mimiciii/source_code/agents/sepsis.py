@@ -176,18 +176,25 @@ class SAC_BC_E(SAC_BC):
             raise ValueError("Wrong kl threshold type!")
         return kl_threshold.detach()
 
+    def get_mask(self, bc_condition: torch.Tensor) -> torch.Tensor:
+        '''
+        Return:
+            get behavior cloning condition mask
+        '''
+        if self.is_sofa_threshold_below:
+            mask = bc_condition < self.sofa_threshold
+        else:
+            mask = bc_condition >= self.sofa_threshold
+        return mask.to(torch.float).view(-1).detach()
+
     def compute_bc_loss(self, 
                         kl_div: torch.Tensor, 
                         kl_threshold: torch.Tensor, 
                         bc_condition: torch.Tensor) -> torch.Tensor:
         # \nu * (KL(\pi_\phi(a|s) || \pi_{clin}(a|s)) - \beta)
         nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-        if self.is_sofa_threshold_below:
-            mask = (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()
-        else:
-            mask = (bc_condition >= self.sofa_threshold).to(torch.float).view(-1).detach()
-
-        bc_loss = nu * ((kl_div - kl_threshold.detach()) * mask).mean()
+        mask = self.get_mask(bc_condition)
+        bc_loss = nu * ((kl_div - kl_threshold) * mask).mean()
 
         return bc_loss
 
@@ -209,10 +216,11 @@ class SAC_BC_E(SAC_BC):
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
 
         if self.bc_type == 'cross_entropy':
-            # TODO: fix this
             bc_loss = F.cross_entropy(action_probs, actions.view(-1), reduction='none') 
-            bc_loss = (bc_loss * (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            mask = self.get_mask(bc_condition)
+            bc_loss = (bc_loss * mask).mean()
             kl_div = None
+            kl_threshold = None
         else:
             clin = self.get_behavior(states, actions, action_probs)
             policy = Categorical(logits=logits)
@@ -266,10 +274,7 @@ class SAC_BC_E(SAC_BC):
             loss['alpha'] = alpha.detach().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            if self.is_sofa_threshold_below:
-                mask = (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()
-            else:
-                mask = (bc_condition >= self.sofa_threshold).to(torch.float).view(-1).detach()
+            mask = self.get_mask(bc_condition)
             nu_loss = -nu * ((kl_div - kl_threshold).detach() * mask).mean()
             self.nu_optimizer.zero_grad()
             nu_loss.backward()
@@ -352,17 +357,24 @@ class CQL_BC_E(CQL_BC):
             raise ValueError("Wrong kl threshold type!")
         return kl_threshold.detach()
 
+    def get_mask(self, bc_condition: torch.Tensor) -> torch.Tensor:
+        '''
+        Return:
+            get behavior cloning condition mask
+        '''
+        if self.is_sofa_threshold_below:
+            mask = bc_condition < self.sofa_threshold
+        else:
+            mask = bc_condition >= self.sofa_threshold
+        return mask.to(torch.float).view(-1).detach()
+
     def compute_bc_loss(self, 
                         kl_div: torch.Tensor, 
                         kl_threshold: torch.Tensor, 
                         bc_condition: torch.Tensor) -> torch.Tensor:
         # \nu * (KL(\pi_\phi(a|s) || \pi_{clin}(a|s)) - \beta)
         nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-        if self.is_sofa_threshold_below:
-            mask = (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()
-        else:
-            mask = (bc_condition >= self.sofa_threshold).to(torch.float).view(-1).detach()
-
+        mask = self.get_mask(bc_condition)
         bc_loss = nu * ((kl_div - kl_threshold) * mask).mean()
 
         return bc_loss
@@ -385,10 +397,11 @@ class CQL_BC_E(CQL_BC):
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
 
         if self.bc_type == 'cross_entropy':
-            # TODO: fix this
             bc_loss = F.cross_entropy(action_probs, actions.view(-1), reduction='none') 
-            bc_loss = (bc_loss * (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()).mean()
+            mask = self.get_mask(bc_condition)
+            bc_loss = (bc_loss * mask).mean()
             kl_div = None
+            kl_threshold = None
         else:
             clin = self.get_behavior(states, actions, action_probs)
             policy = Categorical(logits=logits)
@@ -454,10 +467,7 @@ class CQL_BC_E(CQL_BC):
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             kl_threshold = self.compute_kl_threshold(kl_div.shape, bc_condition)
-            if self.is_sofa_threshold_below:
-                mask = (bc_condition < self.sofa_threshold).to(torch.float).view(-1).detach()
-            else:
-                mask = (bc_condition >= self.sofa_threshold).to(torch.float).view(-1).detach()
+            mask = self.get_mask(bc_condition)
             nu_loss = -nu * ((kl_div - kl_threshold).detach() * mask).mean()
             if self.is_gradient_clip:
                 self.log_nu.grad.data.clamp_(-1, 1)

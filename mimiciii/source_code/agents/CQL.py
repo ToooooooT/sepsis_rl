@@ -174,7 +174,9 @@ class CQL(SAC):
         return {'qf_loss': qf_loss.detach().cpu().item(), 
                 'actor_loss': actor_loss.detach().cpu().item(), 
                 'alpha_loss': alpha_loss.detach().cpu().item(),
-                'alpha_prime_loss': alpha_prime_loss.detach().cpu().item()}
+                'alpha_prime_loss': alpha_prime_loss.detach().cpu().item(),
+                'alpha': self.log_alpha.exp().cpu().item(),
+                'alpha_prime': self.log_alpha_prime.exp().cpu().item(),}
 
 
 class CQL_BC(CQL):
@@ -282,6 +284,7 @@ class CQL_BC(CQL):
             self.alpha_optimizer.step()
             self.alpha = self.log_alpha.exp().item()
             loss['alpha_loss'] = alpha_loss.detach().cpu().item()
+            loss['alpha'] = self.log_alpha.exp().cpu().item()
         if self.with_lagrange:
             # CQL regularization training
             alpha_prime = torch.clamp(self.log_alpha_prime.exp(), min=0.0, max=1000000.0)
@@ -292,6 +295,7 @@ class CQL_BC(CQL):
             alpha_prime_loss.backward()
             self.alpha_prime_optimizer.step()
             loss['alpha_prime_loss'] = alpha_prime_loss.detach().cpu().item()
+            loss['alpha_prime'] = self.log_alpha_prime.exp().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             nu_loss = -nu * (kl_div.detach() - self.bc_kl_beta)
@@ -301,6 +305,7 @@ class CQL_BC(CQL):
                 self.log_nu.grad.data.clamp_(-1, 1)
             self.nu_optimizer.step()
             loss['nu_loss'] = nu_loss.detach().cpu().item()
+            loss['nu'] = nu.detach().cpu().item()
             loss['kl_loss'] = kl_div.detach().cpu().item()
         # update the target network
         if t % self.target_net_update_freq == 0:

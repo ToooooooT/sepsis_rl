@@ -220,7 +220,8 @@ class SAC(BaseAgent):
 
         return {'qf_loss': qf_loss.detach().cpu().item(), 
                 'actor_loss': actor_loss.detach().cpu().item(), 
-                'alpha_loss': alpha_loss.detach().cpu().item()}
+                'alpha_loss': alpha_loss.detach().cpu().item(),
+                'alpha': self.log_alpha.exp().cpu().item()}
 
 
     def get_action_probs(self, states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -392,6 +393,7 @@ class SAC_BC(SAC):
             self.alpha_optimizer.step()
             self.alpha = self.log_alpha.exp().item()
             loss['alpha_loss'] = alpha_loss.detach().cpu().item()
+            loss['alpha'] = self.log_alpha.exp().cpu().item()
         if self.bc_type == "KL":
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             nu_loss = -nu * (kl_div.detach() - self.bc_kl_beta)
@@ -401,6 +403,7 @@ class SAC_BC(SAC):
                 self.log_nu.grad.data.clamp_(-1, 1)
             self.nu_optimizer.step()
             loss['nu_loss'] = nu_loss.detach().cpu().item()
+            loss['nu'] = nu.detach().cpu().item()
             loss['kl_loss'] = kl_div.detach().cpu().item()
         # update the target network
         if t % self.target_net_update_freq == 0:
