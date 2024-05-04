@@ -11,11 +11,13 @@ from utils import Config
 from network import WDQN_DuelingMLP
 
 class DQN(BaseAgent):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir='./logs',
-                 static_policy=False):
+    def __init__(
+        self, 
+        env: dict, 
+        config: Config, 
+        log_dir='./logs',
+        static_policy=False
+    ):
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
 
         self.target_q.load_state_dict(self.q.state_dict())
@@ -134,36 +136,37 @@ class DQN(BaseAgent):
     def get_max_next_state_action(self, next_states: torch.Tensor) -> torch.Tensor:
         return self.q(next_states).max(dim=-1, keepdim=True)[1]
 
-    def adversarial_state_training(self, 
-                                   states: np.ndarray, 
-                                   next_states: np.ndarray, 
-                                   rewards: np.ndarray,
-                                   dones: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def adversarial_state_training(
+        self, 
+        states: torch.Tensor, 
+        next_states: torch.Tensor, 
+        rewards: torch.Tensor,
+        dones: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         '''
         for data augmentation
         '''
-        # TODO: check this function, currently only augment on states
-        states = torch.tensor(states, device=self.device, dtype=torch.float, requires_grad=True)
-        next_states = torch.tensor(next_states, device=self.device, dtype=torch.float)
-        rewards = torch.tensor(rewards, device=self.device, dtype=torch.float)
-        dones = torch.tensor(dones, device=self.device, dtype=torch.float)
+        # TODO: check this function, currently only augment on states (no next_states)
+        states = states.clone().detach().requires_grad_(True) 
 
-        q_values = self.q(states).max(1, keepdim=True)[0]
-        next_q_values = self.q(next_states).max(1, keepdim=True)[0]
+        q_values = self.q(states).max(-1, keepdim=True)[0]
+        next_q_values = self.q(next_states).max(-1, keepdim=True)[0]
         loss = (rewards + next_q_values * (1 - dones) - q_values).mean()
         states.grad.zero_()
         loss.backward()
         with torch.no_grad():
             states = states + states.grad * self.adversarial_step
-        return states.detach().cpu().numpy(), next_states.cpu().numpy()
+        return states.detach().clone().requires_grad_(False), next_states
 
         
 class WDQN(DQN):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir='./logs',
-                 static_policy=False):
+    def __init__(
+        self, 
+        env: dict, 
+        config: Config, 
+        log_dir='./logs',
+        static_policy=False
+    ):
         super().__init__(env, config, log_dir, static_policy)
 
     def declare_networks(self):

@@ -6,11 +6,13 @@ from utils import Config
 from agents import BaseAgent
 
 class WIS(BaseEstimator):
-    def __init__(self, 
-                 agent: BaseAgent,
-                 data_dict: dict, 
-                 config: Config,
-                 args) -> None:
+    def __init__(
+        self, 
+        agent: BaseAgent,
+        data_dict: dict, 
+        config: Config,
+        args
+    ) -> None:
         super().__init__(agent, data_dict, config, args)
 
     def estimate(self, **kwargs) -> Tuple[float, np.ndarray]:
@@ -55,11 +57,13 @@ class WIS(BaseEstimator):
 
 
 class PHWIS(BaseEstimator):
-    def __init__(self, 
-                 agent: BaseAgent,
-                 data_dict: dict, 
-                 config: Config,
-                 args) -> None:
+    def __init__(
+        self, 
+        agent: BaseAgent,
+        data_dict: dict, 
+        config: Config,
+        args
+    ) -> None:
         super().__init__(agent, data_dict, config, args)
 
     def estimate(self, **kwargs) -> Tuple[float, np.ndarray]:

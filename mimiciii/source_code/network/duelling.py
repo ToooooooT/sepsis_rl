@@ -1,9 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Tuple
 
 class DuellingMLP(nn.Module):
-    def __init__(self, input_size, num_actions, hidden_size=(128, 128)):
+    def __init__(
+        self, 
+        input_size: int, 
+        num_actions: int, 
+        hidden_size: Tuple = (128, 128)
+    ):
         super().__init__()
         self.num_actions = num_actions
         self.layer_size = [input_size] + list(hidden_size)
@@ -21,7 +27,7 @@ class DuellingMLP(nn.Module):
         # self.val = torch.empty([1, 64]).normal_(mean=0, std=1)
     
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = self.main(x)
         # advantage and value streams
         streamA, streamV = torch.split(y, (self.adv_shape, self.val_shape), dim=-1)
@@ -43,7 +49,7 @@ class DuellingMLP(nn.Module):
 
 
 class WDQN_DuelingMLP(nn.Module):
-    def __init__(self, state_dim, n_actions):
+    def __init__(self, state_dim: int, n_actions: int):
         super().__init__()
 
         self.conv = nn.Sequential(
@@ -63,7 +69,7 @@ class WDQN_DuelingMLP(nn.Module):
             nn.Linear(256, n_actions)
         )
 
-    def forward(self, state):
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
         conv_out = self.conv(state)
         val = self.fc_val(conv_out)
         adv = self.fc_adv(conv_out)

@@ -1,7 +1,14 @@
 import torch.nn as nn
+import torch
+from typing import Tuple
 
 class PolicyMLP(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_size=(128, 128)) -> None:
+    def __init__(
+        self, 
+        state_dim: int, 
+        action_dim: int, 
+        hidden_size: Tuple = (128, 128)
+    ) -> None:
         super().__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
@@ -14,7 +21,7 @@ class PolicyMLP(nn.Module):
         self.output = nn.Linear(self.layer_size[-2], self.layer_size[-1])
 
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = self.main(x)
         logits = self.output(y)
         return logits

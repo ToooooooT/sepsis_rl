@@ -112,10 +112,12 @@ def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str=No
     return f
 
 
-def plot_pos_neg_action_dist(positive_traj: pd.DataFrame, 
-                             negative_traj: pd.DataFrame, 
-                             policy_action_col: str, 
-                             log_dir: str=None):
+def plot_pos_neg_action_dist(
+    positive_traj: pd.DataFrame, 
+    negative_traj: pd.DataFrame, 
+    policy_action_col: str, 
+    log_dir: str=None
+):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(8, 8))
     height = np.bincount(negative_traj[policy_action_col], minlength=25)[:25]
     ax1.bar(range(25), height=height)
@@ -148,10 +150,12 @@ def plot_pos_neg_action_dist(positive_traj: pd.DataFrame,
     return f
 
 
-def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame, 
-                               negative_traj: pd.DataFrame, 
-                               policy_action_col: str, 
-                               log_dir: str=None):
+def plot_diff_action_SOFA_dist(
+    positive_traj: pd.DataFrame, 
+    negative_traj: pd.DataFrame, 
+    policy_action_col: str, 
+    log_dir: str=None
+):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12,12))
 
     height = np.bincount(positive_traj[positive_traj['action'] != positive_traj[policy_action_col]]['SOFA'], 
@@ -189,10 +193,12 @@ def plot_diff_action_SOFA_dist(positive_traj: pd.DataFrame,
     return f
 
 
-def plot_diff_action(positive_traj: pd.DataFrame, 
-                     negative_traj: pd.DataFrame, 
-                     policy_action_col:str, 
-                     log_dir: str=None) -> Tuple:
+def plot_diff_action(
+    positive_traj: pd.DataFrame, 
+    negative_traj: pd.DataFrame, 
+    policy_action_col:str, 
+    log_dir: str=None
+) -> Tuple:
     fig_pos, ax = plt.subplots(5, 5, figsize=(32,32))
 
     for i in range(5):
@@ -240,12 +246,14 @@ def sliding_mean(data_array: list, window: int=1):
     return np.array(new_list)
 
 
-def plot_survival_rate(avg_expected_return: List,
-                       expected_return: np.ndarray, 
-                       id_index_map: dict, 
-                       dataset: pd.DataFrame, 
-                       name: list, 
-                       log_dir: str=None):
+def plot_survival_rate(
+    avg_expected_return: List,
+    expected_return: np.ndarray, 
+    id_index_map: dict, 
+    dataset: pd.DataFrame, 
+    name: list, 
+    log_dir: str=None
+):
     '''
     Args:
         expected_return : expected shape (k, N); k is number of estimators
@@ -364,11 +372,13 @@ def plot_expected_return_distribution(expected_return: np.ndarray, name: list, l
     return f
 
 
-def make_df_diff(test_dataset: pd.DataFrame, 
-                 vaso_vals: List, 
-                 iv_vals: List,
-                 policy_iv_col: str,
-                 policy_vaso_col: str) -> pd.DataFrame:
+def make_df_diff(
+    test_dataset: pd.DataFrame, 
+    vaso_vals: List, 
+    iv_vals: List,
+    policy_iv_col: str,
+    policy_vaso_col: str
+) -> pd.DataFrame:
     iv_diff = test_dataset['input_4hourly'].values - \
         test_dataset[policy_iv_col].replace({i: iv_vals[i] for i in range(5)}).values
     vaso_diff = test_dataset['max_dose_vaso'].values - \
@@ -418,11 +428,13 @@ def make_vaso_plot_data(df_diff) -> Tuple[List, List, List]:
     return bin_medians_vaso, mort_vaso, mort_std_vaso
 
 
-def plot_action_diff_survival_rate(train_dataset: pd.DataFrame, 
-                                   test_dataset: pd.DataFrame, 
-                                   policy_iv_col: str,
-                                   policy_vaso_col: str,
-                                   log_dir: str=None):
+def plot_action_diff_survival_rate(
+    train_dataset: pd.DataFrame, 
+    test_dataset: pd.DataFrame, 
+    policy_iv_col: str,
+    policy_vaso_col: str,
+    log_dir: str=None
+):
     vaso_vals = [0]
     vaso_vals.extend(train_dataset['max_dose_vaso'][train_dataset['max_dose_vaso'] > 0].quantile([0.125, 0.375, 0.625, 0.875]))
     iv_vals = [0]
@@ -487,10 +499,12 @@ def plot_action_diff_survival_rate(train_dataset: pd.DataFrame,
           bin_med_iv_high, mort_iv_high, mort_std_iv_high, 'r', 'High SOFA', log_dir)
     return low_fig, medium_fig, high_fig
 
-def expected_survival_rate(bin_medians: List[List], 
-                           survival_rate_means: List[np.ndarray], 
-                           survival_rate_stds: List[List], 
-                           avg_expected_returns: List):
+def expected_survival_rate(
+    bin_medians: List[List], 
+    survival_rate_means: List[np.ndarray], 
+    survival_rate_stds: List[List], 
+    avg_expected_returns: List
+):
     '''
     Args:
         bin_medians: the expected return values correspond to each mortality rate

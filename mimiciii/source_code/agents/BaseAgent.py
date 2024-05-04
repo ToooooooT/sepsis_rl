@@ -9,11 +9,13 @@ from replay_buffer import ExperienceReplayMemory, PrioritizedReplayMemory
 from network import DuellingMLP
 
 class BaseAgent(ABC):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir: str='./logs',
-                 static_policy: bool=False):
+    def __init__(
+        self, 
+        env: dict, 
+        config: Config, 
+        log_dir: str='./logs',
+        static_policy: bool=False
+    ):
         # log directory
         self.log_dir = log_dir
 
@@ -147,13 +149,17 @@ class BaseAgent(ABC):
         for target_param, param in zip(target.parameters(), source.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
-    def augmentation(self, 
-                     states: torch.Tensor, 
-                     next_states: torch.Tensor, 
-                     rewards: torch.Tensor, 
-                     dones: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def augmentation(
+        self, 
+        states: torch.Tensor, 
+        next_states: torch.Tensor, 
+        rewards: torch.Tensor, 
+        dones: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         states =  states.unsqueeze(1).repeat(1, self.state_augmentation_num, 1)
         next_states = next_states.unsqueeze(1).repeat(1, self.state_augmentation_num, 1)
+        rewards =  rewards.unsqueeze(1).repeat(1, self.state_augmentation_num, 1)
+        dones =  dones.unsqueeze(1).repeat(1, self.state_augmentation_num, 1)
         if self.state_augmentation_type == "Gaussian":
             states = states + torch.randn(states.shape, device=self.device) * self.gaussian_noise_std
             next_states = next_states + torch.randn(next_states.shape, device=self.device) * self.gaussian_noise_std
@@ -173,11 +179,13 @@ class BaseAgent(ABC):
         return states, next_states # (B, num, S)
 
     @abstractmethod
-    def adversarial_state_training(self, 
-                                   states: np.ndarray, 
-                                   next_states: np.ndarray, 
-                                   rewards: np.ndarray,
-                                   dones: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def adversarial_state_training(
+        self, 
+        states: np.ndarray, 
+        next_states: np.ndarray, 
+        rewards: np.ndarray,
+        dones: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         '''
         To override
         for data augmentation

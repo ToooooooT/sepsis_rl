@@ -198,13 +198,14 @@ def testing(test_data: dict, agent: BaseAgent):
     return actions, action_probs
 
 
-def evaluation(agent: BaseAgent,
-               test_dict: Dict,
-               estimator: BaseEstimator, 
-               method: str, 
-               test_dataset,
-               q=None,
-               ) -> Tuple[np.ndarray, np.ndarray]:
+def evaluation(
+    agent: BaseAgent,
+    test_dict: Dict,
+    estimator: BaseEstimator, 
+    method: str, 
+    test_dataset,
+    q=None,
+) -> Tuple[np.ndarray, np.ndarray]:
     agent.load(name=method+'_model.pth')
 
     print(f'Start {method} testing...')

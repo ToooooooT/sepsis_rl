@@ -6,11 +6,13 @@ from utils import Config
 from agents import BaseAgent
 
 class BaseEstimator(ABC):
-    def __init__(self, 
-                 agent: BaseAgent,
-                 data_dict: Dict, 
-                 config: Config,
-                 args) -> None:
+    def __init__(
+        self, 
+        agent: BaseAgent,
+        data_dict: Dict, 
+        config: Config,
+        args
+    ) -> None:
         super().__init__()
         '''
         Args:
@@ -39,9 +41,11 @@ class BaseEstimator(ABC):
         pass
 
     
-    def get_rho(self, 
-                policy_action_probs: np.ndarray, 
-                behavior_action_probs: np.ndarray) -> np.ndarray:
+    def get_rho(
+        self, 
+        policy_action_probs: np.ndarray, 
+        behavior_action_probs: np.ndarray
+    ) -> np.ndarray:
         '''
         Args:
             policy_action_probs  : np.ndarray; expected shape (B, D)

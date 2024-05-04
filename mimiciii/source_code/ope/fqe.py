@@ -51,14 +51,16 @@ class FQEDataset(Dataset):
 
 
 class FQE(BaseEstimator):
-    def __init__(self, 
-                 agent: BaseAgent, 
-                 train_dict: dict, 
-                 test_dict: dict, 
-                 config: Config, 
-                 args,
-                 Q: nn.Module,
-                 target_Q: nn.Module) -> None:
+    def __init__(
+        self, 
+        agent: BaseAgent, 
+        train_dict: dict, 
+        test_dict: dict, 
+        config: Config, 
+        args,
+        Q: nn.Module,
+        target_Q: nn.Module
+    ) -> None:
         # ref: Batch Policy Learning under Constraints
         super().__init__(agent, test_dict, config, args)
         self.train_dict = train_dict

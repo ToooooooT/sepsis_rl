@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class EnvMLP(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_size) -> None:
+    def __init__(self, state_dim: int, action_dim: int, hidden_size) -> None:
         super().__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim

@@ -6,15 +6,17 @@ from torch.distributions import Categorical, kl_divergence
 from typing import List, Dict, Tuple
 import os
 
-from agents import SAC
+from agents.SAC import SAC
 from utils import Config
 
 class CQL(SAC):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir: str='./logs',
-                 static_policy: bool=False) -> None:
+    def __init__(
+        self, 
+        env: dict, 
+        config: Config, 
+        log_dir: str='./logs',
+        static_policy: bool=False
+    ) -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
 
         self.with_lagrange = config.WITH_LAGRANGE
@@ -23,7 +25,7 @@ class CQL(SAC):
             self.log_alpha_prime = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
             self.alpha_prime_optimizer = optim.Adam([self.log_alpha_prime], lr=self.q_lr, eps=1e-4)
 
-    def save_checkpoint(self, epoch, name: str='checkpoint.pth'):
+    def save_checkpoint(self, epoch: int, name: str='checkpoint.pth'):
         checkpoint = {
             'epoch': epoch,
             'actor': self.actor.state_dict(),
@@ -65,14 +67,16 @@ class CQL(SAC):
             self.alpha_prime_optimizer.load_state_dict = checkpoint['alpha_prime_optimizer']
         return checkpoint['epoch']
 
-    def compute_critic_loss(self, 
-                            states: torch.Tensor, 
-                            actions: torch.Tensor, 
-                            rewards: torch.Tensor, 
-                            next_states: torch.Tensor, 
-                            dones: torch.Tensor, 
-                            indices: List, 
-                            weights: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def compute_critic_loss(
+        self, 
+        states: torch.Tensor, 
+        actions: torch.Tensor, 
+        rewards: torch.Tensor, 
+        next_states: torch.Tensor, 
+        dones: torch.Tensor, 
+        indices: List, 
+        weights: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         qf1_values = self.qf1(states).gather(1, actions)
         qf2_values = self.qf2(states).gather(1, actions)
 
@@ -126,7 +130,7 @@ class CQL(SAC):
         qf_loss = qf1_loss + qf2_loss + q_dre_loss
         return qf_loss, min_qf1_loss_, min_qf2_loss_
 
-    def update(self, t) -> Dict:
+    def update(self, t: int) -> Dict:
         # ref: https://github.com/aviralkumar2907/CQL/blob/d67dbe9cf5d2b96e3b462b6146f249b3d6569796/d4rl/rlkit/torch/sac/cql.py#L41
         self.actor.train()
         self.qf1.train()
@@ -180,11 +184,13 @@ class CQL(SAC):
 
 
 class CQL_BC(CQL):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir: str='./logs',
-                 static_policy: bool=False) -> None:
+    def __init__(
+        self, 
+        env: dict, 
+        config: Config, 
+        log_dir: str='./logs',
+        static_policy: bool=False
+    ) -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
 
         self.actor_lambda = config.ACTOR_LAMBDA
@@ -203,10 +209,12 @@ class CQL_BC(CQL):
                     raise ValueError
                 self.pi_b_model.eval()
 
-    def get_behavior(self, 
-                     states: torch.Tensor, 
-                     actions: torch.Tensor, 
-                     action_probs: torch.Tensor) -> Categorical:
+    def get_behavior(
+        self, 
+        states: torch.Tensor, 
+        actions: torch.Tensor, 
+        action_probs: torch.Tensor
+    ) -> Categorical:
         if self.pi_b_kl:
             behavior_logits = self.pi_b_model(states)
             behavior = Categorical(logits=behavior_logits)
@@ -219,12 +227,11 @@ class CQL_BC(CQL):
 
         return behavior
 
-    def compute_actor_loss(self, states: torch.Tensor, actions: torch.Tensor) -> Tuple[torch.Tensor,
-                                                                                       torch.Tensor,
-                                                                                       torch.Tensor,
-                                                                                       torch.Tensor,
-                                                                                       torch.Tensor,
-                                                                                       torch.Tensor]:
+    def compute_actor_loss(
+        self, 
+        states: torch.Tensor, 
+        actions: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         _, logits, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -250,7 +257,7 @@ class CQL_BC(CQL):
         return total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi
 
 
-    def update(self, t) -> Dict:
+    def update(self, t: int) -> Dict:
         self.actor.train()
         self.qf1.train()
         self.qf2.train()

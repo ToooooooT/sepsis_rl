@@ -9,11 +9,13 @@ from utils import Config
 from agents import BaseAgent, DQN, SAC
 
 class DoublyRobust(BaseEstimator):
-    def __init__(self, 
-                 agent: BaseAgent,
-                 data_dict: dict, 
-                 config: Config,
-                 args) -> None:
+    def __init__(
+        self, 
+        agent: BaseAgent,
+        data_dict: dict, 
+        config: Config,
+        args
+    ) -> None:
         super().__init__(agent, data_dict, config, args)
 
     def estimate_values(self, q: nn.Module=None) -> Tuple[np.ndarray, np.ndarray]:
@@ -94,11 +96,13 @@ class DoublyRobust(BaseEstimator):
 
 
 class PHWDR(DoublyRobust):
-    def __init__(self, 
-                 agent: BaseAgent,
-                 data_dict: dict, 
-                 config: Config,
-                 args) -> None:
+    def __init__(
+        self, 
+        agent: BaseAgent,
+        data_dict: dict, 
+        config: Config,
+        args
+    ) -> None:
         super().__init__(agent, data_dict, config, args)
 
     def estimate(self, **kwargs) -> Tuple[float, ndarray]:

@@ -7,11 +7,13 @@ from agents.CQL import *
 from replay_buffer import ExperienceReplayMemory, PrioritizedReplayMemory
 
 class DQN_regularization(DQN):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir='./logs',
-                 static_policy=False):
+    def __init__(
+        self, 
+        env: dict, 
+        config: Config, 
+        log_dir='./logs',
+        static_policy=False
+    ):
         super().__init__(env, config, log_dir, static_policy)
 
         # loss regularization term
@@ -53,11 +55,13 @@ class DQN_regularization(DQN):
 
 
 class WDQNE(WDQN):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir='./logs',
-                 static_policy=False):
+    def __init__(
+        self, 
+        env: dict, 
+        config: Config, 
+        log_dir='./logs',
+        static_policy=False
+    ):
         super().__init__(env, config, log_dir, static_policy)
         self.sofa_threshold = config.SOFA_THRESHOLD
 
@@ -123,11 +127,13 @@ class WDQNE(WDQN):
 
 
 class SAC_BC_E(SAC_BC):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir='./logs',
-                 static_policy=False) -> None:
+    def __init__(
+        self, 
+        env: dict, 
+        config: Config, 
+        log_dir='./logs',
+        static_policy=False
+    ) -> None:
         super().__init__(env, config, log_dir, static_policy)
 
         self.sofa_threshold = config.SOFA_THRESHOLD
@@ -197,10 +203,12 @@ class SAC_BC_E(SAC_BC):
             mask = bc_condition >= self.sofa_threshold
         return mask.to(torch.float).view(-1).detach()
 
-    def compute_bc_loss(self, 
-                        kl_div: torch.Tensor, 
-                        kl_threshold: torch.Tensor, 
-                        bc_condition: torch.Tensor) -> torch.Tensor:
+    def compute_bc_loss(
+        self, 
+        kl_div: torch.Tensor, 
+        kl_threshold: torch.Tensor, 
+        bc_condition: torch.Tensor
+    ) -> torch.Tensor:
         # \nu * (KL(\pi_\phi(a|s) || \pi_{clin}(a|s)) - \beta)
         nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
         mask = self.get_mask(bc_condition)
@@ -208,15 +216,12 @@ class SAC_BC_E(SAC_BC):
 
         return bc_loss
 
-    def compute_actor_loss(self, 
-                           states: torch.Tensor, 
-                           actions: torch.Tensor, 
-                           bc_condition: torch.Tensor) -> Tuple[torch.Tensor,
-                                                                  torch.Tensor,
-                                                                  torch.Tensor,
-                                                                  torch.Tensor,
-                                                                  torch.Tensor,
-                                                                  torch.Tensor]:
+    def compute_actor_loss(
+        self, 
+        states: torch.Tensor, 
+        actions: torch.Tensor, 
+        bc_condition: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         _, logits, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -244,7 +249,7 @@ class SAC_BC_E(SAC_BC):
         total_loss = actor_loss * coef + bc_loss
         return total_loss, actor_loss, bc_loss, kl_div, kl_threshold, action_probs, log_pi
 
-    def update(self, t) -> Dict:
+    def update(self, t: int) -> Dict:
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
@@ -304,11 +309,13 @@ class SAC_BC_E(SAC_BC):
 
 
 class CQL_BC_E(CQL_BC):
-    def __init__(self, 
-                 env: dict, 
-                 config: Config, 
-                 log_dir='./logs',
-                 static_policy=False) -> None:
+    def __init__(
+        self, 
+        env: dict, 
+        config: Config, 
+        log_dir='./logs',
+        static_policy=False
+    ) -> None:
         super().__init__(env, config, log_dir, static_policy)
 
         self.sofa_threshold = config.SOFA_THRESHOLD
@@ -378,10 +385,12 @@ class CQL_BC_E(CQL_BC):
             mask = bc_condition >= self.sofa_threshold
         return mask.to(torch.float).view(-1).detach()
 
-    def compute_bc_loss(self, 
-                        kl_div: torch.Tensor, 
-                        kl_threshold: torch.Tensor, 
-                        bc_condition: torch.Tensor) -> torch.Tensor:
+    def compute_bc_loss(
+        self, 
+        kl_div: torch.Tensor, 
+        kl_threshold: torch.Tensor, 
+        bc_condition: torch.Tensor
+    ) -> torch.Tensor:
         # \nu * (KL(\pi_\phi(a|s) || \pi_{clin}(a|s)) - \beta)
         nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
         mask = self.get_mask(bc_condition)
@@ -389,15 +398,12 @@ class CQL_BC_E(CQL_BC):
 
         return bc_loss
 
-    def compute_actor_loss(self, 
-                           states: torch.Tensor, 
-                           actions: torch.Tensor, 
-                           bc_condition: torch.Tensor) -> Tuple[torch.Tensor,
-                                                        torch.Tensor,
-                                                        torch.Tensor,
-                                                        torch.Tensor,
-                                                        torch.Tensor,
-                                                        torch.Tensor]:
+    def compute_actor_loss(
+        self, 
+        states: torch.Tensor, 
+        actions: torch.Tensor, 
+        bc_condition: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         _, logits, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -425,7 +431,7 @@ class CQL_BC_E(CQL_BC):
         total_loss = actor_loss * coef + bc_loss
         return total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi
 
-    def update(self, t) -> Dict:
+    def update(self, t: int) -> Dict:
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
