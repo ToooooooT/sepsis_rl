@@ -234,7 +234,7 @@ class CQL_BC(CQL):
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
         if self.bc_type == 'cross_entropy':
             bc_loss = F.cross_entropy(action_probs, actions.view(-1))
-            kl_loss = None
+            kl_div = None
         else:
             behavior = self.get_behavior(states, actions, action_probs)
             policy = Categorical(logits=logits)

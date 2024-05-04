@@ -17,7 +17,7 @@ class SAC(BaseAgent):
                  log_dir: str='./logs',
                  static_policy: bool=False) -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
-        
+        # TODO: delete q_dre 
         self.target_qf1.load_state_dict(self.qf1.state_dict())
         self.target_qf2.load_state_dict(self.qf2.state_dict())
         self.target_q_dre.load_state_dict(self.target_q_dre.state_dict())
@@ -136,6 +136,10 @@ class SAC(BaseAgent):
                             dones: torch.Tensor, 
                             indices: List, 
                             weights: torch.Tensor) -> torch.Tensor:
+        if self.use_state_augmentation:
+            states, next_states = self.augmentation(states, next_states, rewards, dones)
+            actions = actions.unsqueeze(1).repeat(1, 2, 1)
+
         with torch.no_grad():
             _, _, next_state_log_pi, next_state_action_probs = self.get_action_probs(next_states)
             qf1_next_target = self.target_qf1(next_states)
@@ -145,11 +149,17 @@ class SAC(BaseAgent):
                 torch.min(qf1_next_target, qf2_next_target) - self.alpha * next_state_log_pi
             )
             # adapt Q-target for discrete Q-function
-            min_qf_next_target = min_qf_next_target.sum(dim=1, keepdim=True)
-            next_q_value = rewards + (1 - dones) * self.gamma * (min_qf_next_target)
+            min_qf_next_target = min_qf_next_target.sum(dim=-1, keepdim=True)
 
-        qf1_values = self.qf1(states).gather(1, actions)
-        qf2_values = self.qf2(states).gather(1, actions)
+        qf1_values = self.qf1(states).gather(-1, actions)
+        qf2_values = self.qf2(states).gather(-1, actions)
+
+        if self.use_state_augmentation:
+            qf1_values = qf1_values.mean(dim=1)
+            qf2_values = qf2_values.mean(dim=1)
+            min_qf_next_target = min_qf_next_target.mean(dim=1)
+
+        next_q_value = rewards + (1 - dones) * self.gamma * (min_qf_next_target)
 
         if self.priority_replay:
             # include actor loss or not?
@@ -163,14 +173,7 @@ class SAC(BaseAgent):
             qf1_loss = F.mse_loss(qf1_values, next_q_value)
             qf2_loss = F.mse_loss(qf2_values, next_q_value)
 
-        # update q function for doubly robust estimator
-        q_dre_values = self.q_dre(states).gather(1, actions)
-        with torch.no_grad():
-            max_next_action = self.q_dre(next_states).max(dim=1)[1].view(-1, 1)
-            target_q_dre_values = self.target_q_dre(next_states).gather(1, max_next_action)
-        q_dre_loss = F.mse_loss(q_dre_values, rewards + self.gamma * target_q_dre_values * (1 - dones))
-
-        qf_loss = qf1_loss + qf2_loss + q_dre_loss
+        qf_loss = qf1_loss + qf2_loss
         return qf_loss
 
     def compute_actor_loss(self, states) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -230,8 +233,8 @@ class SAC(BaseAgent):
         action = policy_dist.sample()
         # Action probabilities for calculating the adapted soft-Q loss
         action_probs = policy_dist.probs
-        log_prob = F.log_softmax(logits, dim=1)
-        return action.view(-1, 1), logits, log_prob, action_probs
+        log_prob = F.log_softmax(logits, dim=-1)
+        return action.unsqueeze(-1), logits, log_prob, action_probs
 
     def get_action(self, s, eps=0) -> int:
         '''
@@ -344,7 +347,7 @@ class SAC_BC(SAC):
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
         if self.bc_type == 'cross_entropy':
             bc_loss = F.cross_entropy(action_probs, actions.view(-1))
-            kl_loss = None
+            kl_div = None
         else:
             behavior = self.get_behavior(states, actions, action_probs)
             policy = Categorical(logits=logits)

@@ -66,10 +66,19 @@ class DQN(BaseAgent):
 
     def compute_loss(self, batch_vars: Tuple) -> torch.Tensor:
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
-        q_values = self.q(states).gather(1, actions)
+
+        if self.use_state_augmentation:
+            states, next_states = self.augmentation(states, next_states, rewards, dones)
+            actions = actions.unsqueeze(1).repeat(1, 2, 1)
+
+        q_values = self.q(states).gather(-1, actions)
         with torch.no_grad():
             max_next_action = self.get_max_next_state_action(next_states)
-            target_q_values = self.target_q(next_states).gather(1, max_next_action)
+            target_q_values = self.target_q(next_states).gather(-1, max_next_action)
+
+        if self.use_state_augmentation:
+            q_values = q_values.mean(dim=1)
+            target_q_values = target_q_values.mean(dim=1)
 
         if self.priority_replay:
             diff = (q_values - (rewards + self.gamma * target_q_values * (1 - dones)))
@@ -122,8 +131,8 @@ class DQN(BaseAgent):
         action_probs = action_probs.scatter_(1, actions, 0.99)
         return actions, None, None, action_probs
 
-    def get_max_next_state_action(self, next_states) -> torch.Tensor:
-        return self.q(next_states).max(dim=1)[1].view(-1, 1)
+    def get_max_next_state_action(self, next_states: torch.Tensor) -> torch.Tensor:
+        return self.q(next_states).max(dim=-1, keepdim=True)[1]
 
     def adversarial_state_training(self, 
                                    states: np.ndarray, 
@@ -162,6 +171,7 @@ class WDQN(DQN):
         self.target_q = WDQN_DuelingMLP(self.num_feats, self.num_actions).to(self.device)
 
     def compute_loss(self, batch_vars: Tuple) -> torch.Tensor:
+        # TODO: state augmentaton
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
         q_values = self.q(states).gather(1, actions)
         next_q_values = self.q(next_states)

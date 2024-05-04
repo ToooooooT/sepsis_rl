@@ -48,6 +48,9 @@ class BaseAgent(ABC):
         self.uniform_noise = config.UNIFORM_NOISE
         self.mixup_alpha = config.MIXUP_ALPHA
         self.adversarial_step = config.ADVERSARIAL_STEP
+        self.use_state_augmentation = config.USE_STATE_AUGMENTATION
+        self.state_augmentation_type = config.STATE_AUGMENTATION_TYPE
+        self.state_augmentation_num = config.STATE_AUGMENTATION_NUM
 
         # update target network parameter
         self.tau = config.TAU
@@ -145,25 +148,29 @@ class BaseAgent(ABC):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
     def augmentation(self, 
-                     states: np.ndarray, 
-                     next_states: np.ndarray, 
-                     rewards: np.ndarray, 
-                     dones: np.ndarray, 
-                     transformation_type: str) -> Tuple[np.ndarray, np.ndarray]:
-        if transformation_type == "Gaussian":
-            states = states + np.random.normal(0, self.gaussian_noise_std, size=states.shape)
-            next_states = next_states + np.random.normal(0, self.gaussian_noise_std, size=next_states.shape)
-        elif transformation_type == "Uniform":
-            states = states + np.random.uniform(-self.uniform_noise, self.uniform_noise, size=states.shape)
-            next_states = next_states + np.random.uniform(-self.uniform_noise, self.uniform_noise, size=next_states.shape)
-        elif transformation_type == "Mixup":
-            lmbda = np.random.beta(self.mixup_alpha, self.mixup_alpha)
+                     states: torch.Tensor, 
+                     next_states: torch.Tensor, 
+                     rewards: torch.Tensor, 
+                     dones: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        states =  states.unsqueeze(1).repeat(1, self.state_augmentation_num, 1)
+        next_states = next_states.unsqueeze(1).repeat(1, self.state_augmentation_num, 1)
+        if self.state_augmentation_type == "Gaussian":
+            states = states + torch.randn(states.shape, device=self.device) * self.gaussian_noise_std
+            next_states = next_states + torch.randn(next_states.shape, device=self.device) * self.gaussian_noise_std
+        elif self.state_augmentation_type == "Uniform":
+            states = states + torch.FloatTensor(states.shape, device=self.device)\
+                                .uniform_(-self.uniform_noise, self.uniform_noise)
+            next_states = next_states + torch.FloatTensor(states.shape, device=self.device)\
+                                .uniform_(-self.uniform_noise, self.uniform_noise)
+        elif self.state_augmentation_type == "Mixup":
+            # vector or scalar ?
+            lmbda = torch.distributions.Beta(self.mixup_alpha, self.mixup_alpha).sample().to(self.device)
             states = lmbda * states + (1 - lmbda) * next_states
-        elif transformation_type == "adversarial":
+        elif self.state_augmentation_type == "Adversarial":
             states, next_states = self.adversarial_state_training(states, next_states, rewards, dones)
         else:
             raise NotImplementedError
-        return states, next_states
+        return states, next_states # (B, num, S)
 
     @abstractmethod
     def adversarial_state_training(self, 

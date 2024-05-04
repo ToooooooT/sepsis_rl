@@ -37,6 +37,9 @@ def parse_args():
     parser.add_argument("--pi_lr", type=float, help="policy learning rate", default=3e-4)
     parser.add_argument("--fqe_lr", type=float, help="fitted q function learning rate", default=1e-4)
     parser.add_argument("--reg_lambda", type=int, help="regularization term coeficient", default=5)
+    parser.add_argument("--use_state_augmentation", action="store_true", help="use state augmentaion")
+    parser.add_argument("--state_augmentation_type", type=str, help="state augmentation type (Gaussian, Uniform, Mixup, Adversarial)", default='Gaussian')
+    parser.add_argument("--state_augmentation_num", type=int, help="number of state augmentation", default=2)
     parser.add_argument("--is_sofa_threshold_below", action="store_true", help="employ behavior cloning when sofa score smaller then sofa threshold")
     parser.add_argument("--use_sofa_cv", action="store_true", help="use sofa cv as condition for behavior cloning")
     parser.add_argument("--sofa_threshold", type=float, help="sofa threshold with behavior cloning", default=5)
@@ -318,6 +321,9 @@ if __name__ == '__main__':
     config.KL_THRESHOLD_COEF = args.kl_threshold_coef
     config.USE_PI_B_EST = args.use_pi_b_est
     config.USE_PI_B_KL = args.use_pi_b_kl
+    config.USE_STATE_AUGMENTATION = args.use_state_augmentation
+    config.STATE_AUGMENTATION_TYPE = args.state_augmentation_type
+    config.STATE_AUGMENTATION_NUM = args.state_augmentation_num
 
     env_spec = {'num_feats': train_data['s'].shape[1], 'num_actions': 25}
 

@@ -59,6 +59,9 @@ class Config(object):
         self.UNIFORM_NOISE = 3e-4
         self.MIXUP_ALPHA = 0.4
         self.ADVERSARIAL_STEP = 1e-4
+        self.USE_STATE_AUGMENTATION = False
+        self.STATE_AUGMENTATION_TYPE = "Gaussian"
+        self.STATE_AUGMENTATION_NUM = 2
 
         # CQL coefficient of regularization term in Q loss function
         self.ALPHA_PRIME = 1.0

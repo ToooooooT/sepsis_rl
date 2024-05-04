@@ -24,14 +24,23 @@ class DQN_regularization(DQN):
             Q_double-target = reward + gamma * Q_double-target(next_state, argmax_a(Q(next_state, a)))
         '''
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
-        q_values = self.q(states).gather(1, actions)
+
+        if self.use_state_augmentation:
+            states, next_states = self.augmentation(states, next_states, rewards, dones)
+            actions = actions.unsqueeze(1).repeat(1, 2, 1)
+
+        q_values = self.q(states).gather(-1, actions)
         with torch.no_grad():
             max_next_action = self.get_max_next_state_action(next_states)
-            target_q_values = self.target_q(next_states).gather(1, max_next_action)
+            target_q_values = self.target_q(next_states).gather(-1, max_next_action)
             # empirical hack to make the Q values never exceed the threshold - helps learning
             if self.reg_lambda > 0:
                 target_q_values[target_q_values > self.reward_threshold] = self.reward_threshold
                 target_q_values[target_q_values < -self.reward_threshold] = -self.reward_threshold
+
+        if self.use_state_augmentation:
+            q_values = q_values.mean(dim=1)
+            target_q_values = target_q_values.mean(dim=1)
 
         if self.priority_replay:
             diff = (q_values - (rewards + self.gamma * target_q_values * (1 - dones)))
@@ -84,6 +93,7 @@ class WDQNE(WDQN):
         return states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights
 
     def compute_loss(self, batch_vars) -> torch.Tensor:
+        # TODO: state augmentaton
         states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights = batch_vars
         q_values = self.q(states).gather(1, actions)
         next_q_values = self.q(next_states)
