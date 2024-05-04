@@ -13,8 +13,10 @@ class DuellingMLP(nn.Module):
             # self.main.append(nn.BatchNorm1d(self.layer_size[i + 1]))
             self.main.append(nn.LeakyReLU())
         self.main = nn.Sequential(*self.main)
-        self.adv = nn.Linear(self.layer_size[-1] // 2, self.num_actions)
-        self.val = nn.Linear(self.layer_size[-1] // 2, 1)
+        self.adv_shape = self.layer_size[-1] // 2
+        self.val_shape = self.layer_size[-1] - self.adv_shape
+        self.adv = nn.Linear(self.adv_shape, self.num_actions)
+        self.val = nn.Linear(self.val_shape, 1)
         # self.adv = torch.empty([25, 64]).normal_(mean=0, std=1)
         # self.val = torch.empty([1, 64]).normal_(mean=0, std=1)
     
@@ -22,7 +24,7 @@ class DuellingMLP(nn.Module):
     def forward(self, x):
         y = self.main(x)
         # advantage and value streams
-        streamA, streamV = torch.split(y, self.layer_size[-1] // 2, dim=1)
+        streamA, streamV = torch.split(y, (self.adv_shape, self.val_shape), dim=-1)
         adv = self.adv(streamA)
         val = self.val(streamV)
         # adv = streamA @ self.adv.T
