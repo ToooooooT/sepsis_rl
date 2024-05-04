@@ -75,7 +75,7 @@ def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str=No
     actions_mid = np.bincount(actions[mask_mid].ravel().astype(int), minlength=25)
     max_mid = int(np.ceil(actions_mid.max() / 1000)) * 1000
     actions_high = np.bincount(actions[mask_high].ravel().astype(int), minlength=25)
-    max_high = int(np.ceil(actions_high.max() / 1000)) * 1000
+    max_high = int(np.ceil(actions_high.max() / 50)) * 50
 
     iv_labels = ['0', '0-50', '50-180.435', '180.435-529.757', '>529.757']
     vaso_labels = ['0', '0-0.08', '0.08-0.225', '0.225-0.45', '>0.45']
@@ -95,7 +95,7 @@ def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str=No
 
         ax[i][2].bar(range(5), height=actions_high[i * 5:(i + 1) * 5])
         ax[i][2].set_xticks(range(5), vaso_labels)
-        ax[i][2].set_yticks(np.arange(0, max_high + 1, 1000))
+        ax[i][2].set_yticks(np.arange(0, max_high + 1, 50))
 
         ax[i][3].bar(range(5), height=actions_all[i * 5:(i + 1) * 5])
         ax[i][3].set_xticks(range(5), vaso_labels)

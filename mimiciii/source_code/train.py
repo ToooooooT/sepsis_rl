@@ -10,6 +10,9 @@ import pickle
 from argparse import ArgumentParser
 import mlflow
 from typing import Tuple, Dict
+import uuid
+import shutil
+from tqdm import tqdm
 
 from agents import DQN_regularization, WDQNE, SAC_BC_E, SAC_BC, SAC, BaseAgent, CQL, CQL_BC, CQL_BC_E
 from utils import Config, plot_action_dist, plot_estimate_value, \
@@ -29,7 +32,7 @@ def parse_args():
     parser.add_argument("--fqe_batch_size", type=int, help="batch_size", default=256)
     parser.add_argument("--episode", type=int, help="episode", default=120000)
     parser.add_argument("--fqe_episode", type=int, help="episode", default=150)
-    parser.add_argument("--use_pri", type=int, help="use priority replay", default=1)
+    parser.add_argument("--use_pri", type=int, help="use priority replay", default=0)
     parser.add_argument("--q_lr", type=float, help="q function learning rate", default=3e-4)
     parser.add_argument("--pi_lr", type=float, help="policy learning rate", default=3e-4)
     parser.add_argument("--fqe_lr", type=float, help="fitted q function learning rate", default=1e-4)
@@ -47,8 +50,8 @@ def parse_args():
     parser.add_argument("--use_pi_b_kl", action="store_true", help="use estimate behavior policy action probabilities for KL in BC")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
-    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=1000)
-    parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=1000)
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=2000)
+    parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=2000)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="env_model.pth")
     parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="LG_clf.sav")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
@@ -138,7 +141,7 @@ def training(agent: DQN_regularization, valid_dict: dict, config: Config, args):
     else:
         start = 0
 
-    for i in range(start + 1, config.EPISODE + 1):
+    for i in tqdm(range(start + 1, config.EPISODE + 1)):
         loss = agent.update(i)
         log_metrics = loss
 
@@ -245,6 +248,9 @@ def evaluation(agent: BaseAgent,
 if __name__ == '__main__':
     args = parse_args()
 
+    # generate random path for temporary storing before move to mlflow-artifacts
+    path = str(uuid.uuid4())
+
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -315,19 +321,11 @@ if __name__ == '__main__':
 
     env_spec = {'num_feats': train_data['s'].shape[1], 'num_actions': 25}
 
-    path = f'{args.agent}/{args.dataset_version}/reward_type={args.reward_type}-test_episode={config.EPISODE}-batch_size={config.BATCH_SIZE}-use_pri={config.USE_PRIORITY_REPLAY}-q_lr={config.Q_LR}-pi_lr={config.PI_LR}-hidden_size={config.HIDDEN_SIZE}'
-    if args.agent == 'D3QN':
-        path += f'-reg_lambda={config.REG_LAMBDA}'
-    if args.agent == 'SAC_BC_E' or args.agent == 'CQL_BC_E' or args.agent == 'SAC_BC' or args.agent == 'CQL_BC':
-        path += f'-bc_type={config.BC_TYPE}'
-        if config.BC_TYPE == 'KL':
-            path += f'-bc_kl_beta={config.BC_KL_BETA}'
-
-    log_path = os.path.join('./logs', path)
+    log_path = os.path.join(f'./logs/{args.agent}', path)
 
     agent = get_agent(args, log_path, env_spec, config)
 
-    os.makedirs(log_path, exist_ok=True)
+    os.makedirs(log_path)
 
     print('Adding dataset to replay buffer...')
     add_dataset_to_replay(train_data, agent)
@@ -399,3 +397,5 @@ if __name__ == '__main__':
 
         mlflow.log_table(test_dataset, 'table/test_data_predict.json')
         mlflow.log_artifacts(agent.log_dir, "states")
+
+    shutil.rmtree(agent.log_dir)

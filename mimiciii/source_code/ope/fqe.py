@@ -6,11 +6,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import os
-from tqdm import tqdm
 from typing import Tuple
 
 from utils import Config
-from agents import BaseAgent, DQN, SAC
+from agents import BaseAgent, DQN
 from ope.base_estimator import BaseEstimator
 
 class FQEDataset(Dataset):
@@ -114,7 +113,7 @@ class FQE(BaseEstimator):
         self.Q.train()
         M = 5
         estimate_values = []
-        for i in tqdm(range(self.episode)):
+        for i in range(self.episode):
             epoch_loss = 0
             for state, action, reward, next_state, done in self.dataloader:
                 state = state.to(self.device)
