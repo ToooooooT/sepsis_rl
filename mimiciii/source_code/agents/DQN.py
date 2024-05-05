@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from typing import Dict, Tuple
 
 from agents.BaseAgent import BaseAgent
 from utils import Config
@@ -15,8 +14,8 @@ class DQN(BaseAgent):
         self, 
         env: dict, 
         config: Config, 
-        log_dir='./logs',
-        static_policy=False
+        log_dir: str = './logs',
+        static_policy: bool = False
     ):
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
 
@@ -33,7 +32,7 @@ class DQN(BaseAgent):
         else:
             self.q.train()
 
-    def save_checkpoint(self, epoch: int, name: str='checkpoint.pth'):
+    def save_checkpoint(self, epoch: int, name: str = 'checkpoint.pth'):
         checkpoint = {
             'epoch': epoch,
             'model': self.q.state_dict(),
@@ -66,7 +65,7 @@ class DQN(BaseAgent):
         else:
             assert False
 
-    def compute_loss(self, batch_vars: Tuple) -> torch.Tensor:
+    def compute_loss(self, batch_vars: tuple) -> torch.Tensor:
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
 
         if self.use_state_augmentation:
@@ -91,7 +90,7 @@ class DQN(BaseAgent):
         return loss
 
 
-    def update(self, t: int) -> Dict:
+    def update(self, t: int) -> dict:
         if self.static_policy:
             return None
 
@@ -126,10 +125,12 @@ class DQN(BaseAgent):
 
         return np.random.randint(0, self.num_actions)
 
-    def get_action_probs(self, states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        _, actions = self.q(states).max(dim=1)
-        actions = actions.view(-1, 1) # (B, 1)
-        action_probs = torch.full((actions.shape[0], 25), 0.01, device=self.device)
+    def get_action_probs(
+        self, 
+        states: torch.Tensor
+    ) -> tuple[torch.Tensor, None, None, torch.Tensor]:
+        _, actions = self.q(states).max(dim=-1, keepdim=True)
+        action_probs = torch.full((actions.shape[0], self.num_actions), 0.01, device=self.device)
         action_probs = action_probs.scatter_(1, actions, 0.99)
         return actions, None, None, action_probs
 
@@ -142,7 +143,7 @@ class DQN(BaseAgent):
         next_states: torch.Tensor, 
         rewards: torch.Tensor,
         dones: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         '''
         for data augmentation, currently only augment states (no next_states)
         use Bellman Q Equation to update state
@@ -167,8 +168,8 @@ class WDQN(DQN):
         self, 
         env: dict, 
         config: Config, 
-        log_dir='./logs',
-        static_policy=False
+        log_dir = './logs',
+        static_policy = False
     ):
         super().__init__(env, config, log_dir, static_policy)
 
@@ -176,7 +177,7 @@ class WDQN(DQN):
         self.q = WDQN_DuelingMLP(self.num_feats, self.num_actions).to(self.device)
         self.target_q = WDQN_DuelingMLP(self.num_feats, self.num_actions).to(self.device)
 
-    def compute_loss(self, batch_vars: Tuple) -> torch.Tensor:
+    def compute_loss(self, batch_vars: tuple) -> torch.Tensor:
         # TODO: state augmentaton
         states, actions, rewards, next_states, dones, indices, weights = batch_vars
         q_values = self.q(states).gather(1, actions)
@@ -189,8 +190,8 @@ class WDQN(DQN):
         sigma = target_next_q_values_softmax.gather(1, max_next_actions)
         phi = target_next_q_values_softmax.gather(1, max_target_next_actions)
         p = phi / (phi + sigma)
-        target_q_values = p * target_next_q_values.max(dim=1)[0].view(-1, 1) + \
-                            (1 - p) * target_next_q_values.gather(1, max_next_actions)
+        target_q_values = p * target_next_q_values.max(dim=1)[0].view(-1, 1) \
+                            + (1 - p) * target_next_q_values.gather(1, max_next_actions)
 
         if self.priority_replay:
             diff = (q_values - (rewards + self.gamma * target_q_values * (1 - dones)))

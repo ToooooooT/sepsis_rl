@@ -9,7 +9,6 @@ import random
 import pickle
 from argparse import ArgumentParser
 import mlflow
-from typing import Tuple, Dict
 import uuid
 import shutil
 from tqdm import tqdm
@@ -103,7 +102,8 @@ def add_dataset_to_replay(train_data, agent: DQN_regularization):
     elif isinstance(agent, WDQNE):
         data = [s, a, r, s_, a_, done, SOFA]
         agent.memory.read_data(data)
-    elif isinstance(agent, DQN_regularization) or isinstance(agent, SAC_BC) or isinstance(agent, SAC) or isinstance(agent, CQL_BC) or isinstance(agent, CQL):
+    elif (isinstance(agent, DQN_regularization) or isinstance(agent, SAC_BC) 
+            or isinstance(agent, SAC) or isinstance(agent, CQL_BC) or isinstance(agent, CQL)):
         data = [s, a, r, s_, done]
         agent.memory.read_data(data)
     else:
@@ -200,12 +200,12 @@ def testing(test_data: dict, agent: BaseAgent):
 
 def evaluation(
     agent: BaseAgent,
-    test_dict: Dict,
+    test_dict: dict,
     estimator: BaseEstimator, 
     method: str, 
     test_dataset,
-    q=None,
-) -> Tuple[np.ndarray, np.ndarray]:
+    q = None,
+) -> tuple[np.ndarray, np.ndarray]:
     agent.load(name=method+'_model.pth')
 
     print(f'Start {method} testing...')

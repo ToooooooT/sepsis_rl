@@ -1,14 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple
 
 class DuellingMLP(nn.Module):
     def __init__(
         self, 
         input_size: int, 
         num_actions: int, 
-        hidden_size: Tuple = (128, 128)
+        hidden_size: tuple = (128, 128)
     ):
         super().__init__()
         self.num_actions = num_actions

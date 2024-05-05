@@ -1,5 +1,4 @@
 import numpy as np
-from typing import Tuple
 
 from ope.base_estimator import BaseEstimator
 from utils import Config
@@ -15,7 +14,7 @@ class WIS(BaseEstimator):
     ) -> None:
         super().__init__(agent, data_dict, config, args)
 
-    def estimate(self, **kwargs) -> Tuple[float, np.ndarray]:
+    def estimate(self, **kwargs) -> tuple[float, np.ndarray]:
         '''
         Description:
             compute all trajectory total reward and weight imporatance sampling.
@@ -66,7 +65,7 @@ class PHWIS(BaseEstimator):
     ) -> None:
         super().__init__(agent, data_dict, config, args)
 
-    def estimate(self, **kwargs) -> Tuple[float, np.ndarray]:
+    def estimate(self, **kwargs) -> tuple[float, np.ndarray]:
         '''
         Description:
             compute all trajectory total reward and weight imporatance sampling.

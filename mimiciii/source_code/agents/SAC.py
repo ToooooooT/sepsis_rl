@@ -3,7 +3,6 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical, kl_divergence
-from typing import List, Dict, Tuple
 import os
 
 from agents.BaseAgent import BaseAgent
@@ -15,8 +14,8 @@ class SAC(BaseAgent):
         self, 
         env: dict, 
         config: Config, 
-        log_dir: str='./logs',
-        static_policy: bool=False
+        log_dir: str = './logs',
+        static_policy: bool = False
     ) -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
         # TODO: delete q_dre 
@@ -62,7 +61,7 @@ class SAC(BaseAgent):
             self.qf1.train()
             self.qf2.train()
 
-    def save(self, name: str='model.pth'):
+    def save(self, name: str = 'model.pth'):
         os.makedirs(self.log_dir, exist_ok=True)
         torch.save({
             'actor': self.actor.state_dict(),
@@ -73,7 +72,7 @@ class SAC(BaseAgent):
         )
 
     
-    def load(self, name: str='model.pth'):
+    def load(self, name: str = 'model.pth'):
         fname = os.path.join(self.log_dir, name)
 
         if os.path.isfile(fname):
@@ -137,7 +136,7 @@ class SAC(BaseAgent):
         rewards: torch.Tensor, 
         next_states: torch.Tensor, 
         dones: torch.Tensor, 
-        indices: List, 
+        indices: list, 
         weights: torch.Tensor
     ) -> torch.Tensor:
         if self.use_state_augmentation:
@@ -183,7 +182,7 @@ class SAC(BaseAgent):
     def compute_actor_loss(
         self, 
         states: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         _, _, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -193,7 +192,7 @@ class SAC(BaseAgent):
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
         return actor_loss, action_probs, log_pi
 
-    def update(self, t: int) -> Dict:
+    def update(self, t: int) -> dict:
         # ref: https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/sac_atari.py
         self.actor.train()
         self.qf1.train()
@@ -237,7 +236,7 @@ class SAC(BaseAgent):
     def get_action_probs(
         self, 
         states: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         logits = self.actor(states)
         policy_dist = Categorical(logits=logits)
         action = policy_dist.sample()
@@ -276,7 +275,7 @@ class SAC(BaseAgent):
         next_states: torch.Tensor, 
         rewards: torch.Tensor,
         dones: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         '''
         for data augmentation, currently only augment states (no next_states)
         use Bellman Q Equation to update state
@@ -310,8 +309,8 @@ class SAC_BC(SAC):
         self, 
         env: dict, 
         config: Config, 
-        log_dir: str='./logs',
-        static_policy: bool=False
+        log_dir: str = './logs',
+        static_policy: bool = False
     ) -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
 
@@ -353,7 +352,7 @@ class SAC_BC(SAC):
         self, 
         states: torch.Tensor, 
         actions: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         _, logits, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)

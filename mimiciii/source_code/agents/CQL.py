@@ -14,8 +14,8 @@ class CQL(SAC):
         self, 
         env: dict, 
         config: Config, 
-        log_dir: str='./logs',
-        static_policy: bool=False
+        log_dir: str = './logs',
+        static_policy: bool = False
     ) -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
         # TODO: delete q_dre 
@@ -25,7 +25,7 @@ class CQL(SAC):
             self.log_alpha_prime = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
             self.alpha_prime_optimizer = optim.Adam([self.log_alpha_prime], lr=self.q_lr, eps=1e-4)
 
-    def save_checkpoint(self, epoch: int, name: str='checkpoint.pth'):
+    def save_checkpoint(self, epoch: int, name: str = 'checkpoint.pth'):
         checkpoint = {
             'epoch': epoch,
             'actor': self.actor.state_dict(),
@@ -43,7 +43,7 @@ class CQL(SAC):
             checkpoint['alpha_prime_optimizer'] = self.alpha_prime_optimizer.state_dict()
         torch.save(checkpoint, os.path.join(self.log_dir, name))
 
-    def load_checkpoint(self, name: str='checkpoint.pth') -> int:
+    def load_checkpoint(self, name: str = 'checkpoint.pth') -> int:
         path = os.path.join(self.log_dir, name)
         if os.path.exists(path):
             checkpoint = torch.load(path)
@@ -191,8 +191,8 @@ class CQL_BC(CQL):
         self, 
         env: dict, 
         config: Config, 
-        log_dir: str='./logs',
-        static_policy: bool=False
+        log_dir: str = './logs',
+        static_policy: bool = False
     ) -> None:
         super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
 

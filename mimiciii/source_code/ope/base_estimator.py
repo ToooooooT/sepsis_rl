@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple
 import numpy as np
 
 from utils import Config
@@ -9,7 +8,7 @@ class BaseEstimator(ABC):
     def __init__(
         self, 
         agent: BaseAgent,
-        data_dict: Dict, 
+        data_dict: dict, 
         config: Config,
         args
     ) -> None:
@@ -36,7 +35,7 @@ class BaseEstimator(ABC):
         self.max_length = (self.done_indexs - self.start_indexs).max() + 1
 
     @abstractmethod
-    def estimate(self, **kwargs) -> Tuple[float, np.ndarray]:
+    def estimate(self, **kwargs) -> tuple[float, np.ndarray]:
         ''' To override '''
         pass
 

@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import Tuple, List
+from typing import Tuple
 
 from utils import Config
 from replay_buffer import ExperienceReplayMemory, PrioritizedReplayMemory
@@ -13,8 +13,8 @@ class BaseAgent(ABC):
         self, 
         env: dict, 
         config: Config, 
-        log_dir: str='./logs',
-        static_policy: bool=False
+        log_dir: str = './logs',
+        static_policy: bool = False
     ):
         # log directory
         self.log_dir = log_dir
@@ -66,24 +66,24 @@ class BaseAgent(ABC):
 
 
     @abstractmethod
-    def save(self, name: str='model.pth'):
+    def save(self, name: str = 'model.pth'):
         ''' To override '''
         pass
     
 
     @abstractmethod
-    def load(self, name: str='model.pth'):
+    def load(self, name: str = 'model.pth'):
         ''' To override '''
         pass
 
     @abstractmethod
-    def save_checkpoint(self, epoch: int, name: str='checkpoint.pth'):
+    def save_checkpoint(self, epoch: int, name: str = 'checkpoint.pth'):
         ''' To override '''
         pass
     
 
     @abstractmethod
-    def load_checkpoint(self, name: str='checkpoint.pth'):
+    def load_checkpoint(self, name: str = 'checkpoint.pth'):
         ''' To override '''
         pass
 
@@ -97,7 +97,7 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    def get_action(self, s: np.ndarray, eps=0):
+    def get_action(self, s: np.ndarray, eps: int = 0):
         ''' To override '''
         pass
 
@@ -113,16 +113,23 @@ class BaseAgent(ABC):
                         PrioritizedReplayMemory(self.experience_replay_size, dims, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames, self.device)
 
 
-    def append_to_replay(self, s, a, r, s_, done):
+    def append_to_replay(
+        self, 
+        s: np.ndarray,
+        a: np.ndarray,
+        r: np.ndarray,
+        s_: np.ndarray,
+        done: np.ndarray
+    ):
         self.memory.push((s, a, r, s_, done))
 
 
-    def prep_minibatch(self) -> Tuple[torch.Tensor, 
+    def prep_minibatch(self) -> tuple[torch.Tensor, 
                                       torch.Tensor,
                                       torch.Tensor,
                                       torch.Tensor,
                                       torch.Tensor,
-                                      List,
+                                      list,
                                       torch.Tensor]:
         '''
         Returns:
@@ -155,7 +162,7 @@ class BaseAgent(ABC):
         next_states: torch.Tensor, 
         rewards: torch.Tensor, 
         dones: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         '''
         Description:
             state augmentation only augment the features that are not used for computing reward,
@@ -190,7 +197,7 @@ class BaseAgent(ABC):
         next_states: np.ndarray, 
         rewards: np.ndarray,
         dones: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         '''
         To override
         for data augmentation

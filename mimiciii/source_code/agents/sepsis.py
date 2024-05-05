@@ -11,8 +11,8 @@ class DQN_regularization(DQN):
         self, 
         env: dict, 
         config: Config, 
-        log_dir='./logs',
-        static_policy=False
+        log_dir: str = './logs',
+        static_policy: bool = False
     ):
         super().__init__(env, config, log_dir, static_policy)
 
@@ -59,8 +59,8 @@ class WDQNE(WDQN):
         self, 
         env: dict, 
         config: Config, 
-        log_dir='./logs',
-        static_policy=False
+        log_dir: str = './logs',
+        static_policy: bool = False
     ):
         super().__init__(env, config, log_dir, static_policy)
         self.sofa_threshold = config.SOFA_THRESHOLD
@@ -71,7 +71,16 @@ class WDQNE(WDQN):
                         if not self.priority_replay \
                         else PrioritizedReplayMemory(self.experience_replay_size, dims, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames, self.device)
 
-    def append_to_replay(self, s, a, r, s_, a_, done, SOFA):
+    def append_to_replay(
+        self, 
+        s: np.ndarray,
+        a: np.ndarray,
+        r: np.ndarray,
+        s_: np.ndarray,
+        a_: np.ndarray,
+        done: np.ndarray,
+        SOFA: np.ndarray
+    ):
         self.memory.push((s, a, r, s_, a_, done, SOFA))
 
     def prep_minibatch(self) -> Tuple[torch.Tensor, 
@@ -81,7 +90,7 @@ class WDQNE(WDQN):
                                       torch.Tensor,
                                       torch.Tensor,
                                       torch.Tensor,
-                                      List,
+                                      list,
                                       torch.Tensor]:
         states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights = \
             self.memory.sample(self.batch_size)
@@ -131,8 +140,8 @@ class SAC_BC_E(SAC_BC):
         self, 
         env: dict, 
         config: Config, 
-        log_dir='./logs',
-        static_policy=False
+        log_dir: str = './logs',
+        static_policy: bool = False
     ) -> None:
         super().__init__(env, config, log_dir, static_policy)
 
@@ -156,7 +165,16 @@ class SAC_BC_E(SAC_BC):
             self.memory = ExperienceReplayMemory(self.experience_replay_size, dims)
                         
 
-    def append_to_replay(self, s, a, r, s_, done, SOFA, SOFA_CV):
+    def append_to_replay(
+        self, 
+        s: np.ndarray,
+        a: np.ndarray,
+        r: np.ndarray,
+        s_: np.ndarray,
+        done: np.ndarray,
+        SOFA: np.ndarray,
+        SOFA_CV: np.ndarray
+    ):
         self.memory.push((s, a, r, s_, done, SOFA, SOFA_CV))
 
     def prep_minibatch(self) -> Tuple[torch.Tensor, 
@@ -166,7 +184,7 @@ class SAC_BC_E(SAC_BC):
                                       torch.Tensor,
                                       torch.Tensor,
                                       torch.Tensor,
-                                      List,
+                                      list,
                                       torch.Tensor]:
         states, actions, rewards, next_states, dones, SOFAs, SOFA_CVs, indices, weights = \
             self.memory.sample(self.batch_size)
@@ -181,13 +199,14 @@ class SAC_BC_E(SAC_BC):
 
         return states, actions, rewards, next_states, dones, SOFAs, SOFA_CVs, indices, weights
 
-    def compute_kl_threshold(self, shape, bc_condition: torch.Tensor) -> torch.Tensor:
+    def compute_kl_threshold(self, shape: torch.Size, bc_condition: torch.Tensor) -> torch.Tensor:
         if self.kl_threshold_type == 'step':
             # add 1 to avoid threshold be 0
-            kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (6 - bc_condition.view(-1,))
+            kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) \
+                            * (6 - bc_condition.view(-1,))
         elif self.kl_threshold_type == 'exp':
-            kl_threshold = self.kl_threshold_coef * \
-                            (torch.full(shape, self.kl_threshold_exp, device=self.device) ** bc_condition.view(-1,))
+            kl_threshold = self.kl_threshold_coef \
+                            * (torch.full(shape, self.kl_threshold_exp, device=self.device) ** bc_condition.view(-1,))
         else:
             raise ValueError("Wrong kl threshold type!")
         return kl_threshold.detach()
@@ -249,7 +268,7 @@ class SAC_BC_E(SAC_BC):
         total_loss = actor_loss * coef + bc_loss
         return total_loss, actor_loss, bc_loss, kl_div, kl_threshold, action_probs, log_pi
 
-    def update(self, t: int) -> Dict:
+    def update(self, t: int) -> dict:
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
@@ -313,8 +332,8 @@ class CQL_BC_E(CQL_BC):
         self, 
         env: dict, 
         config: Config, 
-        log_dir='./logs',
-        static_policy=False
+        log_dir: str = './logs',
+        static_policy: bool = False
     ) -> None:
         super().__init__(env, config, log_dir, static_policy)
 
@@ -338,7 +357,16 @@ class CQL_BC_E(CQL_BC):
             self.memory = ExperienceReplayMemory(self.experience_replay_size, dims)
                         
 
-    def append_to_replay(self, s, a, r, s_, done, SOFA, SOFA_CV):
+    def append_to_replay(
+        self, 
+        s: np.ndarray,
+        a: np.ndarray,
+        r: np.ndarray,
+        s_: np.ndarray,
+        done: np.ndarray,
+        SOFA: np.ndarray,
+        SOFA_CV: np.ndarray
+    ):
         self.memory.push((s, a, r, s_, done, SOFA, SOFA_CV))
 
     def prep_minibatch(self) -> Tuple[torch.Tensor, 
@@ -348,7 +376,7 @@ class CQL_BC_E(CQL_BC):
                                       torch.Tensor,
                                       torch.Tensor,
                                       torch.Tensor,
-                                      List,
+                                      list,
                                       torch.Tensor]:
         states, actions, rewards, next_states, dones, SOFAs, SOFA_CVs, indices, weights = \
                                                                 self.memory.sample(self.batch_size)
@@ -363,13 +391,14 @@ class CQL_BC_E(CQL_BC):
 
         return states, actions, rewards, next_states, dones, SOFAs, SOFA_CVs, indices, weights
 
-    def compute_kl_threshold(self, shape, bc_condition: torch.Tensor) -> torch.Tensor:
+    def compute_kl_threshold(self, shape: torch.Size, bc_condition: torch.Tensor) -> torch.Tensor:
         if self.kl_threshold_type == 'step':
             # add 1 to avoid threshold be 0
-            kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) * (6 - bc_condition.view(-1))
+            kl_threshold = torch.full(shape, self.bc_kl_beta, device=self.device) \
+                            * (6 - bc_condition.view(-1))
         elif self.kl_threshold_type == 'exp':
-            kl_threshold = self.kl_threshold_coef * \
-                            (torch.full(shape, self.kl_threshold_exp, device=self.device) ** bc_condition.view(-1))
+            kl_threshold = self.kl_threshold_coef \
+                            * (torch.full(shape, self.kl_threshold_exp, device=self.device) ** bc_condition.view(-1))
         else:
             raise ValueError("Wrong kl threshold type!")
         return kl_threshold.detach()
@@ -431,7 +460,7 @@ class CQL_BC_E(CQL_BC):
         total_loss = actor_loss * coef + bc_loss
         return total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi
 
-    def update(self, t: int) -> Dict:
+    def update(self, t: int) -> dict:
         self.actor.train()
         self.qf1.train()
         self.qf2.train()

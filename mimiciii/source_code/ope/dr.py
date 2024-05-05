@@ -18,7 +18,7 @@ class DoublyRobust(BaseEstimator):
     ) -> None:
         super().__init__(agent, data_dict, config, args)
 
-    def estimate_values(self, q: nn.Module=None) -> Tuple[np.ndarray, np.ndarray]:
+    def estimate_values(self, q: nn.Module = None) -> tuple[np.ndarray, np.ndarray]:
         '''
         param:
             q : q function from DM, e.g. fqe, ...
@@ -52,7 +52,7 @@ class DoublyRobust(BaseEstimator):
                 est_v_values.view(-1, 1).detach().cpu().numpy()
                  
 
-    def estimate(self, **kwargs) -> Tuple[float, np.ndarray]:
+    def estimate(self, **kwargs) -> tuple[float, np.ndarray]:
         '''
         Args:
             policy_action_probs: np.ndarray; expected shape (B, D)
@@ -105,7 +105,7 @@ class PHWDR(DoublyRobust):
     ) -> None:
         super().__init__(agent, data_dict, config, args)
 
-    def estimate(self, **kwargs) -> Tuple[float, ndarray]:
+    def estimate(self, **kwargs) -> tuple[float, ndarray]:
         '''
         Args:
             policy_action_probs: np.ndarray; expected shape (B, D)

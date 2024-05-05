@@ -1,13 +1,12 @@
 import torch.nn as nn
 import torch
-from typing import Tuple
 
 class MLP(nn.Module):
     def __init__(
         self, 
         state_dim: int, 
         action_dim: int, 
-        hidden_size: Tuple = (128, 256, 256, 128)
+        hidden_size: tuple = (128, 256, 256, 128)
     ) -> None:
         super().__init__()
         self.state_dim = state_dim
