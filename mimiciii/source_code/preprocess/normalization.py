@@ -333,6 +333,11 @@ if __name__ == '__main__':
 
     dataset = pd.read_csv(os.path.join(source_path, f'dataset_{hour}.csv'))
 
+    # reorder the reward depend features for state augmentation (do not augment last two columns)
+    reward_depend_feats = ['SOFA', 'Arterial_lactate']
+    remain = list(set(dataset.columns) - set(reward_depend_feats))
+    dataset = dataset[remain + reward_depend_feats]
+
     add_action(dataset, hour)
 
     ################################################################
@@ -362,7 +367,7 @@ if __name__ == '__main__':
         assert train_id.isdisjoint(test_id)
         # replace original dataset
         dataset = dataset[[x in train_id or x in valid_id or x in test_id for x in dataset['icustayid']]]
-        dataset.to_csv(os.path.join(source_path, f'dataset_{hour}.csv'))
+        dataset.to_csv(os.path.join(source_path, f'dataset_{hour}.csv'), index=False)
 
     with open(os.path.join(source_path, f'dataset_info.txt'), 'w') as f:
         t = dataset.groupby('icustayid').mean()['mortality_90d']
