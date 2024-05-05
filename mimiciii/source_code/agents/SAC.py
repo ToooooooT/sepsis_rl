@@ -299,7 +299,7 @@ class SAC(BaseAgent):
         q_loss.backward()
 
         with torch.no_grad():
-            # only update features that are not use for computing reward
+            # * only update features that are not use for computing reward
             states[:, :, :-2] += states.grad[:, :, :-2] * self.adversarial_step
         return states.detach().clone().requires_grad_(False), next_states
 

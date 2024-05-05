@@ -181,7 +181,7 @@ class BaseAgent(ABC):
             next_states[:, :, :-2] += torch.zeros(next_states[:, :, :-2].shape, device=self.device) \
                                                     .uniform_(-self.uniform_noise, self.uniform_noise)
         elif self.state_augmentation_type == "Mixup":
-            # vector or scalar ?
+            # ? vector or scalar ?
             lmbda = torch.distributions.Beta(self.mixup_alpha, self.mixup_alpha).sample().to(self.device)
             states[:, :, :-2] = lmbda * states[:, :, :-2] + (1 - lmbda) * next_states[:, :, :-2]
         elif self.state_augmentation_type == "Adversarial":

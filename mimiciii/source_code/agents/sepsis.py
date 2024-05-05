@@ -106,22 +106,33 @@ class WDQNE(WDQN):
         return states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights
 
     def compute_loss(self, batch_vars) -> torch.Tensor:
-        # TODO: state augmentaton
         states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights = batch_vars
-        q_values = self.q(states).gather(1, actions)
+
+        if self.use_state_augmentation:
+            states, next_states = self.augmentation(states, next_states, rewards, dones)
+            actions = actions.unsqueeze(1).repeat(1, 2, 1)
+            next_actions = next_actions.unsqueeze(1).repeat(1, 2, 1)
+            SOFAs = SOFAs.unsqueeze(1).repeat(1, 2, 1)
+
+        q_values = self.q(states).gather(-1, actions)
         next_q_values = self.q(next_states)
-        max_next_actions = torch.argmax(next_q_values, dim=1, keepdim=True)
+        max_next_actions = torch.argmax(next_q_values, dim=-1, keepdim=True)
         with torch.no_grad():
             target_next_q_values = self.target_q(next_states)
-        max_target_next_actions = torch.argmax(target_next_q_values, dim=1, keepdim=True)
-        target_next_q_values_softmax = F.softmax(target_next_q_values, dim=1)
-        sigma = target_next_q_values_softmax.gather(1, max_next_actions)
-        phi = target_next_q_values_softmax.gather(1, max_target_next_actions)
+        max_target_next_actions = torch.argmax(target_next_q_values, dim=-1, keepdim=True)
+        target_next_q_values_softmax = F.softmax(target_next_q_values, dim=-1)
+        sigma = target_next_q_values_softmax.gather(-1, max_next_actions)
+        phi = target_next_q_values_softmax.gather(-1, max_target_next_actions)
         p = phi / (phi + sigma)
-        target_q_values = p * target_next_q_values.max(dim=1)[0].view(-1, 1) + (1 - p) * target_next_q_values.gather(1, max_next_actions)
+        target_q_values = p * target_next_q_values.max(dim=-1, keepdim=True)[0] \
+                            + (1 - p) * target_next_q_values.gather(-1, max_next_actions)
         # expertise
-        expert_q_values = target_next_q_values.gather(1, next_actions)
+        expert_q_values = target_next_q_values.gather(-1, next_actions)
         target_q_values = torch.where(SOFAs < self.sofa_threshold, expert_q_values, target_q_values)
+
+        if self.use_state_augmentation:
+            q_values = q_values.mean(dim=1)
+            target_q_values = target_q_values.mean(dim=1)
 
         if self.priority_replay:
             diff = (q_values - (rewards + self.gamma * target_q_values * (1 - dones)))
@@ -130,8 +141,7 @@ class WDQNE(WDQN):
                                     rewards + self.gamma * target_q_values * (1 - dones),
                                     reduction='none') * weights).mean()
         else:
-            loss = F.smooth_l1_loss(q_values, 
-                                    rewards + self.gamma * target_q_values * (1 - dones))
+            loss = F.smooth_l1_loss(q_values, rewards + self.gamma * target_q_values * (1 - dones))
         return loss
 
 
