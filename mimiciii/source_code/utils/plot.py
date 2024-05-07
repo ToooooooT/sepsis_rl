@@ -31,7 +31,7 @@ def animation_action_distribution(hists, log_dir: str):
     plt.close()
 
 
-def plot_estimate_value(ope_returns: dict, freq: int, log_dir: str = None):
+def plot_estimate_value(ope_returns: dict, freq: int, log_dir: str | None = None):
     '''
     Args:
         policy_val: estimate return value of learned policy during training process; expected shape (k, T)
@@ -56,7 +56,7 @@ def plot_estimate_value(ope_returns: dict, freq: int, log_dir: str = None):
     return f
 
 
-def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str = None):
+def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str | None = None):
     '''
     Args:
         actions : policy action; expected shape (B, 1)
@@ -115,7 +115,7 @@ def plot_pos_neg_action_dist(
     positive_traj: pd.DataFrame, 
     negative_traj: pd.DataFrame, 
     policy_action_col: str, 
-    log_dir: str = None
+    log_dir: str | None = None
 ):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(8, 8))
     height = np.bincount(negative_traj[policy_action_col], minlength=25)[:25]
@@ -153,7 +153,7 @@ def plot_diff_action_SOFA_dist(
     positive_traj: pd.DataFrame, 
     negative_traj: pd.DataFrame, 
     policy_action_col: str, 
-    log_dir: str = None
+    log_dir: str | None = None
 ):
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12,12))
 
@@ -196,7 +196,7 @@ def plot_diff_action(
     positive_traj: pd.DataFrame, 
     negative_traj: pd.DataFrame, 
     policy_action_col:str, 
-    log_dir: str = None
+    log_dir: str | None = None
 ) -> tuple:
     fig_pos, ax = plt.subplots(5, 5, figsize=(32,32))
 
@@ -246,12 +246,10 @@ def sliding_mean(data_array: list, window: int=1):
 
 
 def plot_survival_rate(
-    avg_expected_return: list,
-    expected_return: np.ndarray, 
+    df_expected_returns: pd.DataFrame,
     id_index_map: dict, 
     dataset: pd.DataFrame, 
-    name: list, 
-    log_dir: str = None
+    log_dir: str | None = None
 ):
     '''
     Args:
@@ -262,10 +260,14 @@ def plot_survival_rate(
 
     reference: https://github.com/CaryLi666/ID3QNE-algorithm/blob/main/experiment/survival%20rate/main_shengcunlv-37.py
     '''
-    n = len(name)
+    # if expected_return.ndim == 1:
+    #     expected_return = expected_return.reshape(1, -1)
+    # assert(n == expected_return.shape[0])
+    n = df_expected_returns.shape[1]
+    expected_return = df_expected_returns.values.T
     if expected_return.ndim == 1:
         expected_return = expected_return.reshape(1, -1)
-    assert(n == expected_return.shape[0])
+    expected_return = np.round(expected_return).astype(np.int64)
 
     survive = np.zeros((len(id_index_map),))
     for i, id in enumerate(id_index_map.keys()):
@@ -277,7 +279,7 @@ def plot_survival_rate(
     survival_rate_std = [[] for _ in range(n)]
     for k in range(n):
         i = -25
-        while i <= 25:
+        while i <= 35:
             count = survive[np.logical_and(expected_return[k] >= i - 0.5, expected_return[k] <= i + 0.5)]
             try:
                 res = sum(count) / len(count)
@@ -296,11 +298,11 @@ def plot_survival_rate(
         ax.fill_between(bin_medians[0], sliding_mean(survival_rate[0]) - 1 * survival_rate_std[0],
                         sliding_mean(survival_rate[0]) + 1 * survival_rate_std[0], color='palegreen')
 
-        x_r = [i / 1.0 for i in range(-25, 27, 3)]
+        x_r = [i / 1.0 for i in range(-25, 36, 3)]
         y_r = [i / 10.0 for i in range(0, 11, 1)]
         ax.set_xticks(x_r)
         ax.set_yticks(y_r)
-        ax.set_title(f'{name[0]} Survival Rate v.s. Expected Return')
+        ax.set_title(f'{df_expected_returns.columns[0]} Survival Rate v.s. Expected Return')
         ax.set_xlabel("Expected Return")
         ax.set_ylabel("Survival Rate")
     else:
@@ -309,11 +311,11 @@ def plot_survival_rate(
             ax[k].fill_between(bin_medians[k], sliding_mean(survival_rate[k]) - 1 * survival_rate_std[k],
                             sliding_mean(survival_rate[k]) + 1 * survival_rate_std[k], color='palegreen')
 
-            x_r = [i / 1.0 for i in range(-25, 27, 3)]
+            x_r = [i / 1.0 for i in range(-25, 36, 3)]
             y_r = [i / 10.0 for i in range(0, 11, 1)]
             ax[k].set_xticks(x_r)
             ax[k].set_yticks(y_r)
-            ax[k].set_title(f'{name[k]} Survival Rate v.s. Expected Return')
+            ax[k].set_title(f'{df_expected_returns.columns[k]} Survival Rate v.s. Expected Return')
             ax[k].set_xlabel("Expected Return")
             ax[k].set_ylabel("Survival Rate")
 
@@ -324,14 +326,13 @@ def plot_survival_rate(
     survival_rates, survival_rates_std = expected_survival_rate(bin_medians, 
                                                                 [sliding_mean(survival_rate[k]) for k in range(n)], 
                                                                 survival_rate_std,
-                                                                avg_expected_return)
+                                                                df_expected_returns.mean(axis=0).tolist())
     return f, survival_rates, survival_rates_std
 
 
 def plot_expected_return_distribution(
-    expected_return: np.ndarray, 
-    name: list, 
-    log_dir: str = None
+    df_expected_returns: pd.DataFrame,
+    log_dir: str | None = None
 ):
     '''
     Args:
@@ -339,10 +340,10 @@ def plot_expected_return_distribution(
         name            : list of name of estimator
     '''
     clip_val = 25
-    n = len(name)
+    n = df_expected_returns.shape[1]
+    expected_return = df_expected_returns.values.T
     if expected_return.ndim == 1:
         expected_return = expected_return.reshape(1, -1)
-    assert(n == expected_return.shape[0])
     expected_return = np.round(expected_return).astype(np.int64)
     # igonre the outlier expected return
     expected_return = np.clip(expected_return, -clip_val, clip_val)
@@ -360,13 +361,13 @@ def plot_expected_return_distribution(
             ax[i].set_xlabel('expected return')
             ax[i].set_ylabel('count')
             ax[i].set_xticks(range(-clip_val, clip_val + 1))
-            ax[i].set_title(f'{name[i]} expected return distribution')
+            ax[i].set_title(f'{df_expected_returns.columns[i]} expected return distribution')
     else:
         ax.bar(range(-clip_val, clip_val + 1), height=expected_return_count[0])
         ax.set_xlabel('expected return')
         ax.set_ylabel('count')
         ax.set_xticks(range(-clip_val, clip_val + 1))
-        ax.set_title(f'{name[0]} expected return distribution')
+        ax.set_title(f'{df_expected_returns.columns[0]} expected return distribution')
 
     plt.tight_layout()
     if log_dir is not None:
@@ -436,7 +437,7 @@ def plot_action_diff_survival_rate(
     test_dataset: pd.DataFrame, 
     policy_iv_col: str,
     policy_vaso_col: str,
-    log_dir: str = None
+    log_dir: str | None = None
 ):
     vaso_vals = [0]
     vaso_vals.extend(train_dataset['max_dose_vaso'][train_dataset['max_dose_vaso'] > 0].quantile([0.125, 0.375, 0.625, 0.875]))

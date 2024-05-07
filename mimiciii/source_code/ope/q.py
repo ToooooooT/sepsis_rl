@@ -9,9 +9,10 @@ from agents import DQN, SAC
 class QEstimator(BaseEstimator):
     def __init__(self, agent, data_dict: dict, config: Config, args) -> None:
         super().__init__(agent, data_dict, config, args)
-        done_indexs = np.where(self.dones == 1)[0]
-        start_indexs = [0] + (done_indexs + 1).tolist()[:-1]
-        self.initial_states = torch.tensor(self.states[start_indexs], dtype=torch.float)
+
+    def reset_data(self, data: dict[str, np.ndarray]):
+        super().reset_data(data)
+        self.initial_states = torch.tensor(self.states[self.start_indexs], dtype=torch.float)
 
     def estimate(self, **kwargs) -> Tuple[float, np.ndarray]:
         self.agent = kwargs['agent']
@@ -20,9 +21,9 @@ class QEstimator(BaseEstimator):
             if isinstance(self.agent, DQN):
                 self.agent.q.eval()
                 est_q_values, _ = self.agent.q(states).max(dim=1)
-                est_q_values = est_q_values.view(1, -1).detach().cpu().numpy() # (B, 1)
+                est_q_values = est_q_values.detach().cpu().numpy() # (B,)
             elif isinstance(self.agent, SAC):
                 self.agent.q_dre.eval()
                 est_q_values, _ = self.agent.q_dre(states).max(dim=1)
-                est_q_values = est_q_values.view(1, -1).detach().cpu().numpy() # (B, 1)
+                est_q_values = est_q_values.detach().cpu().numpy() # (B,)
         return est_q_values.mean(), est_q_values

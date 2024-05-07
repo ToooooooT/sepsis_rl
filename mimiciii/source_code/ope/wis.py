@@ -52,7 +52,7 @@ class WIS(BaseEstimator):
             policy_return[i] /= w_H
 
         policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
-        return policy_return.mean(), policy_return.reshape(1, -1)
+        return policy_return.mean(), policy_return
 
 
 class PHWIS(BaseEstimator):
@@ -103,4 +103,4 @@ class PHWIS(BaseEstimator):
             policy_return[i] *= W_l[length[i]] / length2sumwight[length[i]]
 
         policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
-        return policy_return.mean(), policy_return.reshape(1, -1)
+        return policy_return.mean(), policy_return

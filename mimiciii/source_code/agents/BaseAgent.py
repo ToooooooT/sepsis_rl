@@ -97,12 +97,17 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    def get_action(self, s: np.ndarray, eps: int = 0):
+    def get_action(self, s: np.ndarray, eps: int = 0) -> int:
         ''' To override '''
         pass
 
     @abstractmethod
-    def get_action_probs(self, states: torch.Tensor):
+    def get_action_probs(self, states: torch.Tensor) -> tuple[
+        torch.Tensor, 
+        None | torch.Tensor, 
+        None | torch.Tensor, 
+        torch.Tensor
+    ]:
         ''' To override '''
         pass
 

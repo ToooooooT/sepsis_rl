@@ -20,25 +20,27 @@ class BaseEstimator(ABC):
             args       : arguments from main file
         '''
         self.agent = agent
-        self.states = data_dict['s']
-        self.actions = data_dict['a']
-        self.rewards = data_dict['r']
-        self.next_states = data_dict['s_']
-        self.dones = data_dict['done']
+        self.reset_data(data_dict)
         self.clip_expected_return = args.clip_expected_return
         self.pi_b_est = config.USE_PI_B_EST
         self.gamma = config.GAMMA
         self.device = config.DEVICE
-        self.done_indexs = np.where(self.dones == 1)[0]
-        self.start_indexs = np.append(0, self.done_indexs[:-1] + 1)
-        self.n = self.done_indexs.shape[0] # number of patients
-        self.max_length = (self.done_indexs - self.start_indexs).max() + 1
 
     @abstractmethod
     def estimate(self, **kwargs) -> tuple[float, np.ndarray]:
         ''' To override '''
         pass
 
+    def reset_data(self, data: dict[str, np.ndarray]):
+        self.states = data['s']
+        self.actions = data['a']
+        self.rewards = data['r']
+        self.next_states = data['s_']
+        self.dones = data['done']
+        self.done_indexs = np.where(self.dones == 1)[0]
+        self.start_indexs = np.append(0, self.done_indexs[:-1] + 1)
+        self.n = self.done_indexs.shape[0] # number of patients
+        self.max_length = (self.done_indexs - self.start_indexs).max() + 1
     
     def get_rho(
         self, 

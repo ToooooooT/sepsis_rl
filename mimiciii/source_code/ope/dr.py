@@ -92,7 +92,7 @@ class DoublyRobust(BaseEstimator):
             policy_return[i] = total_reward
 
         policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
-        return policy_return.mean(), policy_return.reshape(1, -1)
+        return policy_return.mean(), policy_return
 
 
 class PHWDR(DoublyRobust):
@@ -156,4 +156,4 @@ class PHWDR(DoublyRobust):
             policy_return[i] = total_reward
 
         policy_return = np.clip(policy_return, -self.clip_expected_return, self.clip_expected_return)
-        return policy_return.mean(), policy_return.reshape(1, -1)
+        return policy_return.mean(), policy_return
