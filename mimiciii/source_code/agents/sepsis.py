@@ -79,11 +79,11 @@ class WDQNE(WDQN):
         s_: np.ndarray,
         a_: np.ndarray,
         done: np.ndarray,
-        SOFA: np.ndarray
+        sofa: np.ndarray
     ):
-        self.memory.push((s, a, r, s_, a_, done, SOFA))
+        self.memory.push((s, a, r, s_, a_, done, sofa))
 
-    def prep_minibatch(self) -> Tuple[torch.Tensor, 
+    def prep_minibatch(self) -> tuple[torch.Tensor, 
                                       torch.Tensor,
                                       torch.Tensor,
                                       torch.Tensor,
@@ -92,7 +92,7 @@ class WDQNE(WDQN):
                                       torch.Tensor,
                                       list,
                                       torch.Tensor]:
-        states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights = \
+        states, actions, rewards, next_states, next_actions, dones, sofas, indices, weights = \
             self.memory.sample(self.batch_size)
 
         states = torch.tensor(states, device=self.device, dtype=torch.float)
@@ -101,18 +101,18 @@ class WDQNE(WDQN):
         next_states = torch.tensor(next_states, device=self.device, dtype=torch.float)
         next_actions = torch.tensor(next_actions, device=self.device, dtype=torch.int64)
         dones = torch.tensor(dones, device=self.device, dtype=torch.float)
-        SOFAs = torch.tensor(SOFAs, device=self.device, dtype=torch.float)
+        sofas = torch.tensor(sofas, device=self.device, dtype=torch.float)
 
-        return states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights
+        return states, actions, rewards, next_states, next_actions, dones, sofas, indices, weights
 
     def compute_loss(self, batch_vars) -> torch.Tensor:
-        states, actions, rewards, next_states, next_actions, dones, SOFAs, indices, weights = batch_vars
+        states, actions, rewards, next_states, next_actions, dones, sofa, indices, weights = batch_vars
 
         if self.use_state_augmentation:
             states, next_states = self.augmentation(states, next_states, rewards, dones)
             actions = actions.unsqueeze(1).repeat(1, 2, 1)
             next_actions = next_actions.unsqueeze(1).repeat(1, 2, 1)
-            SOFAs = SOFAs.unsqueeze(1).repeat(1, 2, 1)
+            sofa = sofa.unsqueeze(1).repeat(1, 2, 1)
 
         q_values = self.q(states).gather(-1, actions)
         next_q_values = self.q(next_states)
@@ -128,7 +128,7 @@ class WDQNE(WDQN):
                             + (1 - p) * target_next_q_values.gather(-1, max_next_actions)
         # expertise
         expert_q_values = target_next_q_values.gather(-1, next_actions)
-        target_q_values = torch.where(SOFAs < self.sofa_threshold, expert_q_values, target_q_values)
+        target_q_values = torch.where(sofa < self.sofa_threshold, expert_q_values, target_q_values)
 
         if self.use_state_augmentation:
             q_values = q_values.mean(dim=1)
@@ -182,12 +182,12 @@ class SAC_BC_E(SAC_BC):
         r: np.ndarray,
         s_: np.ndarray,
         done: np.ndarray,
-        SOFA: np.ndarray,
-        SOFA_CV: np.ndarray
+        sofa: np.ndarray,
+        sofa_cv: np.ndarray
     ):
-        self.memory.push((s, a, r, s_, done, SOFA, SOFA_CV))
+        self.memory.push((s, a, r, s_, done, sofa, sofa_cv))
 
-    def prep_minibatch(self) -> Tuple[torch.Tensor, 
+    def prep_minibatch(self) -> tuple[torch.Tensor, 
                                       torch.Tensor,
                                       torch.Tensor,
                                       torch.Tensor,
@@ -196,7 +196,7 @@ class SAC_BC_E(SAC_BC):
                                       torch.Tensor,
                                       list,
                                       torch.Tensor]:
-        states, actions, rewards, next_states, dones, SOFAs, SOFA_CVs, indices, weights = \
+        states, actions, rewards, next_states, dones, sofas, sofa_cvs, indices, weights = \
             self.memory.sample(self.batch_size)
 
         states = torch.tensor(states, device=self.device, dtype=torch.float)
@@ -204,10 +204,10 @@ class SAC_BC_E(SAC_BC):
         rewards = torch.tensor(rewards, device=self.device, dtype=torch.float)
         next_states = torch.tensor(next_states, device=self.device, dtype=torch.float)
         dones = torch.tensor(dones, device=self.device, dtype=torch.float)
-        SOFAs = torch.tensor(SOFAs, device=self.device, dtype=torch.float)
-        SOFA_CVs = torch.tensor(SOFA_CVs, device=self.device, dtype=torch.float)
+        sofas = torch.tensor(sofas, device=self.device, dtype=torch.float)
+        sofa_cvs = torch.tensor(sofa_cvs, device=self.device, dtype=torch.float)
 
-        return states, actions, rewards, next_states, dones, SOFAs, SOFA_CVs, indices, weights
+        return states, actions, rewards, next_states, dones, sofas, sofa_cvs, indices, weights
 
     def compute_kl_threshold(self, shape: torch.Size, bc_condition: torch.Tensor) -> torch.Tensor:
         if self.kl_threshold_type == 'step':
@@ -250,7 +250,7 @@ class SAC_BC_E(SAC_BC):
         states: torch.Tensor, 
         actions: torch.Tensor, 
         bc_condition: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         _, logits, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -278,12 +278,12 @@ class SAC_BC_E(SAC_BC):
         total_loss = actor_loss * coef + bc_loss
         return total_loss, actor_loss, bc_loss, kl_div, kl_threshold, action_probs, log_pi
 
-    def update(self, t: int) -> dict:
+    def update(self, t: int) -> dict[str, int]:
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
         self.q_dre.train()
-        states, actions, rewards, next_states, dones, SOFAs, SOFA_CVs, indices, weights = self.prep_minibatch()
+        states, actions, rewards, next_states, dones, sofas, sofa_cvs, indices, weights = self.prep_minibatch()
         # update critic 
         qf_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)
         self.q_optimizer.zero_grad()
@@ -292,7 +292,7 @@ class SAC_BC_E(SAC_BC):
             self.gradient_clip_q()
         self.q_optimizer.step()
         # update actor 
-        bc_condition = SOFA_CVs if self.use_sofa_cv else SOFAs
+        bc_condition = sofa_cvs if self.use_sofa_cv else sofas
         total_loss, actor_loss, bc_loss, kl_div, kl_threshold, action_probs, log_pi = \
                                             self.compute_actor_loss(states, actions, bc_condition)
         self.actor_optimizer.zero_grad()
@@ -374,12 +374,12 @@ class CQL_BC_E(CQL_BC):
         r: np.ndarray,
         s_: np.ndarray,
         done: np.ndarray,
-        SOFA: np.ndarray,
-        SOFA_CV: np.ndarray
+        sofa: np.ndarray,
+        sofa_cv: np.ndarray
     ):
-        self.memory.push((s, a, r, s_, done, SOFA, SOFA_CV))
+        self.memory.push((s, a, r, s_, done, sofa, sofa_cv))
 
-    def prep_minibatch(self) -> Tuple[torch.Tensor, 
+    def prep_minibatch(self) -> tuple[torch.Tensor, 
                                       torch.Tensor,
                                       torch.Tensor,
                                       torch.Tensor,
@@ -388,7 +388,7 @@ class CQL_BC_E(CQL_BC):
                                       torch.Tensor,
                                       list,
                                       torch.Tensor]:
-        states, actions, rewards, next_states, dones, SOFAs, SOFA_CVs, indices, weights = \
+        states, actions, rewards, next_states, dones, sofas, sofa_cvs, indices, weights = \
                                                                 self.memory.sample(self.batch_size)
 
         states = torch.tensor(states, device=self.device, dtype=torch.float)
@@ -396,10 +396,10 @@ class CQL_BC_E(CQL_BC):
         rewards = torch.tensor(rewards, device=self.device, dtype=torch.float)
         next_states = torch.tensor(next_states, device=self.device, dtype=torch.float)
         dones = torch.tensor(dones, device=self.device, dtype=torch.float)
-        SOFAs = torch.tensor(SOFAs, device=self.device, dtype=torch.float)
-        SOFA_CVs = torch.tensor(SOFA_CVs, device=self.device, dtype=torch.float)
+        sofas = torch.tensor(sofas, device=self.device, dtype=torch.float)
+        sofa_cvs = torch.tensor(sofa_cvs, device=self.device, dtype=torch.float)
 
-        return states, actions, rewards, next_states, dones, SOFAs, SOFA_CVs, indices, weights
+        return states, actions, rewards, next_states, dones, sofas, sofa_cvs, indices, weights
 
     def compute_kl_threshold(self, shape: torch.Size, bc_condition: torch.Tensor) -> torch.Tensor:
         if self.kl_threshold_type == 'step':
@@ -442,7 +442,7 @@ class CQL_BC_E(CQL_BC):
         states: torch.Tensor, 
         actions: torch.Tensor, 
         bc_condition: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         _, logits, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -470,12 +470,12 @@ class CQL_BC_E(CQL_BC):
         total_loss = actor_loss * coef + bc_loss
         return total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi
 
-    def update(self, t: int) -> dict:
+    def update(self, t: int) -> dict[str, int]:
         self.actor.train()
         self.qf1.train()
         self.qf2.train()
         self.q_dre.train()
-        states, actions, rewards, next_states, dones, SOFAs, SOFA_CVs, indices, weights = self.prep_minibatch()
+        states, actions, rewards, next_states, dones, sofas, sofa_cvs, indices, weights = self.prep_minibatch()
         # update critic 
         qf_loss, min_qf1_loss, min_qf2_loss = self.compute_critic_loss(states, actions, rewards, next_states, dones, indices, weights)
         self.q_optimizer.zero_grad()
@@ -484,7 +484,7 @@ class CQL_BC_E(CQL_BC):
             self.gradient_clip_q()
         self.q_optimizer.step()
         # update actor 
-        bc_condition = SOFA_CVs if self.use_sofa_cv else SOFAs
+        bc_condition = sofa_cvs if self.use_sofa_cv else sofas
         total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi = \
                                             self.compute_actor_loss(states, actions, bc_condition)
         self.actor_optimizer.zero_grad()

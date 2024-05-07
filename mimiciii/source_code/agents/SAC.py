@@ -192,7 +192,7 @@ class SAC(BaseAgent):
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
         return actor_loss, action_probs, log_pi
 
-    def update(self, t: int) -> dict:
+    def update(self, t: int) -> dict[str, int]:
         # ref: https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/sac_atari.py
         self.actor.train()
         self.qf1.train()
@@ -377,7 +377,7 @@ class SAC_BC(SAC):
         total_loss = actor_loss * coef + bc_loss / 6
         return total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi
 
-    def update(self, t: int):
+    def update(self, t: int) -> dict[str, int]:
         self.actor.train()
         self.qf1.train()
         self.qf2.train()

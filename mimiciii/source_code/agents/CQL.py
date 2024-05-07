@@ -3,7 +3,6 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical, kl_divergence
-from typing import List, Dict, Tuple
 import os
 
 from agents.SAC import SAC
@@ -74,9 +73,9 @@ class CQL(SAC):
         rewards: torch.Tensor, 
         next_states: torch.Tensor, 
         dones: torch.Tensor, 
-        indices: List, 
+        indices: list, 
         weights: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.use_state_augmentation:
             states, next_states = self.augmentation(states, next_states, rewards, dones)
             actions = actions.unsqueeze(1).repeat(1, 2, 1)
@@ -133,7 +132,7 @@ class CQL(SAC):
         qf_loss = qf1_loss + qf2_loss
         return qf_loss, min_qf1_loss_, min_qf2_loss_
 
-    def update(self, t: int) -> Dict:
+    def update(self, t: int) -> dict[str, int]:
         # ref: https://github.com/aviralkumar2907/CQL/blob/d67dbe9cf5d2b96e3b462b6146f249b3d6569796/d4rl/rlkit/torch/sac/cql.py#L41
         self.actor.train()
         self.qf1.train()
@@ -234,7 +233,7 @@ class CQL_BC(CQL):
         self, 
         states: torch.Tensor, 
         actions: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         _, logits, log_pi, action_probs = self.get_action_probs(states)
         with torch.no_grad():
             qf1_values = self.qf1(states)
@@ -260,7 +259,7 @@ class CQL_BC(CQL):
         return total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi
 
 
-    def update(self, t: int) -> Dict:
+    def update(self, t: int) -> dict[str, int]:
         self.actor.train()
         self.qf1.train()
         self.qf2.train()

@@ -90,7 +90,7 @@ class DQN(BaseAgent):
         return loss
 
 
-    def update(self, t: int) -> dict:
+    def update(self, t: int) -> dict[str, int]:
         if self.static_policy:
             return None
 

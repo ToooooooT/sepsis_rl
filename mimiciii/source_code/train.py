@@ -95,14 +95,14 @@ def add_dataset_to_replay(train_data, agent: DQN_regularization):
     s_ = train_data['s_']
     a_ = train_data['a_']
     done = train_data['done']
-    SOFA = train_data['SOFA']
-    SOFA_CV = train_data['SOFA_CV']
+    sofa = train_data['SOFA']
+    sofa_cv = train_data['SOFA_CV']
 
     if isinstance(agent, SAC_BC_E) or isinstance(agent, CQL_BC_E):
-        data = [s, a, r, s_, done, SOFA, SOFA_CV]
+        data = [s, a, r, s_, done, sofa, sofa_cv]
         agent.memory.read_data(data)
     elif isinstance(agent, WDQNE):
-        data = [s, a, r, s_, a_, done, SOFA]
+        data = [s, a, r, s_, a_, done, sofa]
         agent.memory.read_data(data)
     elif (isinstance(agent, DQN_regularization) or isinstance(agent, SAC_BC) 
             or isinstance(agent, SAC) or isinstance(agent, CQL_BC) or isinstance(agent, CQL)):
