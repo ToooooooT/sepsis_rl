@@ -21,7 +21,7 @@ class SAC(BaseAgent):
         # TODO: delete q_dre 
         self.target_qf1.load_state_dict(self.qf1.state_dict())
         self.target_qf2.load_state_dict(self.qf2.state_dict())
-        self.target_q_dre.load_state_dict(self.target_q_dre.state_dict())
+        self.target_q_dre.load_state_dict(self.q_dre.state_dict())
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.pi_lr)
         self.q_optimizer = optim.Adam(list(self.qf1.parameters()) + 
                                       list(self.qf2.parameters()) + 
