@@ -112,10 +112,9 @@ class BaseAgent(ABC):
         pass
 
     def declare_memory(self):
-        dims = (self.num_feats, 1, 1, self.num_feats, 1)
-        self.memory = ExperienceReplayMemory(self.experience_replay_size, dims) \
+        self.memory = ExperienceReplayMemory(self.experience_replay_size) \
                         if not self.priority_replay else \
-                        PrioritizedReplayMemory(self.experience_replay_size, dims, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames, self.device)
+                        PrioritizedReplayMemory(self.experience_replay_size, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames, self.device)
 
 
     def append_to_replay(

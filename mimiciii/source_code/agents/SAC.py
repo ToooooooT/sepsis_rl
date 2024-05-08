@@ -330,6 +330,49 @@ class SAC_BC(SAC):
                     raise ValueError
                 self.pi_b_model.eval()
 
+    def save_checkpoint(self, epoch: int):
+        checkpoint = {
+            'epoch': epoch,
+            'actor': self.actor.state_dict(),
+            'qf1': self.qf1.state_dict(),
+            'qf2': self.qf2.state_dict(),
+            'q_dre': self.q_dre.state_dict(),
+            'actor_optimizer': self.actor_optimizer.state_dict(),
+            'q_optimizer': self.q_optimizer.state_dict(),
+        }
+        if self.autotune:
+            checkpoint['log_alpha'] = self.log_alpha.item()
+            checkpoint['alpha_optimizer'] = self.alpha_optimizer.state_dict()
+        if self.bc_type == "KL":
+            checkpoint['log_nu'] = self.log_nu.item()
+            checkpoint['nu_optimizer'] = self.nu_optimizer.state_dict()
+        torch.save(checkpoint, os.path.join(self.log_dir, 'checkpoint.pth'))
+
+    def load_checkpoint(self) -> int:
+        path = os.path.join(self.log_dir, 'checkpoint.pth')
+        if os.path.exists(path):
+            checkpoint = torch.load(path)
+        else:
+            raise FileExistsError
+        self.actor.load_state_dict(checkpoint['actor'])
+        self.qf1.load_state_dict(checkpoint['qf1'])
+        self.qf2.load_state_dict(checkpoint['qf2'])
+        self.q_dre.load_state_dict(checkpoint['q_dre'])
+        self.target_qf1.load_state_dict(checkpoint['qf1'])
+        self.target_qf2.load_state_dict(checkpoint['qf2'])
+        self.target_q_dre.load_state_dict(checkpoint['q_dre'])
+        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+        self.q_optimizer.load_state_dict(checkpoint['q_optimizer'])
+        if self.autotune:
+            self.log_alpha = torch.tensor(np.array([checkpoint['log_alpha']]), dtype=torch.float, requires_grad=True, device=self.device)
+            self.alpha_optimizer.load_state_dict = checkpoint['alpha_optimizer']
+            self.alpha = self.log_alpha.exp().item()
+        if self.bc_type == "KL":
+            self.log_nu = torch.tensor(np.array([checkpoint['log_nu']]), dtype=torch.float, requires_grad=True, device=self.device)
+            self.nu_optimizer.load_state_dict = checkpoint['nu_optimizer']
+            self.nu = self.log_nu.exp().item()
+        return checkpoint['epoch']
+
     def get_behavior(
         self, 
         states: torch.Tensor, 

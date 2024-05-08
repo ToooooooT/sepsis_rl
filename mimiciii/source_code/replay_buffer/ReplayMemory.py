@@ -2,22 +2,25 @@ import random
 import torch
 import numpy as np
 import pickle
-from typing import Tuple, List
 
-from replay_buffer.data_structures import SegmentTree, SumSegmentTree
+from replay_buffer.data_structures import SumSegmentTree
 
 
 class ExperienceReplayMemory:
-    def __init__(self, capacity, dims: tuple):
+    '''
+    Description:
+        memory: 
+            format example: [(s, a, r, s_, done, ...), (s, a, r, s_, done, ...), ...],
+            each element in a transition should be a np.ndarray with 1D shape
+    '''
+    def __init__(self, capacity: int):
         self.capacity = capacity
-        self.memory = [np.zeros((capacity, dims[i])) for i in range(len(dims))]
+        self.memory = [()] * capacity
         self.next_idx = 0
-        self.kind = len(dims)
         self.is_full = False
 
-    def push(self, transition: Tuple):
-        for i in range(len(transition)):
-            self.memory[i][self.next_idx] = transition[i]
+    def push(self, transition: tuple[np.ndarray, ...]):
+        self.memory[self.next_idx] = transition
         if self.next_idx + 1 == self.capacity:
             self.is_full = True
         self.next_idx = (self.next_idx + 1) % self.capacity
@@ -26,23 +29,21 @@ class ExperienceReplayMemory:
         high = self.capacity - 1 if self.is_full else self.next_idx
         # sample_idx = random.sample(range(0, self.capacity if self.is_full else self.next_idx), batch_size)
         sample_idx = [random.randint(0, high) for _ in range(batch_size)]
-        return *[self.memory[i][sample_idx] for i in range(self.kind)], None, None
+        return *[np.vstack(x) for x in zip(*[self.memory[i] for i in sample_idx])], None, None
 
     def read_file(self, file_path: str):
         with open(file_path, "rb") as f:
             data = pickle.load(f)
         self.memory = data
-        self.capacity = self.memory[0].shape[0]
-        self.kind = len(data)
+        self.capacity = len(self.memory)
         self.is_full = True
 
-    def read_data(self, data: List[np.ndarray]):
+    def read_data(self, data: list[tuple[np.ndarray, ...]]):
         '''
         each np.ndarray is a element of transition, e.g. state, action...
         '''
         self.memory = data
-        self.capacity = self.memory[0].shape[0]
-        self.kind = len(data)
+        self.capacity = len(data)
         self.is_full = True
 
     def __len__(self):
@@ -50,8 +51,14 @@ class ExperienceReplayMemory:
 
 
 class PrioritizedReplayMemory(object):
-    def __init__(self, size, dims: tuple, alpha=0.6, beta_start=0.4, beta_frames=20000, device=None):
+    def __init__(self, size, alpha=0.6, beta_start=0.4, beta_frames=20000, device=None):
         """Create Prioritized Replay buffer.
+        Description
+        ------------
+        memory: 
+            format example: [(s, a, r, s_, done, ...), (s, a, r, s_, done, ...), ...],
+            each element in a transition should be a np.ndarray with 1D shape
+
         Parameters
         ----------
         size: int
@@ -65,11 +72,10 @@ class PrioritizedReplayMemory(object):
         ReplayBuffer.__init__
         """
         super(PrioritizedReplayMemory, self).__init__()
-        self._storage = [np.zeros((size, dims[i])) for i in range(len(dims))]
+        self._storage = [()] * size
         self._maxsize = size
         self._next_idx = 0
         self._device = device
-        self.kind = len(dims)
         self.is_full = False
 
         assert alpha >= 0
@@ -90,8 +96,7 @@ class PrioritizedReplayMemory(object):
         with open(file_path, "rb") as f:
             data = pickle.load(f)
         self._storage = data
-        self._maxsize = self._storage[0].shape[0]
-        self.kind = len(data)
+        self._maxsize = len(self._storage)
         self.is_full = True
         it_capacity = 1
         while it_capacity < self._maxsize:
@@ -100,13 +105,13 @@ class PrioritizedReplayMemory(object):
         for i in range(self._maxsize):
             self._it_sum[i] = self._max_priority ** self._alpha
 
-    def read_data(self, data: List[np.ndarray]):
+    def read_data(self, data: list[tuple[np.ndarray, ...]]):
         '''
         each np.ndarray is a element of transition, e.g. state, action...
+        shape should be one dimension
         '''
         self._storage = data
-        self._maxsize = self._storage[0].shape[0]
-        self.kind = len(data)
+        self._maxsize = len(self._storage)
         self.is_full = True
         it_capacity = 1
         while it_capacity < self._maxsize:
@@ -118,11 +123,10 @@ class PrioritizedReplayMemory(object):
     def beta_by_frame(self, frame_idx: int) -> float:
         return min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)
 
-    def push(self, data):
+    def push(self, data: tuple[np.ndarray, ...]):
         """See ReplayBuffer.store_effect"""
         idx = self._next_idx
-        for i in range(len(data)):
-            self._storage[i][self._next_idx] = data[i]
+        self._storage[self._next_idx] = data
         if self._next_idx + 1 == self._maxsize:
             self.is_full = True
         self._next_idx = (self._next_idx + 1) % self._maxsize
@@ -130,10 +134,10 @@ class PrioritizedReplayMemory(object):
         self._it_sum[idx] = self._max_priority ** self._alpha
 
 
-    def _encode_sample(self, idxes: List[int]):
-        return [self._storage[i][idxes] for i in range(self.kind)]
+    def _encode_sample(self, idxes: list[int]):
+        return [np.vstack(x) for x in zip(*[self._storage[i] for i in idxes])]
 
-    def _sample_proportional(self, batch_size: int) -> List[int]:
+    def _sample_proportional(self, batch_size: int) -> list[int]:
         '''
             split to interval which has number of batch_size and get index in each of the interval,
             may have repeat sample
@@ -200,7 +204,7 @@ class PrioritizedReplayMemory(object):
         encoded_sample = self._encode_sample(idxes)
         return *encoded_sample, idxes, weights
 
-    def update_priorities(self, idxes: List[int], priorities):
+    def update_priorities(self, idxes: list[int], priorities):
         """Update priorities of sampled transitions.
         sets priority of transition at index idxes[i] in buffer
         to priorities[i].

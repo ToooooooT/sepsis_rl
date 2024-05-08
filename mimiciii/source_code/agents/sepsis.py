@@ -65,11 +65,6 @@ class WDQNE(WDQN):
         super().__init__(env, config, log_dir, static_policy)
         self.sofa_threshold = config.SOFA_THRESHOLD
 
-    def declare_memory(self):
-        dims = (self.num_feats, 1, 1, self.num_feats, 1, 1, 1)
-        self.memory = ExperienceReplayMemory(self.experience_replay_size, dims) \
-                        if not self.priority_replay \
-                        else PrioritizedReplayMemory(self.experience_replay_size, dims, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames, self.device)
 
     def append_to_replay(
         self, 
@@ -162,18 +157,6 @@ class SAC_BC_E(SAC_BC):
         self.kl_threshold_exp = config.KL_THRESHOLD_EXP
         self.kl_threshold_coef = config.KL_THRESHOLD_COEF
 
-    def declare_memory(self):
-        dims = (self.num_feats, 1, 1, self.num_feats, 1, 1, 1)
-        if self.priority_replay:
-            self.memory = PrioritizedReplayMemory(self.experience_replay_size, 
-                                                  dims, 
-                                                  self.priority_alpha, 
-                                                  self.priority_beta_start, 
-                                                  self.priority_beta_frames, 
-                                                  self.device)
-        else:
-            self.memory = ExperienceReplayMemory(self.experience_replay_size, dims)
-                        
 
     def append_to_replay(
         self, 
@@ -353,19 +336,6 @@ class CQL_BC_E(CQL_BC):
         self.kl_threshold_type = config.KL_THRESHOLD_TYPE
         self.kl_threshold_exp = config.KL_THRESHOLD_EXP
         self.kl_threshold_coef = config.KL_THRESHOLD_COEF
-
-    def declare_memory(self):
-        dims = (self.num_feats, 1, 1, self.num_feats, 1, 1, 1)
-        if self.priority_replay:
-            self.memory = PrioritizedReplayMemory(self.experience_replay_size, 
-                                                  dims, 
-                                                  self.priority_alpha, 
-                                                  self.priority_beta_start, 
-                                                  self.priority_beta_frames, 
-                                                  self.device)
-        else:
-            self.memory = ExperienceReplayMemory(self.experience_replay_size, dims)
-                        
 
     def append_to_replay(
         self, 

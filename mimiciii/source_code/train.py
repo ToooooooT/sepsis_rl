@@ -66,7 +66,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def get_agent(args, log_path, env_spec, config):
+def get_agent(args, log_path: str, env_spec: dict, config: Config):
     if args.agent == 'D3QN':
         agent = DQN_regularization(log_dir=log_path, env=env_spec, config=config)
     elif args.agent == 'WD3QNE':
@@ -87,7 +87,7 @@ def get_agent(args, log_path, env_spec, config):
         raise NotImplementedError
     return agent
 
-def add_dataset_to_replay(train_data, agent: DQN_regularization):
+def add_dataset_to_replay(train_data: dict, agent: DQN_regularization):
     # put all transitions in replay buffer
     s = train_data['s']
     a = train_data['a']
@@ -99,14 +99,14 @@ def add_dataset_to_replay(train_data, agent: DQN_regularization):
     sofa_cv = train_data['SOFA_CV']
 
     if isinstance(agent, SAC_BC_E) or isinstance(agent, CQL_BC_E):
-        data = [s, a, r, s_, done, sofa, sofa_cv]
+        data = list(zip(*[s, a, r, s_, done, sofa, sofa_cv]))
         agent.memory.read_data(data)
     elif isinstance(agent, WDQNE):
-        data = [s, a, r, s_, a_, done, sofa]
+        data = list(zip(*[s, a, r, s_, a_, done, sofa]))
         agent.memory.read_data(data)
     elif (isinstance(agent, DQN_regularization) or isinstance(agent, SAC_BC) 
             or isinstance(agent, SAC) or isinstance(agent, CQL_BC) or isinstance(agent, CQL)):
-        data = [s, a, r, s_, done]
+        data = list(zip(*[s, a, r, s_, done]))
         agent.memory.read_data(data)
     else:
         raise NotImplementedError
@@ -359,7 +359,7 @@ if __name__ == '__main__':
             ('PHWIS', PHWIS(agent, valid_dict['data'], config, args)), 
             ('DR', DoublyRobust(agent, valid_dict['data'], config, args)), 
             ('PHWDR', PHWDR(agent, valid_dict['data'], config, args)), 
-            ('QE', QEstimator(agent, valid_dict['data'], config, args))
+            # ('QE', QEstimator(agent, valid_dict['data'], config, args))
         ])
 
         # Training
