@@ -30,3 +30,4 @@ script*.py
 mlruns/
 mlartifacts/
 .venv/
+.vscode

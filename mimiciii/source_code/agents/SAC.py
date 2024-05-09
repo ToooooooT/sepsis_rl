@@ -6,6 +6,7 @@ from torch.distributions import Categorical, kl_divergence
 import os
 
 from agents.BaseAgent import BaseAgent
+from agents.BC import BC, MAX_KL_DIV
 from utils import Config
 from network import DuellingMLP, PolicyMLP
 
@@ -192,6 +193,20 @@ class SAC(BaseAgent):
         actor_loss = (action_probs * (self.alpha * log_pi - min_qf_values)).mean()
         return actor_loss, action_probs, log_pi
 
+    def update_alpha(self, action_probs: torch.Tensor, log_pi: torch.Tensor) -> dict[str, float]:
+        # Entropy regularization coefficient training
+        # reuse action probabilities for temperature loss
+        alpha_loss = (action_probs.detach() 
+                      * (-self.log_alpha.exp() * (log_pi + self.target_entropy).detach())).mean()
+        self.alpha_optimizer.zero_grad()
+        alpha_loss.backward()
+        self.alpha_optimizer.step()
+        self.alpha = self.log_alpha.exp().item()
+        return {
+            'alpha_loss': alpha_loss.detach().cpu().item(),
+            'alpha': self.log_alpha.exp().cpu().item()
+        }
+
     def update(self, t: int) -> dict[str, int]:
         # ref: https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/sac_atari.py
         self.actor.train()
@@ -214,23 +229,20 @@ class SAC(BaseAgent):
             self.gradient_clip_actor()
         self.actor_optimizer.step()
 
+        loss = {
+            'qf_loss': qf_loss.detach().cpu().item(), 
+            'actor_loss': actor_loss.detach().cpu().item()
+        }
+
         if self.autotune:
-            # Entropy regularization coefficient training
-            # reuse action probabilities for temperature loss
-            alpha_loss = (action_probs.detach() * (-self.log_alpha.exp() * (log_pi + self.target_entropy).detach())).mean()
-            self.alpha_optimizer.zero_grad()
-            alpha_loss.backward()
-            self.alpha_optimizer.step()
-            self.alpha = self.log_alpha.exp().item()
+            alpha_loss = self.update_alpha(action_probs, log_pi)
+            loss.update(alpha_loss)
         # update the target network
         if t % self.target_net_update_freq == 0:
             self.update_target_model(self.target_qf1, self.qf1)
             self.update_target_model(self.target_qf2, self.qf2)
 
-        return {'qf_loss': qf_loss.detach().cpu().item(), 
-                'actor_loss': actor_loss.detach().cpu().item(), 
-                'alpha_loss': alpha_loss.detach().cpu().item(),
-                'alpha': self.log_alpha.exp().cpu().item()}
+        return loss
 
 
     def get_action_probs(
@@ -304,7 +316,7 @@ class SAC(BaseAgent):
         return states.detach().clone().requires_grad_(False), next_states
 
 
-class SAC_BC(SAC):
+class SAC_BC(SAC, BC):
     def __init__(
         self, 
         env: dict, 
@@ -312,23 +324,17 @@ class SAC_BC(SAC):
         log_dir: str = './logs',
         static_policy: bool = False
     ) -> None:
-        super().__init__(config=config, env=env, log_dir=log_dir, static_policy=static_policy)
+        SAC.__init__(self, config=config, env=env, log_dir=log_dir, static_policy=static_policy)
+        BC.__init__(
+            self,
+            device=self.device,
+            bc_type=config.BC_TYPE,
+            bc_kl_beta=config.BC_KL_BETA,
+            use_pi_b_kl=config.USE_PI_B_KL,
+            nu_lr=self.q_lr
+        )
 
         self.actor_lambda = config.ACTOR_LAMBDA
-        self.bc_type = config.BC_TYPE
-        if self.bc_type == "KL":
-            self.bc_kl_beta = config.BC_KL_BETA
-            self.log_nu = torch.zeros(1, dtype=torch.float, device=self.device, requires_grad=True)
-            self.nu_optimizer = optim.Adam([self.log_nu], lr=self.q_lr, eps=1e-4)
-            self.use_pi_b_kl = config.USE_PI_B_KL
-            if self.use_pi_b_kl:
-                if self.num_feats == 87:
-                    self.pi_b_model = torch.load('pi_b_models/model_min_max_agg.pth', map_location=torch.device('cpu')).to(self.device)
-                elif self.num_feats == 49:
-                    self.pi_b_model = torch.load('pi_b_models/model_mean_agg.pth', map_location=torch.device('cpu')).to(self.device)
-                else:
-                    raise ValueError
-                self.pi_b_model.eval()
 
     def save_checkpoint(self, epoch: int):
         checkpoint = {
@@ -373,24 +379,6 @@ class SAC_BC(SAC):
             self.nu = self.log_nu.exp().item()
         return checkpoint['epoch']
 
-    def get_behavior(
-        self, 
-        states: torch.Tensor, 
-        actions: torch.Tensor, 
-        action_probs: torch.Tensor
-    ) -> Categorical:
-        if self.use_pi_b_kl:
-            behavior_logits = self.pi_b_model(states)
-            behavior = Categorical(logits=behavior_logits)
-        else:
-            # assume other action probabilities is 0.01 of behavior policy
-            epsilon = 0.01
-            behavior_probs = torch.full(action_probs.shape, epsilon, device=self.device)
-            behavior_probs.scatter_(1, actions, 1 - epsilon * (self.num_actions - 1))
-            behavior = Categorical(probs=behavior_probs)
-
-        return behavior
-
     def compute_actor_loss(
         self, 
         states: torch.Tensor, 
@@ -407,17 +395,17 @@ class SAC_BC(SAC):
             bc_loss = F.cross_entropy(action_probs, actions.view(-1))
             kl_div = None
         else:
-            behavior = self.get_behavior(states, actions, action_probs)
+            behavior = self.get_behavior(states, actions, action_probs, self.device)
             policy = Categorical(logits=logits)
             nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
             # \nu * (\beta - KL(\pi_\phi(a|s) || \pi_{b}(a|s)))
             kl_div = kl_divergence(behavior, policy).mean()
             # replace infinity of kl divergence to 20
-            kl_div[torch.isinf(kl_div)] = 20.0
+            kl_div[torch.isinf(kl_div)] = MAX_KL_DIV
             bc_loss = nu * (kl_div - self.bc_kl_beta)
         # TODO: use a suitable coefficient of normalization term
         coef = self.actor_lambda / (action_probs * (self.alpha * log_pi - min_qf_values)).abs().mean().detach()
-        total_loss = actor_loss * coef + bc_loss / 6
+        total_loss = actor_loss * coef + bc_loss
         return total_loss, actor_loss, bc_loss, kl_div, action_probs, log_pi
 
     def update(self, t: int) -> dict[str, int]:
@@ -441,31 +429,19 @@ class SAC_BC(SAC):
             self.gradient_clip_actor()
         self.actor_optimizer.step()
 
-        loss = {'qf_loss': qf_loss.detach().cpu().item(), 
-                'actor_loss': actor_loss.detach().cpu().item(), 
-                'bc_loss': bc_loss.detach().cpu().item()}
+        loss = {
+            'qf_loss': qf_loss.detach().cpu().item(), 
+            'actor_loss': actor_loss.detach().cpu().item(), 
+            'bc_loss': bc_loss.detach().cpu().item()
+        }
 
         if self.autotune:
-            # Entropy regularization coefficient training
-            # reuse action probabilities for temperature loss
-            alpha_loss = (action_probs.detach() * (-self.log_alpha.exp() * (log_pi + self.target_entropy).detach())).mean()
-            self.alpha_optimizer.zero_grad()
-            alpha_loss.backward()
-            self.alpha_optimizer.step()
-            self.alpha = self.log_alpha.exp().item()
-            loss['alpha_loss'] = alpha_loss.detach().cpu().item()
-            loss['alpha'] = self.log_alpha.exp().cpu().item()
+            alpha_loss = self.update_alpha(action_probs, log_pi)
+            loss.update(alpha_loss)
         if self.bc_type == "KL":
-            nu = torch.clamp(self.log_nu.exp(), min=0.0, max=1000000.0)
-            nu_loss = -nu * (kl_div.detach() - self.bc_kl_beta)
-            self.nu_optimizer.zero_grad()
-            nu_loss.backward()
-            if self.is_gradient_clip:
-                self.log_nu.grad.data.clamp_(-1, 1)
-            self.nu_optimizer.step()
-            loss['nu_loss'] = nu_loss.detach().cpu().item()
-            loss['nu'] = nu.detach().cpu().item()
-            loss['kl_loss'] = kl_div.detach().cpu().item()
+            nu_loss = self.update_nu(kl_div, self.is_gradient_clip)
+            loss.update(nu_loss)
+            loss['kl_div'] = kl_div.detach().cpu().item()
         # update the target network
         if t % self.target_net_update_freq == 0:
             self.update_target_model(self.target_qf1, self.qf1)

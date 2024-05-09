@@ -27,7 +27,7 @@ pd.options.mode.chained_assignment = None
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--dataset_version", type=str, help="dataset version", default='v1_20849')
+    parser.add_argument("--dataset_version", type=str, help="dataset version", default='MEAN')
     parser.add_argument("--reward_type", type=int, help="reward function type", default=0)
     parser.add_argument("--batch_size", type=int, help="batch_size", default=128)
     parser.add_argument("--fqe_batch_size", type=int, help="batch_size", default=256)
@@ -55,7 +55,6 @@ def parse_args():
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
     parser.add_argument("--valid_freq", type=int, help="validation frequency", default=2000)
-    parser.add_argument("--gif_freq", type=int, help="frequency of making validation action distribution gif", default=2000)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="env_model.pth")
     parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="LG_clf.sav")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
@@ -127,7 +126,6 @@ def training(
     max_expected_return = {k: -np.inf for k in ope_estimators.keys()}
     hists = [] # save model actions of validation in every episode 
     VALID_FREQ = args.valid_freq
-    GIF_FREQ = args.gif_freq
     LOG_FREQ = VALID_FREQ // 10
     valid_data = valid_dict['data']
     
@@ -164,8 +162,7 @@ def training(
 
             print(result)
 
-        # store actions in histogram to show animation
-        if i % GIF_FREQ == 0:
+            # store actions in histogram to show animation
             hists.append(np.bincount(actions.reshape(-1), minlength=25))
 
         if i % LOG_FREQ == 0:
