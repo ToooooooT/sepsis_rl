@@ -92,7 +92,7 @@ class BCE(BC):
         if self.kl_threshold_type == 'step':
             # add 1 to avoid threshold be 0
             kl_threshold = torch.full(shape, self.bc_kl_beta, device=device) \
-                            * (6 - bc_condition.view(-1,))
+                            * (bc_condition.view(-1,) + 1)
         elif self.kl_threshold_type == 'exp':
             kl_threshold = self.kl_threshold_coef \
                             * (torch.full(shape, self.kl_threshold_exp, device=device) ** bc_condition.view(-1,))

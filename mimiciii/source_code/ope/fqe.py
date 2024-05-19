@@ -104,7 +104,7 @@ class FQE(BaseEstimator):
         with torch.no_grad():
             if isinstance(self.agent, DQN):
                 actions = self.agent.get_action_probs(initial_states)[0]
-                expected_return = self.Q(initial_states).gather(1, actions) # TODO: check this shape is (B,) or not?
+                expected_return = self.Q(initial_states).gather(1, actions).squeeze()
             else:
                 action_probs = self.agent.get_action_probs(initial_states)[3]
                 expected_return = (self.Q(initial_states) * action_probs).sum(dim=1)

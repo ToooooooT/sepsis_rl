@@ -54,7 +54,7 @@ def parse_args():
     parser.add_argument("--use_pi_b_kl", action="store_true", help="use estimate behavior policy action probabilities for KL in BC")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
-    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=2000)
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=3000)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="env_model.pth")
     parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="LG_clf.sav")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
@@ -95,7 +95,7 @@ def add_dataset_to_replay(train_data: dict, agent: DQN_regularization):
     a_ = train_data['a_']
     done = train_data['done']
     sofa = train_data['SOFA']
-    sofa_cv = train_data['SOFA_CV']
+    sofa_cv = train_data['SOFA_CV'] if args.dataset_version == 'MEAN' else sofa
 
     if isinstance(agent, SAC_BC_E) or isinstance(agent, CQL_BC_E):
         data = list(zip(*[s, a, r, s_, done, sofa, sofa_cv]))
