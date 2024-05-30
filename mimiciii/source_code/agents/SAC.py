@@ -331,7 +331,8 @@ class SAC_BC(SAC, BC):
             bc_type=config.BC_TYPE,
             bc_kl_beta=config.BC_KL_BETA,
             use_pi_b_kl=config.USE_PI_B_KL,
-            nu_lr=self.q_lr
+            nu_lr=self.q_lr,
+            phy_epsilon=config.PHY_EPSILON
         )
 
         self.actor_lambda = config.ACTOR_LAMBDA

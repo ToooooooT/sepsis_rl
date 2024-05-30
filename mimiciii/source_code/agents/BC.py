@@ -12,9 +12,11 @@ class BC:
         bc_kl_beta: float,
         use_pi_b_kl: bool,
         nu_lr: float,
+        phy_epsilon: float,
         pi_b_model_path: str = 'pi_b_models/model_mean_agg.pth',
     ):
         self.bc_type = bc_type
+        self.phy_epsilon = phy_epsilon
         self.nu_lr = nu_lr
         if self.bc_type == "KL":
             self.log_nu = torch.zeros(1, dtype=torch.float, device=device, requires_grad=True)
@@ -37,9 +39,8 @@ class BC:
             behavior = Categorical(logits=behavior_logits)
         else:
             # assume other action probabilities is 0.01 of behavior policy
-            epsilon = 0.01
-            behavior_probs = torch.full(action_probs.shape, epsilon, device=device)
-            behavior_probs.scatter_(1, actions, 1 - epsilon * (action_probs.shape[1] - 1))
+            behavior_probs = torch.full(action_probs.shape, self.phy_epsilon, device=device)
+            behavior_probs.scatter_(1, actions, 1 - self.phy_epsilon * (action_probs.shape[1] - 1))
             behavior = Categorical(probs=behavior_probs)
 
         return behavior
@@ -66,6 +67,7 @@ class BCE(BC):
         bc_kl_beta: float, 
         use_pi_b_kl: bool, 
         nu_lr: float,
+        phy_epsilon: float,
         sofa_threshold: int,
         use_sofa_cv: bool,
         is_sofa_threshold_below: bool,
@@ -74,7 +76,7 @@ class BCE(BC):
         kl_threshold_coef: float,
         pi_b_model_path: str = 'pi_b_models/model_mean_agg.pth'
     ):
-        super().__init__(device, bc_type, bc_kl_beta, use_pi_b_kl, nu_lr, pi_b_model_path)
+        super().__init__(device, bc_type, bc_kl_beta, use_pi_b_kl, nu_lr, phy_epsilon, pi_b_model_path)
         self.sofa_threshold = sofa_threshold
         self.use_sofa_cv = use_sofa_cv
         self.is_sofa_threshold_below = is_sofa_threshold_below

@@ -48,13 +48,14 @@ def parse_args():
     parser.add_argument("--kl_threshold_coef", type=float, help="coefficient term of the kl threshold exponential method", default=0.15)
     parser.add_argument("--bc_kl_beta", type=float, help="regularization term coeficient", default=2e-1)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
+    parser.add_argument("--phy_epsilon", type=float, help="physician action distribution probabilities", default=0.001)
     parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
     parser.add_argument("--kl_threshold_type", type=str, help="type of method to compute kl threshold", default="step")
     parser.add_argument("--use_pi_b_est", action="store_true", help="use estimate behavior policy action probabilities for OPE")
     parser.add_argument("--use_pi_b_kl", action="store_true", help="use estimate behavior policy action probabilities for KL in BC")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
-    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=3000)
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=4000)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="env_model.pth")
     parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="LG_clf.sav")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
@@ -307,6 +308,7 @@ if __name__ == '__main__':
     config.REG_LAMBDA = args.reg_lambda
     config.BC_KL_BETA = args.bc_kl_beta
     config.BC_TYPE = args.bc_type
+    config.PHY_EPSILON = args.phy_epsilon
     config.SOFA_THRESHOLD = args.sofa_threshold
     config.USE_SOFA_CV = args.use_sofa_cv
     config.IS_SOFA_THRESHOLD_BELOW = args.is_sofa_threshold_below
@@ -332,7 +334,7 @@ if __name__ == '__main__':
 
     # start mlflow
     mlflow.set_tracking_uri("http://127.0.0.1:8787")
-    experiment = mlflow.set_experiment(f"dataset_version={args.dataset_version}-reward_type={args.reward_type}")
+    experiment = mlflow.set_experiment(f"dataset_version={args.dataset_version}-reward_type={args.reward_type}-phy_epsilon")
     # start run
     with mlflow.start_run(experiment_id=experiment.experiment_id, run_name=f"{args.agent}") as run:
         print(f'run id: {run.info.run_id}')

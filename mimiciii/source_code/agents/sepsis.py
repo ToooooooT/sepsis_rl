@@ -157,6 +157,7 @@ class SAC_BC_E(SAC_BC, BCE):
             bc_kl_beta=config.BC_KL_BETA,
             use_pi_b_kl=config.USE_PI_B_KL,
             nu_lr=self.q_lr,
+            phy_epsilon=config.PHY_EPSILON,
             sofa_threshold=config.SOFA_THRESHOLD,
             use_sofa_cv=config.USE_SOFA_CV,
             is_sofa_threshold_below=config.IS_SOFA_THRESHOLD_BELOW,
