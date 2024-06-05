@@ -14,6 +14,8 @@ import shutil
 from tqdm import tqdm
 import torch.nn as nn
 from collections import OrderedDict
+import json
+import hashlib
 
 from agents import DQN_regularization, WDQNE, SAC_BC_E, SAC_BC, SAC, BaseAgent, CQL, CQL_BC, CQL_BC_E
 from utils import (Config, plot_action_dist, animation_action_distribution,
@@ -24,6 +26,11 @@ from network import DuellingMLP
 from ope import WIS, DoublyRobust, FQE, QEstimator, PHWIS, PHWDR, BaseEstimator
 
 pd.options.mode.chained_assignment = None
+
+def hash_string(input: str):
+    md5_hash = hashlib.md5()
+    md5_hash.update(input.encode('utf-8'))
+    return md5_hash.hexdigest()
 
 def parse_args():
     parser = ArgumentParser()
@@ -48,14 +55,14 @@ def parse_args():
     parser.add_argument("--kl_threshold_coef", type=float, help="coefficient term of the kl threshold exponential method", default=0.15)
     parser.add_argument("--bc_kl_beta", type=float, help="regularization term coeficient", default=2e-1)
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
-    parser.add_argument("--phy_epsilon", type=float, help="physician action distribution probabilities", default=0.001)
+    parser.add_argument("--phy_epsilon", type=float, help="physician action distribution probabilities", default=0.005)
     parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
     parser.add_argument("--kl_threshold_type", type=str, help="type of method to compute kl threshold", default="step")
     parser.add_argument("--use_pi_b_est", action="store_true", help="use estimate behavior policy action probabilities for OPE")
     parser.add_argument("--use_pi_b_kl", action="store_true", help="use estimate behavior policy action probabilities for KL in BC")
     parser.add_argument("--clip_expected_return", type=float, help="the value of clipping expected return", default=np.inf)
     parser.add_argument("--test_dataset", type=str, help="test dataset", default="test")
-    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=4000)
+    parser.add_argument("--valid_freq", type=int, help="validation frequency", default=3000)
     parser.add_argument("--env_model_path", type=str, help="path of environment model", default="env_model.pth")
     parser.add_argument("--clf_model_path", type=str, help="path of classifier model", default="LG_clf.sav")
     parser.add_argument("--cpu", action="store_true", help="use cpu")
@@ -251,7 +258,7 @@ if __name__ == '__main__':
     args = parse_args()
 
     # generate random path for temporary storing before move to mlflow-artifacts
-    path = str(uuid.uuid4())
+    path = hash_string(json.dumps(vars(args)) + str(uuid.uuid4()))
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -334,7 +341,7 @@ if __name__ == '__main__':
 
     # start mlflow
     mlflow.set_tracking_uri("http://127.0.0.1:8787")
-    experiment = mlflow.set_experiment(f"dataset_version={args.dataset_version}-reward_type={args.reward_type}-phy_epsilon")
+    experiment = mlflow.set_experiment(f"dataset_version={args.dataset_version}-reward_type={args.reward_type}-phy_epsilon-05")
     # start run
     with mlflow.start_run(experiment_id=experiment.experiment_id, run_name=f"{args.agent}") as run:
         print(f'run id: {run.info.run_id}')
@@ -364,7 +371,7 @@ if __name__ == '__main__':
         # Training
         print('Start training...')
         training(agent, ope_estimators, valid_dict, config, args)
-        mlflow.log_table(ope_estimators['FQE'].records, 'table/fqe_loss.json')
+        ope_estimators['FQE'].records.to_csv(os.path.join(agent.log_dir, 'fqe_loss.csv'))
 
         # Off-policy Policy Evaluation for last checkpoint
         df_ope_returns = pd.DataFrame()
@@ -399,7 +406,7 @@ if __name__ == '__main__':
             df_ope_returns[method] = returns
 
         # plot expected return result
-        mlflow.log_table(df_ope_returns, 'table/expected_returns.json')
+        df_ope_returns.to_csv(os.path.join(agent.log_dir, 'expected_returns.csv'))
         mlflow.log_figure(
             plot_expected_return_distribution(df_ope_returns), 
             'fig/expected_return_distribution.png'
@@ -422,7 +429,7 @@ if __name__ == '__main__':
         mlflow.log_text(result, 'text/expected_return.txt')
         print(result)
 
-        mlflow.log_table(test_dataset, 'table/test_data_predict.json')
+        test_dataset.to_csv(os.path.join(agent.log_dir, 'test_data_predict.csv'))
         mlflow.log_artifacts(agent.log_dir, "states")
 
     shutil.rmtree(agent.log_dir)
