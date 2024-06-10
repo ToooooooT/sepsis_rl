@@ -371,7 +371,7 @@ if __name__ == '__main__':
         # Training
         print('Start training...')
         training(agent, ope_estimators, valid_dict, config, args)
-        ope_estimators['FQE'].records.to_csv(os.path.join(agent.log_dir, 'fqe_loss.csv'))
+        ope_estimators['FQE'].records.to_csv(os.path.join(agent.log_dir, 'fqe_loss.csv'), index=False)
 
         # Off-policy Policy Evaluation for last checkpoint
         df_ope_returns = pd.DataFrame()
@@ -406,7 +406,7 @@ if __name__ == '__main__':
             df_ope_returns[method] = returns
 
         # plot expected return result
-        df_ope_returns.to_csv(os.path.join(agent.log_dir, 'expected_returns.csv'))
+        df_ope_returns.to_csv(os.path.join(agent.log_dir, 'expected_returns.csv'), index=False)
         mlflow.log_figure(
             plot_expected_return_distribution(df_ope_returns), 
             'fig/expected_return_distribution.png'
@@ -429,7 +429,7 @@ if __name__ == '__main__':
         mlflow.log_text(result, 'text/expected_return.txt')
         print(result)
 
-        test_dataset.to_csv(os.path.join(agent.log_dir, 'test_data_predict.csv'))
+        test_dataset.to_csv(os.path.join(agent.log_dir, 'test_data_predict.csv'), index=False)
         mlflow.log_artifacts(agent.log_dir, "states")
 
     shutil.rmtree(agent.log_dir)
