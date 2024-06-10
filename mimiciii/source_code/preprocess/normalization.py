@@ -20,9 +20,8 @@ pd.options.mode.chained_assignment = None
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--dataset_version", type=str, help="dataset version", default='v0_20937')
+    parser.add_argument("--dataset_version", type=str, help="dataset version", default='MEAN')
     parser.add_argument("--icustayid", type=str, help="a pickle file of dictionary contain icustayid list correspond to train, valid, test", default=None)
-    parser.add_argument("--beta", type=float, help="reward function coefficient for type 1", default=0.6)
     parser.add_argument("--min_max", action='store_true', help="normalize with min, max aggregation dataset")
     args = parser.parse_args()
     return args
@@ -46,7 +45,7 @@ def get_reward(s, s_, reward_type):
         else:
             s_sofa = s['SOFA']
             s_sofa_ = s_['SOFA']
-            r = args.beta * (s_sofa - s_sofa_)
+            r = 0.6 * (s_sofa - s_sofa_)
     elif reward_type == 2:
         if s_ is None or s['icustayid'] != s_['icustayid']:
             r = -24 if int(s['mortality_90d']) else 24
@@ -56,7 +55,7 @@ def get_reward(s, s_, reward_type):
             s_lactate = s['Arterial_lactate']
             s_sofa_ = s_['SOFA']
             s_lactate_ = s_['Arterial_lactate']
-            r = args.beta * (s_sofa - s_sofa_) + c2 * tanh(s_lactate_ - s_lactate)
+            r = 0.6 * (s_sofa - s_sofa_) + c2 * tanh(s_lactate_ - s_lactate)
             pass
     return r
 
