@@ -12,5 +12,6 @@ cd mimiciii/source_code/preprocess/ && python normalization.py
 ```
 * Training
 ```
+mkdir mimiciii/source_code/logs && cd mimiciii/source_code/logs && mlflow server --host 127.0.0.1 --port 8787
 cd mimiciii/source_code/ && python train.py
 ```
