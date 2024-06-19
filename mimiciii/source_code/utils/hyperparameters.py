@@ -52,6 +52,7 @@ class Config(object):
         self.BC_KL_BETA = 2e-1
         self.BC_TYPE = "cross_entropy"
         self.PHY_EPSILON = 0.01 # physician action distribution probabilities
+        self.CORRELATION = "inverse"
 
         self.HIDDEN_SIZE = (128, 128)
 

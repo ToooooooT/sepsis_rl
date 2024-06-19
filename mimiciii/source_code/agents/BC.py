@@ -74,6 +74,7 @@ class BCE(BC):
         kl_threshold_type: str,
         kl_threshold_exp: float,
         kl_threshold_coef: float,
+        correlation: str,
         pi_b_model_path: str = 'pi_b_models/model_mean_agg.pth'
     ):
         super().__init__(device, bc_type, bc_kl_beta, use_pi_b_kl, nu_lr, phy_epsilon, pi_b_model_path)
@@ -83,6 +84,7 @@ class BCE(BC):
         self.kl_threshold_type = kl_threshold_type
         self.kl_threshold_exp = kl_threshold_exp
         self.kl_threshold_coef = kl_threshold_coef
+        self.correlation = correlation
 
 
     def compute_kl_threshold(
@@ -92,9 +94,12 @@ class BCE(BC):
         device: torch.device
     ) -> torch.Tensor:
         if self.kl_threshold_type == 'step':
-            # add 1 to avoid threshold be 0
-            kl_threshold = torch.full(shape, self.bc_kl_beta, device=device) \
-                            * (bc_condition.view(-1,) + 1)
+            if self.correlation == "inverse":
+                # add 1 to avoid threshold be 0
+                kl_threshold = torch.full(shape, self.bc_kl_beta, device=device) \
+                                * (bc_condition.view(-1,) + 1)
+            else:
+                kl_threshold = 3 - torch.full(shape, self.bc_kl_beta, device=device) * bc_condition.view(-1,)
         elif self.kl_threshold_type == 'exp':
             kl_threshold = self.kl_threshold_coef \
                             * (torch.full(shape, self.kl_threshold_exp, device=device) ** bc_condition.view(-1,))

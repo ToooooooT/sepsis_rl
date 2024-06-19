@@ -164,6 +164,7 @@ class SAC_BC_E(SAC_BC, BCE):
             kl_threshold_type=config.KL_THRESHOLD_TYPE,
             kl_threshold_exp=config.KL_THRESHOLD_EXP,
             kl_threshold_coef=config.KL_THRESHOLD_COEF,
+            correlation=config.CORRELATION
         )
 
     def append_to_replay(

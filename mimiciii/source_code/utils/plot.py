@@ -62,8 +62,8 @@ def plot_action_dist(actions: np.ndarray, dataset: pd.DataFrame, log_dir: str | 
         actions : policy action; expected shape (B, 1)
         dataset : original expert dataset unnormalize (DataFrame)
     '''
-    mask_low = dataset['SOFA'] <= 5
-    mask_mid = (dataset['SOFA'] > 5) & (dataset['SOFA'] < 15)
+    mask_low = dataset['SOFA'] <= 4
+    mask_mid = (dataset['SOFA'] > 4) & (dataset['SOFA'] < 15)
     mask_high = dataset['SOFA'] >= 15
 
     # Count the occurrences of each unique action for each category

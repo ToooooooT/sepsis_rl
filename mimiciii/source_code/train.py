@@ -54,6 +54,7 @@ def parse_args():
     parser.add_argument("--kl_threshold_exp", type=float, help="exponential term of the kl threshold exponential method", default=1.5)
     parser.add_argument("--kl_threshold_coef", type=float, help="coefficient term of the kl threshold exponential method", default=0.15)
     parser.add_argument("--bc_kl_beta", type=float, help="regularization term coeficient", default=2e-1)
+    parser.add_argument("--correlation", type=str, help="correlation between indicator and BC", default="inverse")
     parser.add_argument("--agent", type=str, help="agent type", default="D3QN")
     parser.add_argument("--phy_epsilon", type=float, help="physician action distribution probabilities", default=0.005)
     parser.add_argument("--bc_type", type=str, help="behavior cloning type", default="cross_entropy")
@@ -322,6 +323,7 @@ if __name__ == '__main__':
     config.KL_THRESHOLD_TYPE = args.kl_threshold_type
     config.KL_THRESHOLD_EXP = args.kl_threshold_exp
     config.KL_THRESHOLD_COEF = args.kl_threshold_coef
+    config.CORRELATION = args.correlation
     config.USE_PI_B_EST = args.use_pi_b_est
     config.USE_PI_B_KL = args.use_pi_b_kl
     config.USE_STATE_AUGMENTATION = args.use_state_augmentation
